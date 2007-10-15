@@ -1,2 +1,6 @@
 ^.*\.fasl$
 ^.*\.x86f$
+^hg\.tbz$
+^ecl-0\.9i\.tgz$
+^pending$
+^services$

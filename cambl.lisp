@@ -48,13 +48,18 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
    default-commodity))
 
 (defclass commodity-symbol ()
-  (name
-   prefixed-p
-   connected-p))
+  ((name :accessor symbol-name)
+   (prefixed-p :accessor symbol-prefixed-p)
+   (connected-p :accessor symbol-connected-p)))
 
-(defun symbol-needs-quoting-p (symbol)
-  (declare (type commodity-symbol symbol))
-  )
+(defun name-needs-quoting-p (name)
+  "Return T if the given symbol NAME requires quoting."
+  (declare (type string name))
+  (loop for c across name do
+       (and (or (char= c #\Space) (char= c #\Tab)
+		(digit-char-p c)
+		(char= c #\-) (char= c #\.))
+	    (return t))))
    
 (defclass commodity-price-history ()
   (prices
@@ -80,14 +85,6 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
    qualified-name-p
    (mapping-key :accessor mapping-key)
    annotated-p))
-
-(defun symbol-needs-quotes (symbol)
-  ;; for (const char * p = symbol.c_str(); *p; p++)
-  ;;   if (std::isspace(*p) || std::isdigit(*p) || *p == '-' || *p == '.')
-  ;;     return true;
-  ;;
-  ;; return false;
-  )
 
 (defmethod commodity-symbol ((commodity commodity))
   (if (qualified-name-p commodity)
