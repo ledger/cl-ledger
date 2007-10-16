@@ -49,10 +49,12 @@
   (:use
    :COMMON-LISP))
 
+(in-package :CAMBL)
+
 (defvar *european-style* nil
   "If set to T, amounts will be printed as 1.000,00.
-The default is US style, which is 1,000.00.  Note that thousand markers are
-only used if the commodity's own `thousand-marks-p' accessor returns T.")
+  The default is US style, which is 1,000.00.  Note that thousand markers are
+  only used if the commodity's own `thousand-marks-p' accessor returns T.")
 
 ;; Commodity symbols
 
@@ -62,18 +64,43 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
   (prefixed-p nil :type boolean)
   (connected-p nil :type boolean))
 
+(defmacro define-array-constant (name value &optional doc)
+  `(defconstant ,name (if (boundp ',name) (symbol-value ',name) ,value)
+     ,@(when doc (list doc))))
+
+(define-array-constant +invalid-symbol-chars+
+    #(#|        0   1   2   3   4   5   6   7   8   9   a   b   c   d   e   f |#
+      #| 00 |# nil nil nil nil nil nil nil nil nil  t   t  nil nil  t  nil nil
+      #| 10 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+      #| 20 |#  t   t   t  nil nil nil  t  nil  t   t   t   t   t   t   t   t 
+      #| 30 |#  t   t   t   t   t   t   t   t   t   t   t   t   t   t   t   t 
+      #| 40 |#  t  nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+      #| 50 |# nil nil nil nil nil nil nil nil nil nil nil  t  nil  t   t  nil
+      #| 60 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+      #| 70 |# nil nil nil nil nil nil nil nil nil nil nil  t  nil  t   t  nil
+      #| 80 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+      #| 90 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+      #| a0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+      #| b0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+      #| c0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+      #| d0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+      #| e0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+      #| f0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil)
+  "The invalid commodity symbol characters are:
+     Space Tab Newline Return
+     0-9 . , ; - + * / ^ ? : & | ! = \"
+     < > { } [ ] ( ) @")
+
 (defun symbol-name-needs-quoting-p (name)
   "Return T if the given symbol NAME requires quoting."
   (declare (type string name))
   (loop for c across name do
-       (and (or (char= c #\Space) (char= c #\Tab)
-		(digit-char-p c)
-		(char= c #\-) (char= c #\.))
+       (and (aref +invalid-symbol-chars+ (char-code c))
 	    (return t))))
    
-(defmethod parse-commodity-symbol ((commodity-pool commodity-pool) &optional in)
-  "Parse a commodity symbol from the input stream IN.  This is the correct
-  entry point for creating a new commodity symbol.
+(defun parse-commodity-symbol (&optional in)
+  "Parse a commodity symbol from the input stream IN.
+  This is the correct entry point for creating a new commodity symbol.
 
   A commodity may not contain any of the characters found in
   `+invalid-symbol-chars+'.  To include such characters in a symbol name --
@@ -154,38 +181,12 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
    (price-history :accessor commodity-price-history
 		  :type commodity-price-history)))
 
-(defmacro define-array-constant (name value &optional doc)
-  `(defconstant ,name (if (boundp ',name) (symbol-value ',name) ,value)
-     ,@(when doc (list doc))))
-
-(define-array-constant +invalid-symbol-chars+
-  #(#|        0   1   2   3   4   5   6   7   8   9   a   b   c   d   e   f |#
-    #| 00 |# nil nil nil nil nil nil nil nil nil  t   t  nil nil  t  nil nil
-    #| 10 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-    #| 20 |#  t   t   t  nil nil nil  t  nil  t   t   t   t   t   t   t   t 
-    #| 30 |#  t   t   t   t   t   t   t   t   t   t   t   t   t   t   t   t 
-    #| 40 |#  t  nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-    #| 50 |# nil nil nil nil nil nil nil nil nil nil nil  t  nil  t   t  nil
-    #| 60 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-    #| 70 |# nil nil nil nil nil nil nil nil nil nil nil  t  nil  t   t  nil
-    #| 80 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-    #| 90 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-    #| a0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-    #| b0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-    #| c0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-    #| d0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-    #| e0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-    #| f0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil)
-  "The invalid commodity symbol characters are:
-     Space Tab Newline Return
-     0-9 . , ; - + * / ^ ? : & | ! = \"
-     < > { } [ ] ( ) @")
-
 ;; The commodity and annotated-commodity classes are the main interface class
 ;; for dealing with commodities themselves (which most people will never do).
 
 (defclass commodity ()
-  ((basic-commodity :accessor basic-commodity :type basic-commodity)
+  ((basic-commodity :accessor basic-commodity :initarg :base
+		    :type basic-commodity)
    (commodity-pool :accessor commodity-pool :type commodity-pool)
    (serial-number :accessor commodity-serial-number :type fixnum)
    qualified-symbol
@@ -208,8 +209,23 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
   (assert (nth-value 0 (subtypep (type-of b) 'commodity)))
   (eq (basic-commodity a) (basic-commodity b)))
 
+;; jww (2007-10-15): use keywords here
 (defmethod strip-annotations ((commodity commodity)
-			      &optional keep-price keep-date keep-tag))
+			      &optional keep-price keep-date keep-tag)
+  ;; if (! quantity)
+  ;;   throw_(amount_error,
+  ;;          "Cannot strip commodity annotations from an uninitialized amount");
+  ;;
+  ;; if (! commodity().annotated ||
+  ;;     (_keep_price && _keep_date && _keep_tag))
+  ;;   return *this;
+  ;;
+  ;; amount_t t(*this);
+  ;; t.set_commodity(as_annotated_commodity(commodity()).
+  ;;                 strip_annotations(_keep_price, _keep_date, _keep_tag));
+  ;; return t;
+  (assert commodity)
+  (assert (or keep-price keep-date keep-tag)))
 
 (defun compare-commodity-representations (left right)
   "Return T if commodity LEFT should be sorted before RIGHT."
@@ -276,7 +292,7 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
   ;;   assert(false);
   ;;   return true;
   ;; }
-  )
+  (assert (and left right)))
 
 ;; Routines for accessing the historical prices of a commodity
 
@@ -292,7 +308,9 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
   ;;     = base->history->prices.insert(history_map::value_type(date, price));
   ;;   assert(result.second);
   ;; }
-  )
+  (assert commodity)
+  (assert price)
+  (assert datetime))
 
 (defun remove-price-point (commodity datetime)
   ;; if (base->history) {
@@ -304,7 +322,8 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
   ;;   }
   ;; }
   ;; return false;
-  )
+  (assert commodity)
+  (assert datetime))
 
 (defmethod market-value ((commodity commodity) &optional datetime)
   ;; optional<moment_t> age;
@@ -348,184 +367,13 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
   ;;     return *quote;
   ;; }
   ;; return price;
-  )
+  (assert commodity)
+  (assert datetime))
 
 (defun get-price-quote (symbol &optional datetime)
+  (assert symbol)
+  (assert datetime)
   (format t "I don't know how to download prices yet."))
-
-;; All commodities are allocated within a pool, which can be used to look them
-;; up.
-
-(defstruct commodity-pool
-  (commodities-by-name-map (make-hash-table) :type hash-table)
-  (commodities-by-serial-map (make-hash-table) :type hash-table)
-  (default-commodity nil :type commodity))
-
-(defmethod create-commodity ((pool commodity-pool) (symbol string))
-  ;; shared_ptr<commodity_t::base_t>
-  ;;   base_commodity(new commodity_t::base_t(symbol));
-  ;; std::auto_ptr<commodity_t> commodity(new commodity_t(this, base_commodity));
-  ;;
-  ;; DEBUG("amounts.commodities", "Creating base commodity " << symbol);
-  ;;
-  ;; // Create the "qualified symbol" version of this commodity's symbol
-  ;; if (commodity_t::symbol_needs_quotes(symbol)) {
-  ;;   commodity->qualified_symbol = "\"";
-  ;;   *commodity->qualified_symbol += symbol;
-  ;;   *commodity->qualified_symbol += "\"";
-  ;; }
-  ;;
-  ;; DEBUG("amounts.commodities",
-  ;;       "Creating commodity '" << commodity->symbol() << "'");
-  ;;
-  ;; // Start out the new commodity with the default commodity's flags
-  ;; // and precision, if one has been defined.
-  ;; #if 0
-  ;; // jww (2007-05-02): This doesn't do anything currently!
-  ;; if (default_commodity)
-  ;;   commodity->drop_flags(COMMODITY_STYLE_THOUSANDS |
-  ;;                         COMMODITY_STYLE_NOMARKET);
-  ;; #endif
-  ;;
-  ;; commodity->ident = commodities.size();
-  ;;
-  ;; commodities.push_back(commodity.get());
-  ;; return commodity.release();
-  )
-
-(defmethod find-commodity ((pool commodity-pool) (symbol string))
-  ;; DEBUG("amounts.commodities", "Find commodity " << symbol);
-  ;;
-  ;; typedef commodity_pool_t::commodities_t::nth_index<1>::type
-  ;;   commodities_by_name;
-  ;;
-  ;; commodities_by_name& name_index = commodities.get<1>();
-  ;; commodities_by_name::const_iterator i = name_index.find(symbol);
-  ;; if (i != name_index.end())
-  ;;   return *i;
-  ;; else
-  ;;   return NULL;
-  )
-
-(defmethod find-commodity ((pool commodity-pool) (serial integer))
-  ;; DEBUG("amounts.commodities", "Find commodity by ident " << ident);
-  ;;
-  ;; typedef commodity_pool_t::commodities_t::nth_index<0>::type
-  ;;   commodities_by_ident;
-  ;;
-  ;; commodities_by_ident& ident_index = commodities.get<0>();
-  ;; return ident_index[ident];
-  )
-
-(defmethod find-or-create-commodity ((pool commodity-pool) (symbol string))
-  ;; DEBUG("amounts.commodities", "Find-or-create commodity " << symbol);
-  ;;
-  ;; commodity_t * commodity = find(symbol);
-  ;; if (commodity)
-  ;;   return commodity;
-  ;; return create(symbol);
-  )
-
-(defmethod create-annotated-commodity ((pool commodity-pool) (symbol string)
-				       (details commodity-annotation))
-  ;; commodity_t * new_comm = create(symbol);
-  ;; if (! new_comm)
-  ;;   return NULL;
-  ;;
-  ;; if (details)
-  ;;   return find_or_create(*new_comm, details);
-  ;; else
-  ;;   return new_comm;
-  )
-
-(defun make-qualified-name (commodity commodity-annotation)
-  ;; assert(details);
-  ;;
-  ;; if (details.price && details.price->sign() < 0)
-  ;;   throw_(amount_error, "A commodity's price may not be negative");
-  ;;
-  ;; std::ostringstream name;
-  ;; comm.print(name);
-  ;; annotated_commodity_t::write_annotations(name, details);
-  ;;
-  ;; DEBUG("amounts.commodities", "make_qualified_name for "
-  ;;       << comm.qualified_symbol << std::endl << details);
-  ;; DEBUG("amounts.commodities", "qualified_name is " << name.str());
-  ;;
-  ;; return name.str();
-  )
-
-(defmethod find-annotated-commodity ((pool commodity-pool) (symbol string)
-				     (details commodity-annotation))
-  ;; commodity_t * comm = find(symbol);
-  ;; if (! comm)
-  ;;   return NULL;
-  ;;
-  ;; if (details) {
-  ;;   string name = make_qualified_name(*comm, details);
-  ;;
-  ;;   if (commodity_t * ann_comm = find(name)) {
-  ;;     assert(ann_comm->annotated && as_annotated_commodity(*ann_comm).details);
-  ;;     return ann_comm;
-  ;;   }
-  ;;   return NULL;
-  ;; } else {
-  ;;   return comm;
-  ;; }
-  )
-
-(defmethod find-or-create-annotated-commodity ((pool commodity-pool) (symbol string)
-					       (details commodity-annotation))
-  ;; commodity_t * comm = find(symbol);
-  ;; if (! comm)
-  ;;   return NULL;
-  ;;
-  ;; if (details)
-  ;;   return find_or_create(*comm, details);
-  ;; else
-  ;;   return comm;
-  )
-
-(defmethod create-annotated-commodity-internal ((pool commodity-pool) (commodity commodity)
-                             (details commodity-annotation)
-			     (mapping-key string))
-  ;; assert(comm);
-  ;; assert(details);
-  ;; assert(! mapping_key.empty());
-  ;;
-  ;; std::auto_ptr<commodity_t> commodity
-  ;;   (new annotated_commodity_t(&comm, details));
-  ;;
-  ;; commodity->qualified_symbol = comm.symbol();
-  ;; assert(! commodity->qualified_symbol->empty());
-  ;;
-  ;; DEBUG("amounts.commodities", "Creating annotated commodity "
-  ;;       << "symbol " << commodity->symbol()
-  ;;       << " key "   << mapping_key << std::endl << details);
-  ;;
-  ;; // Add the fully annotated name to the map, so that this symbol may
-  ;; // quickly be found again.
-  ;; commodity->ident        = commodities.size();
-  ;; commodity->mapping_key_ = mapping_key;
-  ;;
-  ;; commodities.push_back(commodity.get());
-  ;; return commodity.release();
-  )
-
-(defmethod find-or-create-annotated-commodity ((pool commodity-pool) (commodity commodity)
-                                     (details commodity-annotation))
-  ;; assert(comm);
-  ;; assert(details);
-  ;;
-  ;; string name = make_qualified_name(comm, details);
-  ;; assert(! name.empty());
-  ;;
-  ;; if (commodity_t * ann_comm = find(name)) {
-  ;;   assert(ann_comm->annotated && as_annotated_commodity(*ann_comm).details);
-  ;;   return ann_comm;
-  ;; }
-  ;; return create(comm, details, name);
-  )
 
 ;; annotated-commodity's are references to other commodities (which in turn
 ;; reference a basic-commodity) which carry along additional contextual
@@ -550,9 +398,8 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
 (defmethod commodity-mapping-key ((annotated-commodity annotated-commodity))
   (commodity-mapping-key (slot-value annotated-commodity 'referent)))
 
-(defmethod market-value ((annotated-commodity annotated-commodity)
-			 &optional datetime)
-  (market-value (slot-value annotated-commodity 'referent)))
+(defmethod market-value ((annotated-commodity annotated-commodity) &optional datetime)
+  (market-value (slot-value annotated-commodity 'referent) datetime))
 
 (defmethod commodity-annotation-empty-p ((annotation commodity-annotation))
   (not (or (commodity-annotation-price annotation)
@@ -621,10 +468,12 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
   ;;
   ;; DEBUG("amounts.commodities",
   ;;       "Parsed commodity annotations: " << std::endl << *this);
-  )
+  (assert in))
 
 (defun annotation-string (annotation &optional out)
   ;; jww (2007-10-15): Don't output the fields which don't exist here.
+  (assert annotation)
+  (assert out)
   (format "{~a} [~a] (~a)"
           (commodity-annotation-price annotation)
           (commodity-annotation-date annotation)
@@ -655,7 +504,8 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
   ;;
   ;; assert(new_comm);
   ;; return *new_comm;
-  )
+  (assert annotated-commodity)
+  (assert (or keep-price keep-date keep-tag)))
 
 (defmethod commodity-equalp ((a annotated-commodity) (b annotated-commodity))
   ;; // If the base commodities don't match, the game's up.
@@ -670,7 +520,215 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
   ;;   return false;
   ;;
   ;; return true;
-  )
+  (assert a)
+  (assert b))
+
+;; All commodities are allocated within a pool, which can be used to look them
+;; up.
+
+(defstruct commodity-pool
+  (commodities-by-name-map (make-hash-table) :type hash-table)
+  (commodities-by-serial-list '((0 . nil)) :type list)
+  (default-commodity nil :type (or commodity null)))
+
+(defparameter *default-commodity-pool* (make-commodity-pool))
+
+(defmethod create-commodity ((pool commodity-pool) (symbol string))
+  ;; shared_ptr<commodity_t::base_t>
+  ;;   base_commodity(new commodity_t::base_t(symbol));
+  ;; std::auto_ptr<commodity_t> commodity(new commodity_t(this, base_commodity));
+  ;;
+  ;; DEBUG("amounts.commodities", "Creating base commodity " << symbol);
+  ;;
+  ;; // Create the "qualified symbol" version of this commodity's symbol
+  ;; if (commodity_t::symbol_needs_quotes(symbol)) {
+  ;;   commodity->qualified_symbol = "\"";
+  ;;   *commodity->qualified_symbol += symbol;
+  ;;   *commodity->qualified_symbol += "\"";
+  ;; }
+  ;;
+  ;; DEBUG("amounts.commodities",
+  ;;       "Creating commodity '" << commodity->symbol() << "'");
+  ;;
+  ;; // Start out the new commodity with the default commodity's flags
+  ;; // and precision, if one has been defined.
+  ;; #if 0
+  ;; // jww (2007-05-02): This doesn't do anything currently!
+  ;; if (default_commodity)
+  ;;   commodity->drop_flags(COMMODITY_STYLE_THOUSANDS |
+  ;;                         COMMODITY_STYLE_NOMARKET);
+  ;; #endif
+  ;;
+  ;; commodity->ident = commodities.size();
+  ;;
+  ;; commodities.push_back(commodity.get());
+  ;; return commodity.release();
+  (let* ((base (make-instance 'basic-commodity :symbol symbol))
+	 (commodity (make-instance 'commodity :base base))
+	 (symbol (commodity-symbol commodity)))
+    (if (commodity-symbol-needs-quoting-p symbol)
+	(setf (slot-value commodity 'qualified-symbol)
+	      (concatenate 'string
+			   "\"" (commodity-symbol-name symbol) "\"")))
+
+    (let ((commodities-by-serial-list
+	   (commodity-pool-commodities-by-serial-list pool)))
+      (setf (commodity-serial-number symbol)
+	    (1+ (car (last commodities-by-serial-list))))
+      (setf (cdr (last commodities-by-serial-list))
+	    (cons (commodity-serial-number symbol) commodity)))
+
+    (setf (gethash symbol (commodity-pool-commodities-by-name-map pool))
+	  commodity)))
+
+(defmethod find-commodity ((pool commodity-pool) (symbol string))
+  ;; DEBUG("amounts.commodities", "Find commodity " << symbol);
+  ;;
+  ;; typedef commodity_pool_t::commodities_t::nth_index<1>::type
+  ;;   commodities_by_name;
+  ;;
+  ;; commodities_by_name& name_index = commodities.get<1>();
+  ;; commodities_by_name::const_iterator i = name_index.find(symbol);
+  ;; if (i != name_index.end())
+  ;;   return *i;
+  ;; else
+  ;;   return NULL;
+  (assert pool)
+  (assert symbol))
+
+(defmethod find-commodity ((pool commodity-pool) (serial integer))
+  ;; DEBUG("amounts.commodities", "Find commodity by ident " << ident);
+  ;;
+  ;; typedef commodity_pool_t::commodities_t::nth_index<0>::type
+  ;;   commodities_by_ident;
+  ;;
+  ;; commodities_by_ident& ident_index = commodities.get<0>();
+  ;; return ident_index[ident];
+  (assert pool)
+  (assert serial))
+
+(defmethod find-or-create-commodity ((pool commodity-pool) (symbol string))
+  ;; DEBUG("amounts.commodities", "Find-or-create commodity " << symbol);
+  ;;
+  ;; commodity_t * commodity = find(symbol);
+  ;; if (commodity)
+  ;;   return commodity;
+  ;; return create(symbol);
+  (assert pool)
+  (assert symbol))
+
+(defmethod create-annotated-commodity ((pool commodity-pool) (symbol string)
+				       (details commodity-annotation))
+  ;; commodity_t * new_comm = create(symbol);
+  ;; if (! new_comm)
+  ;;   return NULL;
+  ;;
+  ;; if (details)
+  ;;   return find_or_create(*new_comm, details);
+  ;; else
+  ;;   return new_comm;
+  (assert pool)
+  (assert symbol)
+  (assert details))
+
+(defun make-qualified-name (commodity commodity-annotation)
+  ;; assert(details);
+  ;;
+  ;; if (details.price && details.price->sign() < 0)
+  ;;   throw_(amount_error, "A commodity's price may not be negative");
+  ;;
+  ;; std::ostringstream name;
+  ;; comm.print(name);
+  ;; annotated_commodity_t::write_annotations(name, details);
+  ;;
+  ;; DEBUG("amounts.commodities", "make_qualified_name for "
+  ;;       << comm.qualified_symbol << std::endl << details);
+  ;; DEBUG("amounts.commodities", "qualified_name is " << name.str());
+  ;;
+  ;; return name.str();
+  (assert commodity)
+  (assert commodity-annotation))
+
+(defmethod find-annotated-commodity ((pool commodity-pool) (symbol string)
+				     (details commodity-annotation))
+  ;; commodity_t * comm = find(symbol);
+  ;; if (! comm)
+  ;;   return NULL;
+  ;;
+  ;; if (details) {
+  ;;   string name = make_qualified_name(*comm, details);
+  ;;
+  ;;   if (commodity_t * ann_comm = find(name)) {
+  ;;     assert(ann_comm->annotated && as_annotated_commodity(*ann_comm).details);
+  ;;     return ann_comm;
+  ;;   }
+  ;;   return NULL;
+  ;; } else {
+  ;;   return comm;
+  ;; }
+  (assert pool)
+  (assert symbol)
+  (assert details))
+
+(defmethod find-or-create-annotated-commodity ((pool commodity-pool) (symbol string)
+					       (details commodity-annotation))
+  ;; commodity_t * comm = find(symbol);
+  ;; if (! comm)
+  ;;   return NULL;
+  ;;
+  ;; if (details)
+  ;;   return find_or_create(*comm, details);
+  ;; else
+  ;;   return comm;
+  (assert pool)
+  (assert symbol)
+  (assert details))
+
+(defmethod create-annotated-commodity-internal ((pool commodity-pool) (commodity commodity)
+						(details commodity-annotation)
+						(mapping-key string))
+  ;; assert(comm);
+  ;; assert(details);
+  ;; assert(! mapping_key.empty());
+  ;;
+  ;; std::auto_ptr<commodity_t> commodity
+  ;;   (new annotated_commodity_t(&comm, details));
+  ;;
+  ;; commodity->qualified_symbol = comm.symbol();
+  ;; assert(! commodity->qualified_symbol->empty());
+  ;;
+  ;; DEBUG("amounts.commodities", "Creating annotated commodity "
+  ;;       << "symbol " << commodity->symbol()
+  ;;       << " key "   << mapping_key << std::endl << details);
+  ;;
+  ;; // Add the fully annotated name to the map, so that this symbol may
+  ;; // quickly be found again.
+  ;; commodity->ident        = commodities.size();
+  ;; commodity->mapping_key_ = mapping_key;
+  ;;
+  ;; commodities.push_back(commodity.get());
+  ;; return commodity.release();
+  (assert pool)
+  (assert commodity)
+  (assert details)
+  (assert mapping-key))
+
+(defmethod find-or-create-annotated-commodity ((pool commodity-pool) (commodity commodity)
+					       (details commodity-annotation))
+  ;; assert(comm);
+  ;; assert(details);
+  ;;
+  ;; string name = make_qualified_name(comm, details);
+  ;; assert(! name.empty());
+  ;;
+  ;; if (commodity_t * ann_comm = find(name)) {
+  ;;   assert(ann_comm->annotated && as_annotated_commodity(*ann_comm).details);
+  ;;   return ann_comm;
+  ;; }
+  ;; return create(comm, details, name);
+  (assert pool)
+  (assert commodity)
+  (assert details))
 
 ;; Amounts are bignums with a specific attached commodity.  [TODO: Also, when
 ;; math is performed with them, they retain knowledge of the origins of their
@@ -687,8 +745,7 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
    keep-price
    keep-date
    keep-tag
-   stream-fullstrings
-   ))
+   stream-fullstrings))
 
 ;; The `keep-base' member determines whether scalable commodities are
 ;; automatically converted to their most reduced form when printing.  The
@@ -725,7 +782,7 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
   ;; amount_t temp;
   ;; temp.parse(value, AMOUNT_PARSE_NO_MIGRATE);
   ;; return temp;
-  )
+  (assert string))
 
 (defun copy-amount (amount)
   ;; TRACE_CTOR(amount_t, "copy");
@@ -733,438 +790,457 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
   ;;   _copy(amt);
   ;; else
   ;;   commodity_ = NULL;
-  )
+  (assert amount))
 
 (defun compare-amounts (amount other)
-;; if (! quantity || ! amt.quantity) {
-;;   if (quantity)
-;;     throw_(amount_error, "Cannot compare an amount to an uninitialized amount");
-;;   else if (amt.quantity)
-;;     throw_(amount_error, "Cannot compare an uninitialized amount to an amount");
-;;   else
-;;     throw_(amount_error, "Cannot compare two uninitialized amounts");
-;; }
-;;
-;; if (has_commodity() && amt.has_commodity() &&
-;;     commodity() != amt.commodity())
-;;   throw_(amount_error,
-;;          "Cannot compare amounts with different commodities: " <<
-;;          commodity().symbol() << " and " << amt.commodity().symbol());
-;;
-;; if (quantity->prec == amt.quantity->prec) {
-;;   return mpz_cmp(MPZ(quantity), MPZ(amt.quantity));
-;; }
-;; else if (quantity->prec < amt.quantity->prec) {
-;;   amount_t t(*this);
-;;   t._resize(amt.quantity->prec);
-;;   return mpz_cmp(MPZ(t.quantity), MPZ(amt.quantity));
-;; }
-;; else {
-;;   amount_t t = amt;
-;;   t._resize(quantity->prec);
-;;   return mpz_cmp(MPZ(quantity), MPZ(t.quantity));
-;; }
-  )
+  ;; if (! quantity || ! amt.quantity) {
+  ;;   if (quantity)
+  ;;     throw_(amount_error, "Cannot compare an amount to an uninitialized amount");
+  ;;   else if (amt.quantity)
+  ;;     throw_(amount_error, "Cannot compare an uninitialized amount to an amount");
+  ;;   else
+  ;;     throw_(amount_error, "Cannot compare two uninitialized amounts");
+  ;; }
+  ;;
+  ;; if (has_commodity() && amt.has_commodity() &&
+  ;;     commodity() != amt.commodity())
+  ;;   throw_(amount_error,
+  ;;          "Cannot compare amounts with different commodities: " <<
+  ;;          commodity().symbol() << " and " << amt.commodity().symbol());
+  ;;
+  ;; if (quantity->prec == amt.quantity->prec) {
+  ;;   return mpz_cmp(MPZ(quantity), MPZ(amt.quantity));
+  ;; }
+  ;; else if (quantity->prec < amt.quantity->prec) {
+  ;;   amount_t t(*this);
+  ;;   t._resize(amt.quantity->prec);
+  ;;   return mpz_cmp(MPZ(t.quantity), MPZ(amt.quantity));
+  ;; }
+  ;; else {
+  ;;   amount_t t = amt;
+  ;;   t._resize(quantity->prec);
+  ;;   return mpz_cmp(MPZ(quantity), MPZ(t.quantity));
+  ;; }
+  (assert (and amount other)))
 
 (defun amounts-equal (amount other)
-  )
+  (assert (and amount other)))
 (defun amounts-equalp (amount other)
-  )
+  (assert (and amount other)))
 
 (defun amount-add (amount other)
-;; if (! quantity || ! amt.quantity) {
-;;   if (quantity)
-;;     throw_(amount_error, "Cannot add an amount to an uninitialized amount");
-;;   else if (amt.quantity)
-;;     throw_(amount_error, "Cannot add an uninitialized amount to an amount");
-;;   else
-;;     throw_(amount_error, "Cannot add two uninitialized amounts");
-;; }
-;;
-;; if (commodity() != amt.commodity())
-;;   throw_(amount_error,
-;;          "Adding amounts with different commodities: " <<
-;;          (has_commodity() ? commodity().symbol() : "NONE") <<
-;;          " != " <<
-;;          (amt.has_commodity() ? amt.commodity().symbol() : "NONE"));
-;;
-;; _dup();
-;;
-;; if (quantity->prec == amt.quantity->prec) {
-;;   mpz_add(MPZ(quantity), MPZ(quantity), MPZ(amt.quantity));
-;; }
-;; else if (quantity->prec < amt.quantity->prec) {
-;;   _resize(amt.quantity->prec);
-;;   mpz_add(MPZ(quantity), MPZ(quantity), MPZ(amt.quantity));
-;; }
-;; else {
-;;   amount_t t = amt;
-;;   t._resize(quantity->prec);
-;;   mpz_add(MPZ(quantity), MPZ(quantity), MPZ(t.quantity));
-;; }
-;;
-;; return *this;
-  )
+  ;; if (! quantity || ! amt.quantity) {
+  ;;   if (quantity)
+  ;;     throw_(amount_error, "Cannot add an amount to an uninitialized amount");
+  ;;   else if (amt.quantity)
+  ;;     throw_(amount_error, "Cannot add an uninitialized amount to an amount");
+  ;;   else
+  ;;     throw_(amount_error, "Cannot add two uninitialized amounts");
+  ;; }
+  ;;
+  ;; if (commodity() != amt.commodity())
+  ;;   throw_(amount_error,
+  ;;          "Adding amounts with different commodities: " <<
+  ;;          (has_commodity() ? commodity().symbol() : "NONE") <<
+  ;;          " != " <<
+  ;;          (amt.has_commodity() ? amt.commodity().symbol() : "NONE"));
+  ;;
+  ;; _dup();
+  ;;
+  ;; if (quantity->prec == amt.quantity->prec) {
+  ;;   mpz_add(MPZ(quantity), MPZ(quantity), MPZ(amt.quantity));
+  ;; }
+  ;; else if (quantity->prec < amt.quantity->prec) {
+  ;;   _resize(amt.quantity->prec);
+  ;;   mpz_add(MPZ(quantity), MPZ(quantity), MPZ(amt.quantity));
+  ;; }
+  ;; else {
+  ;;   amount_t t = amt;
+  ;;   t._resize(quantity->prec);
+  ;;   mpz_add(MPZ(quantity), MPZ(quantity), MPZ(t.quantity));
+  ;; }
+  ;;
+  ;; return *this;
+  (assert (and amount other)))
+
 (defun sub (amount other)
-;; if (! quantity || ! amt.quantity) {
-;;   if (quantity)
-;;     throw_(amount_error, "Cannot subtract an amount from an uninitialized amount");
-;;   else if (amt.quantity)
-;;     throw_(amount_error, "Cannot subtract an uninitialized amount from an amount");
-;;   else
-;;     throw_(amount_error, "Cannot subtract two uninitialized amounts");
-;; }
-;;
-;; if (commodity() != amt.commodity())
-;;   throw_(amount_error,
-;;          "Subtracting amounts with different commodities: " <<
-;;          (has_commodity() ? commodity().symbol() : "NONE") <<
-;;          " != " <<
-;;          (amt.has_commodity() ? amt.commodity().symbol() : "NONE"));
-;;
-;; _dup();
-;;
-;; if (quantity->prec == amt.quantity->prec) {
-;;   mpz_sub(MPZ(quantity), MPZ(quantity), MPZ(amt.quantity));
-;; }
-;; else if (quantity->prec < amt.quantity->prec) {
-;;   _resize(amt.quantity->prec);
-;;   mpz_sub(MPZ(quantity), MPZ(quantity), MPZ(amt.quantity));
-;; }
-;; else {
-;;   amount_t t = amt;
-;;   t._resize(quantity->prec);
-;;   mpz_sub(MPZ(quantity), MPZ(quantity), MPZ(t.quantity));
-;; }
-;;
-;; return *this;
-  )
+  ;; if (! quantity || ! amt.quantity) {
+  ;;   if (quantity)
+  ;;     throw_(amount_error, "Cannot subtract an amount from an uninitialized amount");
+  ;;   else if (amt.quantity)
+  ;;     throw_(amount_error, "Cannot subtract an uninitialized amount from an amount");
+  ;;   else
+  ;;     throw_(amount_error, "Cannot subtract two uninitialized amounts");
+  ;; }
+  ;;
+  ;; if (commodity() != amt.commodity())
+  ;;   throw_(amount_error,
+  ;;          "Subtracting amounts with different commodities: " <<
+  ;;          (has_commodity() ? commodity().symbol() : "NONE") <<
+  ;;          " != " <<
+  ;;          (amt.has_commodity() ? amt.commodity().symbol() : "NONE"));
+  ;;
+  ;; _dup();
+  ;;
+  ;; if (quantity->prec == amt.quantity->prec) {
+  ;;   mpz_sub(MPZ(quantity), MPZ(quantity), MPZ(amt.quantity));
+  ;; }
+  ;; else if (quantity->prec < amt.quantity->prec) {
+  ;;   _resize(amt.quantity->prec);
+  ;;   mpz_sub(MPZ(quantity), MPZ(quantity), MPZ(amt.quantity));
+  ;; }
+  ;; else {
+  ;;   amount_t t = amt;
+  ;;   t._resize(quantity->prec);
+  ;;   mpz_sub(MPZ(quantity), MPZ(quantity), MPZ(t.quantity));
+  ;; }
+  ;;
+  ;; return *this;
+  (assert (and amount other)))
+
 (defun mul (amount other)
-;; void mpz_round(mpz_t out, mpz_t value, int value_prec, int round_prec)
-;; {
-;;   // Round `value', with an encoding precision of `value_prec', to a
-;;   // rounded value with precision `round_prec'.  Result is stored in
-;;   // `out'.
-;;
-;;   assert(value_prec > round_prec);
-;;
-;;   mpz_t quotient;
-;;   mpz_t remainder;
-;;
-;;   mpz_init(quotient);
-;;   mpz_init(remainder);
-;;
-;;   mpz_ui_pow_ui(divisor, 10, value_prec - round_prec);
-;;   mpz_tdiv_qr(quotient, remainder, value, divisor);
-;;   mpz_divexact_ui(divisor, divisor, 10);
-;;   mpz_mul_ui(divisor, divisor, 5);
-;;
-;;   if (mpz_sgn(remainder) < 0) {
-;;     mpz_neg(divisor, divisor);
-;;     if (mpz_cmp(remainder, divisor) < 0) {
-;;       mpz_ui_pow_ui(divisor, 10, value_prec - round_prec);
-;;       mpz_add(remainder, divisor, remainder);
-;;       mpz_ui_sub(remainder, 0, remainder);
-;;       mpz_add(out, value, remainder);
-;;     } else {
-;;       mpz_sub(out, value, remainder);
-;;     }
-;;   } else {
-;;     if (mpz_cmp(remainder, divisor) >= 0) {
-;;       mpz_ui_pow_ui(divisor, 10, value_prec - round_prec);
-;;       mpz_sub(remainder, divisor, remainder);
-;;       mpz_add(out, value, remainder);
-;;     } else {
-;;       mpz_sub(out, value, remainder);
-;;     }
-;;   }
-;;   mpz_clear(quotient);
-;;   mpz_clear(remainder);
-;;
-;;   // chop off the rounded bits
-;;   mpz_ui_pow_ui(divisor, 10, value_prec - round_prec);
-;;   mpz_tdiv_q(out, out, divisor);
-;; }
-;;
-;; if (! quantity || ! amt.quantity) {
-;;   if (quantity)
-;;     throw_(amount_error, "Cannot multiply an amount by an uninitialized amount");
-;;   else if (amt.quantity)
-;;     throw_(amount_error, "Cannot multiply an uninitialized amount by an amount");
-;;   else
-;;     throw_(amount_error, "Cannot multiply two uninitialized amounts");
-;; }
-;;
-;; if (has_commodity() && amt.has_commodity() &&
-;;     commodity() != amt.commodity())
-;;   throw_(amount_error,
-;;          "Multiplying amounts with different commodities: " <<
-;;          (has_commodity() ? commodity().symbol() : "NONE") <<
-;;          " != " <<
-;;          (amt.has_commodity() ? amt.commodity().symbol() : "NONE"));
-;;
-;; _dup();
-;;
-;; mpz_mul(MPZ(quantity), MPZ(quantity), MPZ(amt.quantity));
-;; quantity->prec += amt.quantity->prec;
-;;
-;; if (! has_commodity())
-;;   commodity_ = amt.commodity_;
-;;
-;; if (has_commodity() && ! (quantity->has_flags(BIGINT_KEEP_PREC))) {
-;;   precision_t comm_prec = commodity().precision();
-;;   if (quantity->prec > comm_prec + 6U) {
-;;     mpz_round(MPZ(quantity), MPZ(quantity), quantity->prec, comm_prec + 6U);
-;;     quantity->prec = comm_prec + 6U;
-;;   }
-;; }
-;;
-;; return *this;
-  )
+  ;; void mpz_round(mpz_t out, mpz_t value, int value_prec, int round_prec)
+  ;; {
+  ;;   // Round `value', with an encoding precision of `value_prec', to a
+  ;;   // rounded value with precision `round_prec'.  Result is stored in
+  ;;   // `out'.
+  ;;
+  ;;   assert(value_prec > round_prec);
+  ;;
+  ;;   mpz_t quotient;
+  ;;   mpz_t remainder;
+  ;;
+  ;;   mpz_init(quotient);
+  ;;   mpz_init(remainder);
+  ;;
+  ;;   mpz_ui_pow_ui(divisor, 10, value_prec - round_prec);
+  ;;   mpz_tdiv_qr(quotient, remainder, value, divisor);
+  ;;   mpz_divexact_ui(divisor, divisor, 10);
+  ;;   mpz_mul_ui(divisor, divisor, 5);
+  ;;
+  ;;   if (mpz_sgn(remainder) < 0) {
+  ;;     mpz_neg(divisor, divisor);
+  ;;     if (mpz_cmp(remainder, divisor) < 0) {
+  ;;       mpz_ui_pow_ui(divisor, 10, value_prec - round_prec);
+  ;;       mpz_add(remainder, divisor, remainder);
+  ;;       mpz_ui_sub(remainder, 0, remainder);
+  ;;       mpz_add(out, value, remainder);
+  ;;     } else {
+  ;;       mpz_sub(out, value, remainder);
+  ;;     }
+  ;;   } else {
+  ;;     if (mpz_cmp(remainder, divisor) >= 0) {
+  ;;       mpz_ui_pow_ui(divisor, 10, value_prec - round_prec);
+  ;;       mpz_sub(remainder, divisor, remainder);
+  ;;       mpz_add(out, value, remainder);
+  ;;     } else {
+  ;;       mpz_sub(out, value, remainder);
+  ;;     }
+  ;;   }
+  ;;   mpz_clear(quotient);
+  ;;   mpz_clear(remainder);
+  ;;
+  ;;   // chop off the rounded bits
+  ;;   mpz_ui_pow_ui(divisor, 10, value_prec - round_prec);
+  ;;   mpz_tdiv_q(out, out, divisor);
+  ;; }
+  ;;
+  ;; if (! quantity || ! amt.quantity) {
+  ;;   if (quantity)
+  ;;     throw_(amount_error, "Cannot multiply an amount by an uninitialized amount");
+  ;;   else if (amt.quantity)
+  ;;     throw_(amount_error, "Cannot multiply an uninitialized amount by an amount");
+  ;;   else
+  ;;     throw_(amount_error, "Cannot multiply two uninitialized amounts");
+  ;; }
+  ;;
+  ;; if (has_commodity() && amt.has_commodity() &&
+  ;;     commodity() != amt.commodity())
+  ;;   throw_(amount_error,
+  ;;          "Multiplying amounts with different commodities: " <<
+  ;;          (has_commodity() ? commodity().symbol() : "NONE") <<
+  ;;          " != " <<
+  ;;          (amt.has_commodity() ? amt.commodity().symbol() : "NONE"));
+  ;;
+  ;; _dup();
+  ;;
+  ;; mpz_mul(MPZ(quantity), MPZ(quantity), MPZ(amt.quantity));
+  ;; quantity->prec += amt.quantity->prec;
+  ;;
+  ;; if (! has_commodity())
+  ;;   commodity_ = amt.commodity_;
+  ;;
+  ;; if (has_commodity() && ! (quantity->has_flags(BIGINT_KEEP_PREC))) {
+  ;;   precision_t comm_prec = commodity().precision();
+  ;;   if (quantity->prec > comm_prec + 6U) {
+  ;;     mpz_round(MPZ(quantity), MPZ(quantity), quantity->prec, comm_prec + 6U);
+  ;;     quantity->prec = comm_prec + 6U;
+  ;;   }
+  ;; }
+  ;;
+  ;; return *this;
+  (assert (and amount other)))
+
 (defun div (amount other)
-;; if (! quantity || ! amt.quantity) {
-;;   if (quantity)
-;;     throw_(amount_error, "Cannot divide an amount by an uninitialized amount");
-;;   else if (amt.quantity)
-;;     throw_(amount_error, "Cannot divide an uninitialized amount by an amount");
-;;   else
-;;     throw_(amount_error, "Cannot divide two uninitialized amounts");
-;; }
-;;
-;; if (has_commodity() && amt.has_commodity() &&
-;;     commodity() != amt.commodity())
-;;   throw_(amount_error,
-;;          "Dividing amounts with different commodities: " <<
-;;          (has_commodity() ? commodity().symbol() : "NONE") <<
-;;          " != " <<
-;;          (amt.has_commodity() ? amt.commodity().symbol() : "NONE"));
-;;
-;; if (! amt)
-;;   throw_(amount_error, "Divide by zero");
-;;
-;; _dup();
-;;
-;; // Increase the value's precision, to capture fractional parts after
-;; // the divide.  Round up in the last position.
-;;
-;; mpz_ui_pow_ui(divisor, 10, (2 * amt.quantity->prec) + quantity->prec + 7U);
-;; mpz_mul(MPZ(quantity), MPZ(quantity), divisor);
-;; mpz_tdiv_q(MPZ(quantity), MPZ(quantity), MPZ(amt.quantity));
-;; quantity->prec += amt.quantity->prec + quantity->prec + 7U;
-;;
-;; mpz_round(MPZ(quantity), MPZ(quantity), quantity->prec, quantity->prec - 1);
-;; quantity->prec -= 1;
-;;
-;; if (! has_commodity())
-;;   commodity_ = amt.commodity_;
-;;
-;; // If this amount has a commodity, and we're not dealing with plain
-;; // numbers, or internal numbers (which keep full precision at all
-;; // times), then round the number to within the commodity's precision
-;; // plus six places.
-;;
-;; if (has_commodity() && ! (quantity->has_flags(BIGINT_KEEP_PREC))) {
-;;   precision_t comm_prec = commodity().precision();
-;;   if (quantity->prec > comm_prec + 6U) {
-;;     mpz_round(MPZ(quantity), MPZ(quantity), quantity->prec, comm_prec + 6U);
-;;     quantity->prec = comm_prec + 6U;
-;;   }
-;; }
-;;
-;; return *this;
-  )
+  ;; if (! quantity || ! amt.quantity) {
+  ;;   if (quantity)
+  ;;     throw_(amount_error, "Cannot divide an amount by an uninitialized amount");
+  ;;   else if (amt.quantity)
+  ;;     throw_(amount_error, "Cannot divide an uninitialized amount by an amount");
+  ;;   else
+  ;;     throw_(amount_error, "Cannot divide two uninitialized amounts");
+  ;; }
+  ;;
+  ;; if (has_commodity() && amt.has_commodity() &&
+  ;;     commodity() != amt.commodity())
+  ;;   throw_(amount_error,
+  ;;          "Dividing amounts with different commodities: " <<
+  ;;          (has_commodity() ? commodity().symbol() : "NONE") <<
+  ;;          " != " <<
+  ;;          (amt.has_commodity() ? amt.commodity().symbol() : "NONE"));
+  ;;
+  ;; if (! amt)
+  ;;   throw_(amount_error, "Divide by zero");
+  ;;
+  ;; _dup();
+  ;;
+  ;; // Increase the value's precision, to capture fractional parts after
+  ;; // the divide.  Round up in the last position.
+  ;;
+  ;; mpz_ui_pow_ui(divisor, 10, (2 * amt.quantity->prec) + quantity->prec + 7U);
+  ;; mpz_mul(MPZ(quantity), MPZ(quantity), divisor);
+  ;; mpz_tdiv_q(MPZ(quantity), MPZ(quantity), MPZ(amt.quantity));
+  ;; quantity->prec += amt.quantity->prec + quantity->prec + 7U;
+  ;;
+  ;; mpz_round(MPZ(quantity), MPZ(quantity), quantity->prec, quantity->prec - 1);
+  ;; quantity->prec -= 1;
+  ;;
+  ;; if (! has_commodity())
+  ;;   commodity_ = amt.commodity_;
+  ;;
+  ;; // If this amount has a commodity, and we're not dealing with plain
+  ;; // numbers, or internal numbers (which keep full precision at all
+  ;; // times), then round the number to within the commodity's precision
+  ;; // plus six places.
+  ;;
+  ;; if (has_commodity() && ! (quantity->has_flags(BIGINT_KEEP_PREC))) {
+  ;;   precision_t comm_prec = commodity().precision();
+  ;;   if (quantity->prec > comm_prec + 6U) {
+  ;;     mpz_round(MPZ(quantity), MPZ(quantity), quantity->prec, comm_prec + 6U);
+  ;;     quantity->prec = comm_prec + 6U;
+  ;;   }
+  ;; }
+  ;;
+  ;; return *this;
+  (assert (and amount other)))
+
+(defmethod negate-in-place ((amount amount))
+  ;; if (quantity) {
+  ;;   _dup();
+  ;;   mpz_neg(MPZ(quantity), MPZ(quantity));
+  ;; } else {
+  ;;   throw_(amount_error, "Cannot negate an uninitialized amount");
+  ;; }
+  ;; return *this;
+  (assert amount))
 
 (defmethod negate ((amount amount))
   (let ((tmp (copy-amount amount)))
     (negate-in-place tmp)))
-(defmethod negate-in-place ((amount amount))
-;; if (quantity) {
-;;   _dup();
-;;   mpz_neg(MPZ(quantity), MPZ(quantity));
-;; } else {
-;;   throw_(amount_error, "Cannot negate an uninitialized amount");
-;; }
-;; return *this;
-)
 
 (defun amount-abs (amount)
   ;; if (sign() < 0)
   ;;   return negate();
   ;; return *this;
-  )
+  (assert amount))
 
 (defun amount-round (amount &optional precision)
-;; if (! quantity)
-;;   throw_(amount_error, "Cannot round an uninitialized amount");
-;;
-;; if (! has_commodity())
-;;   return *this;
-;;
-;; return round(commodity().precision());
+  ;; if (! quantity)
+  ;;   throw_(amount_error, "Cannot round an uninitialized amount");
+  ;;
+  ;; if (! has_commodity())
+  ;;   return *this;
+  ;;
+  ;; return round(commodity().precision());
 
-;;;; with a precision specified:
+  ;; ;; with a precision specified:
 
-;; if (! quantity)
-;;   throw_(amount_error, "Cannot round an uninitialized amount");
-;;
-;; amount_t t(*this);
-;;
-;; if (quantity->prec <= prec) {
-;;   if (quantity && quantity->has_flags(BIGINT_KEEP_PREC)) {
-;;     t._dup();
-;;     t.quantity->drop_flags(BIGINT_KEEP_PREC);
-;;   }
-;;   return t;
-;; }
-;;
-;; t._dup();
-;;
-;; mpz_round(MPZ(t.quantity), MPZ(t.quantity), t.quantity->prec, prec);
-;;
-;; t.quantity->prec = prec;
-;; t.quantity->drop_flags(BIGINT_KEEP_PREC);
-;;
-;; return t;
-  )
+  ;; if (! quantity)
+  ;;   throw_(amount_error, "Cannot round an uninitialized amount");
+  ;;
+  ;; amount_t t(*this);
+  ;;
+  ;; if (quantity->prec <= prec) {
+  ;;   if (quantity && quantity->has_flags(BIGINT_KEEP_PREC)) {
+  ;;     t._dup();
+  ;;     t.quantity->drop_flags(BIGINT_KEEP_PREC);
+  ;;   }
+  ;;   return t;
+  ;; }
+  ;;
+  ;; t._dup();
+  ;;
+  ;; mpz_round(MPZ(t.quantity), MPZ(t.quantity), t.quantity->prec, prec);
+  ;;
+  ;; t.quantity->prec = prec;
+  ;; t.quantity->drop_flags(BIGINT_KEEP_PREC);
+  ;;
+  ;; return t;
+  (assert amount)
+  (assert precision))
+
 (defun unround (amount)
-;; if (! quantity)
-;;   throw_(amount_error, "Cannot unround an uninitialized amount");
-;; else if (quantity->has_flags(BIGINT_KEEP_PREC))
-;;   return *this;
-;;
-;; amount_t t(*this);
-;; t._dup();
-;; t.quantity->add_flags(BIGINT_KEEP_PREC);
-;;
-;; return t;
-  )
+  ;; if (! quantity)
+  ;;   throw_(amount_error, "Cannot unround an uninitialized amount");
+  ;; else if (quantity->has_flags(BIGINT_KEEP_PREC))
+  ;;   return *this;
+  ;;
+  ;; amount_t t(*this);
+  ;; t._dup();
+  ;; t.quantity->add_flags(BIGINT_KEEP_PREC);
+  ;;
+  ;; return t;
+  (assert amount))
+
+(defmethod reduce-in-place ((amount amount))
+  ;; if (! quantity)
+  ;;   throw_(amount_error, "Cannot reduce an uninitialized amount");
+  ;;
+  ;; while (commodity_ && commodity().smaller()) {
+  ;;   *this *= commodity().smaller()->number();
+  ;;   commodity_ = commodity().smaller()->commodity_;
+  ;; }
+  ;; return *this;
+  (assert amount))
 
 (defun amount-reduce (amount)
   (let ((tmp (copy-amount amount)))
     (reduce-in-place tmp)))
-(defmethod reduce-in-place ((amount amount))
-;; if (! quantity)
-;;   throw_(amount_error, "Cannot reduce an uninitialized amount");
-;;
-;; while (commodity_ && commodity().smaller()) {
-;;   *this *= commodity().smaller()->number();
-;;   commodity_ = commodity().smaller()->commodity_;
-;; }
-;; return *this;
-  )
+
+(defmethod unreduce-in-place ((amount amount))
+  ;; if (! quantity)
+  ;;   throw_(amount_error, "Cannot unreduce an uninitialized amount");
+  ;;
+  ;; while (commodity_ && commodity().larger()) {
+  ;;   *this /= commodity().larger()->number();
+  ;;   commodity_ = commodity().larger()->commodity_;
+  ;;   if (abs() < amount_t(1.0))
+  ;;     break;
+  ;; }
+  ;; return *this;
+  (assert amount))
 
 (defmethod unreduce ((amount amount))
   (let ((tmp (copy-amount amount)))
     (unreduce-in-place tmp)))
-(defmethod unreduce-in-place ((amount amount))
-;; if (! quantity)
-;;   throw_(amount_error, "Cannot unreduce an uninitialized amount");
-;;
-;; while (commodity_ && commodity().larger()) {
-;;   *this /= commodity().larger()->number();
-;;   commodity_ = commodity().larger()->commodity_;
-;;   if (abs() < amount_t(1.0))
-;;     break;
-;; }
-;; return *this;
-  )
 
 (defmethod market-value ((amount amount) &optional datetime)
-;; if (quantity) {
-;;   optional<amount_t> amt(commodity().value(moment));
-;;   if (amt)
-;;     return (*amt * number()).round();
-;; } else {
-;;   throw_(amount_error, "Cannot determine value of an uninitialized amount");
-;; }
-;; return none;
-  )
+  ;; if (quantity) {
+  ;;   optional<amount_t> amt(commodity().value(moment));
+  ;;   if (amt)
+  ;;     return (*amt * number()).round();
+  ;; } else {
+  ;;   throw_(amount_error, "Cannot determine value of an uninitialized amount");
+  ;; }
+  ;; return none;
+  (assert amount)
+  (assert datetime))
 
 (defun sign (amount)
   ;; jww (2007-10-15): How do I find the sign of an integer?
-  )
+  (assert amount))
+
 (defmethod zero-p ((amount amount))
-;; if (! quantity)
-;;   throw_(amount_error, "Cannot determine sign if an uninitialized amount is zero");
-;;
-;; if (has_commodity()) {
-;;   if (quantity->prec <= commodity().precision())
-;;     return is_realzero();
-;;   else
-;;     return round(commodity().precision()).sign() == 0;
-;; }
-;; return is_realzero();
-  )
-(defun real-zero-p (amount))
+  ;; if (! quantity)
+  ;;   throw_(amount_error, "Cannot determine sign if an uninitialized amount is zero");
+  ;;
+  ;; if (has_commodity()) {
+  ;;   if (quantity->prec <= commodity().precision())
+  ;;     return is_realzero();
+  ;;   else
+  ;;     return round(commodity().precision()).sign() == 0;
+  ;; }
+  ;; return is_realzero();
+  (assert amount))
+
+(defun real-zero-p (amount)
+  (assert amount))
 
 (defun to-double (amount &optional no-check)
-;; if (! quantity)
-;;   throw_(amount_error, "Cannot convert an uninitialized amount to a double");
-;;
-;; mpz_t remainder;
-;; mpz_init(remainder);
-;;
-;; mpz_set(temp, MPZ(quantity));
-;; mpz_ui_pow_ui(divisor, 10, quantity->prec);
-;; mpz_tdiv_qr(temp, remainder, temp, divisor);
-;;
-;; char * quotient_s  = mpz_get_str(NULL, 10, temp);
-;; char * remainder_s = mpz_get_str(NULL, 10, remainder);
-;;
-;; std::ostringstream num;
-;; num << quotient_s << '.' << remainder_s;
-;;
-;; std::free(quotient_s);
-;; std::free(remainder_s);
-;;
-;; mpz_clear(remainder);
-;;
-;; double value = lexical_cast<double>(num.str());
-;;
-;; if (! no_check && *this != value)
-;;   throw_(amount_error, "Conversion of amount to_double loses precision");
-;;
-;; return value;
-  )
+  ;; if (! quantity)
+  ;;   throw_(amount_error, "Cannot convert an uninitialized amount to a double");
+  ;;
+  ;; mpz_t remainder;
+  ;; mpz_init(remainder);
+  ;;
+  ;; mpz_set(temp, MPZ(quantity));
+  ;; mpz_ui_pow_ui(divisor, 10, quantity->prec);
+  ;; mpz_tdiv_qr(temp, remainder, temp, divisor);
+  ;;
+  ;; char * quotient_s  = mpz_get_str(NULL, 10, temp);
+  ;; char * remainder_s = mpz_get_str(NULL, 10, remainder);
+  ;;
+  ;; std::ostringstream num;
+  ;; num << quotient_s << '.' << remainder_s;
+  ;;
+  ;; std::free(quotient_s);
+  ;; std::free(remainder_s);
+  ;;
+  ;; mpz_clear(remainder);
+  ;;
+  ;; double value = lexical_cast<double>(num.str());
+  ;;
+  ;; if (! no_check && *this != value)
+  ;;   throw_(amount_error, "Conversion of amount to_double loses precision");
+  ;;
+  ;; return value;
+  (assert amount)
+  (assert no-check))
+
 (defun to-long (amount &optional no-check)
-;; if (! quantity)
-;;   throw_(amount_error, "Cannot convert an uninitialized amount to a long");
-;;
-;; mpz_set(temp, MPZ(quantity));
-;; mpz_ui_pow_ui(divisor, 10, quantity->prec);
-;; mpz_tdiv_q(temp, temp, divisor);
-;;
-;; long value = mpz_get_si(temp);
-;;
-;; if (! no_check && *this != value)
-;;   throw_(amount_error, "Conversion of amount to_long loses precision");
-;;
-;; return value;
-  )
+  ;; if (! quantity)
+  ;;   throw_(amount_error, "Cannot convert an uninitialized amount to a long");
+  ;;
+  ;; mpz_set(temp, MPZ(quantity));
+  ;; mpz_ui_pow_ui(divisor, 10, quantity->prec);
+  ;; mpz_tdiv_q(temp, temp, divisor);
+  ;;
+  ;; long value = mpz_get_si(temp);
+  ;;
+  ;; if (! no_check && *this != value)
+  ;;   throw_(amount_error, "Conversion of amount to_long loses precision");
+  ;;
+  ;; return value;
+  (assert amount)
+  (assert no-check))
+
 (defun to-string (amount)
   ;; std::ostringstream bufstream;
   ;; print(bufstream);
   ;; return bufstream.str();
-  )
+  (assert amount))
+
 (defun to-fullstring (amount)
-;; std::ostringstream bufstream;
-;; print(bufstream, false, true);
-;; return bufstream.str();
-  )
+  ;; std::ostringstream bufstream;
+  ;; print(bufstream, false, true);
+  ;; return bufstream.str();
+  (assert amount))
+
 (defun quantity-string (amount)
-;; std::ostringstream bufstream;
-;; print(bufstream, true);
-;; return bufstream.str();
-  )
+  ;; std::ostringstream bufstream;
+  ;; print(bufstream, true);
+  ;; return bufstream.str();
+  (assert amount))
 
 (defun fits-in-double-p (amount)
-;; double value = to_double(true);
-;; return *this == amount_t(value);
-  )
+  ;; double value = to_double(true);
+  ;; return *this == amount_t(value);
+  (assert amount))
+
 (defun fits-in-long-p (amount)
-;; long value = to_long(true);
-;; return *this == amount_t(value);
-  )
+  ;; long value = to_long(true);
+  ;; return *this == amount_t(value);
+  (assert amount))
 
 (defun amount-number (amount)
   ;; if (! has_commodity())
@@ -1173,460 +1249,451 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
   ;; amount_t temp(*this);
   ;; temp.clear_commodity();
   ;; return temp;
-  )
+  (assert amount))
 
 (defmethod annotate-commodity ((commodity commodity)
-			       (commodity-annotation commodity-annotation)))
+			       (commodity-annotation commodity-annotation))
+  (assert commodity)
+  (assert commodity-annotation))
 
 (defmethod annotate-commodity ((amount amount)
 			       (commodity-annotation commodity-annotation))
-;; commodity_t *           this_base;
-;; annotated_commodity_t * this_ann = NULL;
-;;
-;; if (! quantity)
-;;   throw_(amount_error, "Cannot annotate the commodity of an uninitialized amount");
-;; else if (! has_commodity())
-;;   throw_(amount_error, "Cannot annotate an amount with no commodity");
-;;
-;; if (commodity().annotated) {
-;;   this_ann  = &as_annotated_commodity(commodity());
-;;   this_base = &this_ann->referent();
-;; } else {
-;;   this_base = &commodity();
-;; }
-;; assert(this_base);
-;;
-;; DEBUG("amounts.commodities", "Annotating commodity for amount "
-;;       << *this << std::endl << details);
-;;
-;; if (commodity_t * ann_comm =
-;;     this_base->parent().find_or_create(*this_base, details))
-;;   set_commodity(*ann_comm);
-;; #ifdef ASSERTS_ON
-;; else
-;;   assert(false);
-;; #endif
-;;
-;; DEBUG("amounts.commodities", "  Annotated amount is " << *this);
-  )
+  ;; commodity_t *           this_base;
+  ;; annotated_commodity_t * this_ann = NULL;
+  ;;
+  ;; if (! quantity)
+  ;;   throw_(amount_error, "Cannot annotate the commodity of an uninitialized amount");
+  ;; else if (! has_commodity())
+  ;;   throw_(amount_error, "Cannot annotate an amount with no commodity");
+  ;;
+  ;; if (commodity().annotated) {
+  ;;   this_ann  = &as_annotated_commodity(commodity());
+  ;;   this_base = &this_ann->referent();
+  ;; } else {
+  ;;   this_base = &commodity();
+  ;; }
+  ;; assert(this_base);
+  ;;
+  ;; DEBUG("amounts.commodities", "Annotating commodity for amount "
+  ;;       << *this << std::endl << details);
+  ;;
+  ;; if (commodity_t * ann_comm =
+  ;;     this_base->parent().find_or_create(*this_base, details))
+  ;;   set_commodity(*ann_comm);
+  ;; #ifdef ASSERTS_ON
+  ;; else
+  ;;   assert(false);
+  ;; #endif
+  ;;
+  ;; DEBUG("amounts.commodities", "  Annotated amount is " << *this);
+  (assert amount)
+  (assert commodity-annotation))
 
 (defmethod commodity-annotated-p ((amount amount))
-;; if (! quantity)
-;;   throw_(amount_error,
-;;          "Cannot determine if an uninitialized amount's commodity is annotated");
-;;
-;; assert(! commodity().annotated || as_annotated_commodity(commodity()).details);
-;; return commodity().annotated;
-  )
+  ;; if (! quantity)
+  ;;   throw_(amount_error,
+  ;;          "Cannot determine if an uninitialized amount's commodity is annotated");
+  ;;
+  ;; assert(! commodity().annotated || as_annotated_commodity(commodity()).details);
+  ;; return commodity().annotated;
+  (assert amount))
 
-(defmethod commodity-annotation ((commodity commodity)))
+(defmethod commodity-annotation ((commodity commodity))
+  (assert commodity))
 
 (defmethod commodity-annotation ((amount amount))
-;; if (! quantity)
-;;   throw_(amount_error,
-;;          "Cannot return commodity annotation details of an uninitialized amount");
-;;
-;; assert(! commodity().annotated || as_annotated_commodity(commodity()).details);
-;;
-;; if (commodity().annotated) {
-;;   annotated_commodity_t& ann_comm(as_annotated_commodity(commodity()));
-;;   return ann_comm.details;
-;; }
-;; return annotation_t();
-  )
-
-;; jww (2007-10-15): use keywords here
-(defmethod strip-annotations ((commodity commodity)
-			      &optional keep-price keep-date keep-tag)
-;; if (! quantity)
-;;   throw_(amount_error,
-;;          "Cannot strip commodity annotations from an uninitialized amount");
-;;
-;; if (! commodity().annotated ||
-;;     (_keep_price && _keep_date && _keep_tag))
-;;   return *this;
-;;
-;; amount_t t(*this);
-;; t.set_commodity(as_annotated_commodity(commodity()).
-;;                 strip_annotations(_keep_price, _keep_date, _keep_tag));
-;; return t;
-  )
+  ;; if (! quantity)
+  ;;   throw_(amount_error,
+  ;;          "Cannot return commodity annotation details of an uninitialized amount");
+  ;;
+  ;; assert(! commodity().annotated || as_annotated_commodity(commodity()).details);
+  ;;
+  ;; if (commodity().annotated) {
+  ;;   annotated_commodity_t& ann_comm(as_annotated_commodity(commodity()));
+  ;;   return ann_comm.details;
+  ;; }
+  ;; return annotation_t();
+  (assert amount))
 
 (defmethod strip-annotations ((amount amount)
 			      &optional keep-price keep-date keep-tag)
-  )
+  (assert amount)
+  (assert (or keep-price keep-date keep-tag)))
 
 ;; jww (2007-10-15): use keywords here
 (defun parse-amount (in &optional no-migrate no-reduce)
-;; void parse_quantity(std::istream& in, string& value)
-;; {
-;;   char buf[256];
-;;   char c = peek_next_nonws(in);
-;;   READ_INTO(in, buf, 255, c,
-;;             std::isdigit(c) || c == '-' || c == '.' || c == ',');
-;;
-;;   int len = std::strlen(buf);
-;;   while (len > 0 && ! std::isdigit(buf[len - 1])) {
-;;     buf[--len] = '\0';
-;;     in.unget();
-;;   }
-;;
-;;   value = buf;
-;; }
-;;
-;; // The possible syntax for an amount is:
-;; //
-;; //   [-]NUM[ ]SYM [@ AMOUNT]
-;; //   SYM[ ][-]NUM [@ AMOUNT]
-;;
-;; string       symbol;
-;; string       quant;
-;; annotation_t details;
-;; bool         negative   = false;
-;;
-;; commodity_t::flags_t comm_flags = COMMODITY_STYLE_DEFAULTS;
-;;
-;; char c = peek_next_nonws(in);
-;; if (c == '-') {
-;;   negative = true;
-;;   in.get(c);
-;;   c = peek_next_nonws(in);
-;; }
-;;
-;; char n;
-;; if (std::isdigit(c)) {
-;;   parse_quantity(in, quant);
-;;
-;;   if (! in.eof() && ((n = in.peek()) != '\n')) {
-;;     if (std::isspace(n))
-;;       comm_flags |= COMMODITY_STYLE_SEPARATED;
-;;
-;;     commodity_t::parse_symbol(in, symbol);
-;;
-;;     if (! symbol.empty())
-;;       comm_flags |= COMMODITY_STYLE_SUFFIXED;
-;;
-;;     if (! in.eof() && ((n = in.peek()) != '\n'))
-;;       details.parse(in);
-;;   }
-;; } else {
-;;   commodity_t::parse_symbol(in, symbol);
-;;
-;;   if (! in.eof() && ((n = in.peek()) != '\n')) {
-;;     if (std::isspace(in.peek()))
-;;       comm_flags |= COMMODITY_STYLE_SEPARATED;
-;;
-;;     parse_quantity(in, quant);
-;;
-;;     if (! quant.empty() && ! in.eof() && ((n = in.peek()) != '\n'))
-;;       details.parse(in);
-;;   }
-;; }
-;;
-;; if (quant.empty())
-;;   throw_(amount_error, "No quantity specified for amount");
-;;
-;; // Allocate memory for the amount's quantity value.  We have to
-;; // monitor the allocation in an auto_ptr because this function gets
-;; // called sometimes from amount_t's constructor; and if there is an
-;; // exeception thrown by any of the function calls after this point,
-;; // the destructor will never be called and the memory never freed.
-;;
-;; std::auto_ptr<bigint_t> safe_holder;
-;;
-;; if (! quantity) {
-;;   quantity = new bigint_t;
-;;   safe_holder.reset(quantity);
-;; }
-;; else if (quantity->ref > 1) {
-;;   _release();
-;;   quantity = new bigint_t;
-;;   safe_holder.reset(quantity);
-;; }
-;;
-;; // Create the commodity if has not already been seen, and update the
-;; // precision if something greater was used for the quantity.
-;;
-;; bool newly_created = false;
-;;
-;; if (symbol.empty()) {
-;;   commodity_ = NULL;
-;; } else {
-;;   commodity_ = current_pool->find(symbol);
-;;   if (! commodity_) {
-;;     commodity_ = current_pool->create(symbol);
-;;     newly_created = true;
-;;   }
-;;   assert(commodity_);
-;;
-;;   if (details)
-;;     commodity_ = current_pool->find_or_create(*commodity_, details);
-;; }
-;;
-;; // Determine the precision of the amount, based on the usage of
-;; // comma or period.
-;;
-;; string::size_type last_comma  = quant.rfind(',');
-;; string::size_type last_period = quant.rfind('.');
-;;
-;; if (last_comma != string::npos && last_period != string::npos) {
-;;   comm_flags |= COMMODITY_STYLE_THOUSANDS;
-;;   if (last_comma > last_period) {
-;;     comm_flags |= COMMODITY_STYLE_EUROPEAN;
-;;     quantity->prec = quant.length() - last_comma - 1;
-;;   } else {
-;;     quantity->prec = quant.length() - last_period - 1;
-;;   }
-;; }
-;; else if (last_comma != string::npos &&
-;;          commodity().has_flags(COMMODITY_STYLE_EUROPEAN)) {
-;;   quantity->prec = quant.length() - last_comma - 1;
-;; }
-;; else if (last_period != string::npos &&
-;;          ! (commodity().has_flags(COMMODITY_STYLE_EUROPEAN))) {
-;;   quantity->prec = quant.length() - last_period - 1;
-;; }
-;; else {
-;;   quantity->prec = 0;
-;; }
-;;
-;; // Set the commodity's flags and precision accordingly
-;;
-;; if (commodity_ && (newly_created || ! (flags & AMOUNT_PARSE_NO_MIGRATE))) {
-;;   commodity().add_flags(comm_flags);
-;;
-;;   if (quantity->prec > commodity().precision())
-;;     commodity().set_precision(quantity->prec);
-;; }
-;;
-;; // Setup the amount's own flags
-;;
-;; if (flags & AMOUNT_PARSE_NO_MIGRATE)
-;;   quantity->add_flags(BIGINT_KEEP_PREC);
-;;
-;; // Now we have the final number.  Remove commas and periods, if
-;; // necessary.
-;;
-;; if (last_comma != string::npos || last_period != string::npos) {
-;;   int          len = quant.length();
-;;   char *       buf = new char[len + 1];
-;;   const char * p   = quant.c_str();
-;;   char *       t   = buf;
-;;
-;;   while (*p) {
-;;     if (*p == ',' || *p == '.')
-;;       p++;
-;;     *t++ = *p++;
-;;   }
-;;   *t = '\0';
-;;
-;;   mpz_set_str(MPZ(quantity), buf, 10);
-;;   checked_array_delete(buf);
-;; } else {
-;;   mpz_set_str(MPZ(quantity), quant.c_str(), 10);
-;; }
-;;
-;; if (negative)
-;;   in_place_negate();
-;;
-;; if (! (flags & AMOUNT_PARSE_NO_REDUCE))
-;;   in_place_reduce();
-;;
-;; safe_holder.release();        // `this->quantity' owns the pointer
-  )
+  ;; void parse_quantity(std::istream& in, string& value)
+  ;; {
+  ;;   char buf[256];
+  ;;   char c = peek_next_nonws(in);
+  ;;   READ_INTO(in, buf, 255, c,
+  ;;             std::isdigit(c) || c == '-' || c == '.' || c == ',');
+  ;;
+  ;;   int len = std::strlen(buf);
+  ;;   while (len > 0 && ! std::isdigit(buf[len - 1])) {
+  ;;     buf[--len] = '\0';
+  ;;     in.unget();
+  ;;   }
+  ;;
+  ;;   value = buf;
+  ;; }
+  ;;
+  ;; // The possible syntax for an amount is:
+  ;; //
+  ;; //   [-]NUM[ ]SYM [@ AMOUNT]
+  ;; //   SYM[ ][-]NUM [@ AMOUNT]
+  ;;
+  ;; string       symbol;
+  ;; string       quant;
+  ;; annotation_t details;
+  ;; bool         negative   = false;
+  ;;
+  ;; commodity_t::flags_t comm_flags = COMMODITY_STYLE_DEFAULTS;
+  ;;
+  ;; char c = peek_next_nonws(in);
+  ;; if (c == '-') {
+  ;;   negative = true;
+  ;;   in.get(c);
+  ;;   c = peek_next_nonws(in);
+  ;; }
+  ;;
+  ;; char n;
+  ;; if (std::isdigit(c)) {
+  ;;   parse_quantity(in, quant);
+  ;;
+  ;;   if (! in.eof() && ((n = in.peek()) != '\n')) {
+  ;;     if (std::isspace(n))
+  ;;       comm_flags |= COMMODITY_STYLE_SEPARATED;
+  ;;
+  ;;     commodity_t::parse_symbol(in, symbol);
+  ;;
+  ;;     if (! symbol.empty())
+  ;;       comm_flags |= COMMODITY_STYLE_SUFFIXED;
+  ;;
+  ;;     if (! in.eof() && ((n = in.peek()) != '\n'))
+  ;;       details.parse(in);
+  ;;   }
+  ;; } else {
+  ;;   commodity_t::parse_symbol(in, symbol);
+  ;;
+  ;;   if (! in.eof() && ((n = in.peek()) != '\n')) {
+  ;;     if (std::isspace(in.peek()))
+  ;;       comm_flags |= COMMODITY_STYLE_SEPARATED;
+  ;;
+  ;;     parse_quantity(in, quant);
+  ;;
+  ;;     if (! quant.empty() && ! in.eof() && ((n = in.peek()) != '\n'))
+  ;;       details.parse(in);
+  ;;   }
+  ;; }
+  ;;
+  ;; if (quant.empty())
+  ;;   throw_(amount_error, "No quantity specified for amount");
+  ;;
+  ;; // Allocate memory for the amount's quantity value.  We have to
+  ;; // monitor the allocation in an auto_ptr because this function gets
+  ;; // called sometimes from amount_t's constructor; and if there is an
+  ;; // exeception thrown by any of the function calls after this point,
+  ;; // the destructor will never be called and the memory never freed.
+  ;;
+  ;; std::auto_ptr<bigint_t> safe_holder;
+  ;;
+  ;; if (! quantity) {
+  ;;   quantity = new bigint_t;
+  ;;   safe_holder.reset(quantity);
+  ;; }
+  ;; else if (quantity->ref > 1) {
+  ;;   _release();
+  ;;   quantity = new bigint_t;
+  ;;   safe_holder.reset(quantity);
+  ;; }
+  ;;
+  ;; // Create the commodity if has not already been seen, and update the
+  ;; // precision if something greater was used for the quantity.
+  ;;
+  ;; bool newly_created = false;
+  ;;
+  ;; if (symbol.empty()) {
+  ;;   commodity_ = NULL;
+  ;; } else {
+  ;;   commodity_ = current_pool->find(symbol);
+  ;;   if (! commodity_) {
+  ;;     commodity_ = current_pool->create(symbol);
+  ;;     newly_created = true;
+  ;;   }
+  ;;   assert(commodity_);
+  ;;
+  ;;   if (details)
+  ;;     commodity_ = current_pool->find_or_create(*commodity_, details);
+  ;; }
+  ;;
+  ;; // Determine the precision of the amount, based on the usage of
+  ;; // comma or period.
+  ;;
+  ;; string::size_type last_comma  = quant.rfind(',');
+  ;; string::size_type last_period = quant.rfind('.');
+  ;;
+  ;; if (last_comma != string::npos && last_period != string::npos) {
+  ;;   comm_flags |= COMMODITY_STYLE_THOUSANDS;
+  ;;   if (last_comma > last_period) {
+  ;;     comm_flags |= COMMODITY_STYLE_EUROPEAN;
+  ;;     quantity->prec = quant.length() - last_comma - 1;
+  ;;   } else {
+  ;;     quantity->prec = quant.length() - last_period - 1;
+  ;;   }
+  ;; }
+  ;; else if (last_comma != string::npos &&
+  ;;          commodity().has_flags(COMMODITY_STYLE_EUROPEAN)) {
+  ;;   quantity->prec = quant.length() - last_comma - 1;
+  ;; }
+  ;; else if (last_period != string::npos &&
+  ;;          ! (commodity().has_flags(COMMODITY_STYLE_EUROPEAN))) {
+  ;;   quantity->prec = quant.length() - last_period - 1;
+  ;; }
+  ;; else {
+  ;;   quantity->prec = 0;
+  ;; }
+  ;;
+  ;; // Set the commodity's flags and precision accordingly
+  ;;
+  ;; if (commodity_ && (newly_created || ! (flags & AMOUNT_PARSE_NO_MIGRATE))) {
+  ;;   commodity().add_flags(comm_flags);
+  ;;
+  ;;   if (quantity->prec > commodity().precision())
+  ;;     commodity().set_precision(quantity->prec);
+  ;; }
+  ;;
+  ;; // Setup the amount's own flags
+  ;;
+  ;; if (flags & AMOUNT_PARSE_NO_MIGRATE)
+  ;;   quantity->add_flags(BIGINT_KEEP_PREC);
+  ;;
+  ;; // Now we have the final number.  Remove commas and periods, if
+  ;; // necessary.
+  ;;
+  ;; if (last_comma != string::npos || last_period != string::npos) {
+  ;;   int          len = quant.length();
+  ;;   char *       buf = new char[len + 1];
+  ;;   const char * p   = quant.c_str();
+  ;;   char *       t   = buf;
+  ;;
+  ;;   while (*p) {
+  ;;     if (*p == ',' || *p == '.')
+  ;;       p++;
+  ;;     *t++ = *p++;
+  ;;   }
+  ;;   *t = '\0';
+  ;;
+  ;;   mpz_set_str(MPZ(quantity), buf, 10);
+  ;;   checked_array_delete(buf);
+  ;; } else {
+  ;;   mpz_set_str(MPZ(quantity), quant.c_str(), 10);
+  ;; }
+  ;;
+  ;; if (negative)
+  ;;   in_place_negate();
+  ;;
+  ;; if (! (flags & AMOUNT_PARSE_NO_REDUCE))
+  ;;   in_place_reduce();
+  ;;
+  ;; safe_holder.release();        // `this->quantity' owns the pointer
+  (assert in)
+  (assert no-migrate)
+  (assert no-reduce))
 
 (defun parse-amount-conversion (larger-string smaller-string)
-;; amount_t larger, smaller;
-;;
-;; larger.parse(larger_str, AMOUNT_PARSE_NO_REDUCE);
-;; smaller.parse(smaller_str, AMOUNT_PARSE_NO_REDUCE);
-;;
-;; larger *= smaller.number();
-;;
-;; if (larger.commodity()) {
-;;   larger.commodity().set_smaller(smaller);
-;;   larger.commodity().add_flags(smaller.commodity().flags() |
-;;                                COMMODITY_STYLE_NOMARKET);
-;; }
-;; if (smaller.commodity())
-;;   smaller.commodity().set_larger(larger);
-  )
+  ;; amount_t larger, smaller;
+  ;;
+  ;; larger.parse(larger_str, AMOUNT_PARSE_NO_REDUCE);
+  ;; smaller.parse(smaller_str, AMOUNT_PARSE_NO_REDUCE);
+  ;;
+  ;; larger *= smaller.number();
+  ;;
+  ;; if (larger.commodity()) {
+  ;;   larger.commodity().set_smaller(smaller);
+  ;;   larger.commodity().add_flags(smaller.commodity().flags() |
+  ;;                                COMMODITY_STYLE_NOMARKET);
+  ;; }
+  ;; if (smaller.commodity())
+  ;;   smaller.commodity().set_larger(larger);
+  (assert larger-string)
+  (assert smaller-string))
 
 ;; jww (2007-10-15): use keywords here
 (defun print-amount (amount &optional out omit-commodity full-precision)
-;; if (! quantity)
-;;   throw_(amount_error, "Cannot write out an uninitialized amount");
-;;
-;; amount_t base(*this);
-;; if (! amount_t::keep_base)
-;;   base.in_place_unreduce();
-;;
-;; std::ostringstream out;
-;;
-;; mpz_t quotient;
-;; mpz_t rquotient;
-;; mpz_t remainder;
-;;
-;; mpz_init(quotient);
-;; mpz_init(rquotient);
-;; mpz_init(remainder);
-;;
-;; bool negative = false;
-;;
-;; // Ensure the value is rounded to the commodity's precision before
-;; // outputting it.  NOTE: `rquotient' is used here as a temp variable!
-;;
-;; commodity_t& comm(base.commodity());
-;; precision_t  precision = 0;
-;;
-;; if (quantity) {
-;;   if (! comm || full_precision || base.quantity->has_flags(BIGINT_KEEP_PREC)) {
-;;     mpz_ui_pow_ui(divisor, 10, base.quantity->prec);
-;;     mpz_tdiv_qr(quotient, remainder, MPZ(base.quantity), divisor);
-;;     precision = base.quantity->prec;
-;;   }
-;;   else if (comm.precision() < base.quantity->prec) {
-;;     mpz_round(rquotient, MPZ(base.quantity), base.quantity->prec,
-;;               comm.precision());
-;;     mpz_ui_pow_ui(divisor, 10, comm.precision());
-;;     mpz_tdiv_qr(quotient, remainder, rquotient, divisor);
-;;     precision = comm.precision();
-;;   }
-;;   else if (comm.precision() > base.quantity->prec) {
-;;     mpz_ui_pow_ui(divisor, 10, comm.precision() - base.quantity->prec);
-;;     mpz_mul(rquotient, MPZ(base.quantity), divisor);
-;;     mpz_ui_pow_ui(divisor, 10, comm.precision());
-;;     mpz_tdiv_qr(quotient, remainder, rquotient, divisor);
-;;     precision = comm.precision();
-;;   }
-;;   else if (base.quantity->prec) {
-;;     mpz_ui_pow_ui(divisor, 10, base.quantity->prec);
-;;     mpz_tdiv_qr(quotient, remainder, MPZ(base.quantity), divisor);
-;;     precision = base.quantity->prec;
-;;   }
-;;   else {
-;;     mpz_set(quotient, MPZ(base.quantity));
-;;     mpz_set_ui(remainder, 0);
-;;     precision = 0;
-;;   }
-;;
-;;   if (mpz_sgn(quotient) < 0 || mpz_sgn(remainder) < 0) {
-;;     negative = true;
-;;
-;;     mpz_abs(quotient, quotient);
-;;     mpz_abs(remainder, remainder);
-;;   }
-;;   mpz_set(rquotient, remainder);
-;; }
-;;
-;; if (! omit_commodity && ! comm.has_flags(COMMODITY_STYLE_SUFFIXED)) {
-;;   comm.print(out);
-;;   if (comm.has_flags(COMMODITY_STYLE_SEPARATED))
-;;     out << " ";
-;; }
-;;
-;; if (negative)
-;;   out << "-";
-;;
-;; if (! quantity || mpz_sgn(quotient) == 0) {
-;;   out << '0';
-;; }
-;; else if (omit_commodity || ! comm.has_flags(COMMODITY_STYLE_THOUSANDS)) {
-;;   char * p = mpz_get_str(NULL, 10, quotient);
-;;   out << p;
-;;   std::free(p);
-;; }
-;; else {
-;;   std::list<string> strs;
-;;   char buf[4];
-;;
-;;   for (int powers = 0; true; powers += 3) {
-;;     if (powers > 0) {
-;;       mpz_ui_pow_ui(divisor, 10, powers);
-;;       mpz_tdiv_q(temp, quotient, divisor);
-;;       if (mpz_sgn(temp) == 0)
-;;         break;
-;;       mpz_tdiv_r_ui(temp, temp, 1000);
-;;     } else {
-;;       mpz_tdiv_r_ui(temp, quotient, 1000);
-;;     }
-;;     mpz_get_str(buf, 10, temp);
-;;     strs.push_back(buf);
-;;   }
-;;
-;;   bool printed = false;
-;;
-;;   for (std::list<string>::reverse_iterator i = strs.rbegin();
-;;        i != strs.rend();
-;;        i++) {
-;;     if (printed) {
-;;       out << (comm.has_flags(COMMODITY_STYLE_EUROPEAN) ? '.' : ',');
-;;       out.width(3);
-;;       out.fill('0');
-;;     }
-;;     out << *i;
-;;
-;;     printed = true;
-;;   }
-;; }
-;;
-;; if (quantity && precision) {
-;;   std::ostringstream final;
-;;   final.width(precision);
-;;   final.fill('0');
-;;   char * p = mpz_get_str(NULL, 10, rquotient);
-;;   final << p;
-;;   std::free(p);
-;;
-;;   const string& str(final.str());
-;;   int i, len = str.length();
-;;   const char * q = str.c_str();
-;;   for (i = len; i > 0; i--)
-;;     if (q[i - 1] != '0')
-;;       break;
-;;
-;;   string ender;
-;;   if (i == len)
-;;     ender = str;
-;;   else if (i < comm.precision())
-;;     ender = string(str, 0, comm.precision());
-;;   else
-;;     ender = string(str, 0, i);
-;;
-;;   if (! ender.empty()) {
-;;     if (omit_commodity)
-;;       out << '.';
-;;     else
-;;       out << (comm.has_flags(COMMODITY_STYLE_EUROPEAN) ? ',' : '.');
-;;     out << ender;
-;;   }
-;; }
-;;
-;; if (! omit_commodity && comm.has_flags(COMMODITY_STYLE_SUFFIXED)) {
-;;   if (comm.has_flags(COMMODITY_STYLE_SEPARATED))
-;;     out << " ";
-;;   comm.print(out);
-;; }
-;;
-;; mpz_clear(quotient);
-;; mpz_clear(rquotient);
-;; mpz_clear(remainder);
-;;
-;; // If there are any annotations associated with this commodity,
-;; // output them now.
-;;
-;; if (! omit_commodity && comm.annotated) {
-;;   annotated_commodity_t& ann(static_cast<annotated_commodity_t&>(comm));
-;;   assert(&*ann.details.price != this);
-;;   ann.write_annotations(out);
-;; }
-;;
-;; // Things are output to a string first, so that if anyone has
-;; // specified a width or fill for _out, it will be applied to the
-;; // entire amount string, and not just the first part.
-;;
-;; _out << out.str();
-  )
+  ;; if (! quantity)
+  ;;   throw_(amount_error, "Cannot write out an uninitialized amount");
+  ;;
+  ;; amount_t base(*this);
+  ;; if (! amount_t::keep_base)
+  ;;   base.in_place_unreduce();
+  ;;
+  ;; std::ostringstream out;
+  ;;
+  ;; mpz_t quotient;
+  ;; mpz_t rquotient;
+  ;; mpz_t remainder;
+  ;;
+  ;; mpz_init(quotient);
+  ;; mpz_init(rquotient);
+  ;; mpz_init(remainder);
+  ;;
+  ;; bool negative = false;
+  ;;
+  ;; // Ensure the value is rounded to the commodity's precision before
+  ;; // outputting it.  NOTE: `rquotient' is used here as a temp variable!
+  ;;
+  ;; commodity_t& comm(base.commodity());
+  ;; precision_t  precision = 0;
+  ;;
+  ;; if (quantity) {
+  ;;   if (! comm || full_precision || base.quantity->has_flags(BIGINT_KEEP_PREC)) {
+  ;;     mpz_ui_pow_ui(divisor, 10, base.quantity->prec);
+  ;;     mpz_tdiv_qr(quotient, remainder, MPZ(base.quantity), divisor);
+  ;;     precision = base.quantity->prec;
+  ;;   }
+  ;;   else if (comm.precision() < base.quantity->prec) {
+  ;;     mpz_round(rquotient, MPZ(base.quantity), base.quantity->prec,
+  ;;               comm.precision());
+  ;;     mpz_ui_pow_ui(divisor, 10, comm.precision());
+  ;;     mpz_tdiv_qr(quotient, remainder, rquotient, divisor);
+  ;;     precision = comm.precision();
+  ;;   }
+  ;;   else if (comm.precision() > base.quantity->prec) {
+  ;;     mpz_ui_pow_ui(divisor, 10, comm.precision() - base.quantity->prec);
+  ;;     mpz_mul(rquotient, MPZ(base.quantity), divisor);
+  ;;     mpz_ui_pow_ui(divisor, 10, comm.precision());
+  ;;     mpz_tdiv_qr(quotient, remainder, rquotient, divisor);
+  ;;     precision = comm.precision();
+  ;;   }
+  ;;   else if (base.quantity->prec) {
+  ;;     mpz_ui_pow_ui(divisor, 10, base.quantity->prec);
+  ;;     mpz_tdiv_qr(quotient, remainder, MPZ(base.quantity), divisor);
+  ;;     precision = base.quantity->prec;
+  ;;   }
+  ;;   else {
+  ;;     mpz_set(quotient, MPZ(base.quantity));
+  ;;     mpz_set_ui(remainder, 0);
+  ;;     precision = 0;
+  ;;   }
+  ;;
+  ;;   if (mpz_sgn(quotient) < 0 || mpz_sgn(remainder) < 0) {
+  ;;     negative = true;
+  ;;
+  ;;     mpz_abs(quotient, quotient);
+  ;;     mpz_abs(remainder, remainder);
+  ;;   }
+  ;;   mpz_set(rquotient, remainder);
+  ;; }
+  ;;
+  ;; if (! omit_commodity && ! comm.has_flags(COMMODITY_STYLE_SUFFIXED)) {
+  ;;   comm.print(out);
+  ;;   if (comm.has_flags(COMMODITY_STYLE_SEPARATED))
+  ;;     out << " ";
+  ;; }
+  ;;
+  ;; if (negative)
+  ;;   out << "-";
+  ;;
+  ;; if (! quantity || mpz_sgn(quotient) == 0) {
+  ;;   out << '0';
+  ;; }
+  ;; else if (omit_commodity || ! comm.has_flags(COMMODITY_STYLE_THOUSANDS)) {
+  ;;   char * p = mpz_get_str(NULL, 10, quotient);
+  ;;   out << p;
+  ;;   std::free(p);
+  ;; }
+  ;; else {
+  ;;   std::list<string> strs;
+  ;;   char buf[4];
+  ;;
+  ;;   for (int powers = 0; true; powers += 3) {
+  ;;     if (powers > 0) {
+  ;;       mpz_ui_pow_ui(divisor, 10, powers);
+  ;;       mpz_tdiv_q(temp, quotient, divisor);
+  ;;       if (mpz_sgn(temp) == 0)
+  ;;         break;
+  ;;       mpz_tdiv_r_ui(temp, temp, 1000);
+  ;;     } else {
+  ;;       mpz_tdiv_r_ui(temp, quotient, 1000);
+  ;;     }
+  ;;     mpz_get_str(buf, 10, temp);
+  ;;     strs.push_back(buf);
+  ;;   }
+  ;;
+  ;;   bool printed = false;
+  ;;
+  ;;   for (std::list<string>::reverse_iterator i = strs.rbegin();
+  ;;        i != strs.rend();
+  ;;        i++) {
+  ;;     if (printed) {
+  ;;       out << (comm.has_flags(COMMODITY_STYLE_EUROPEAN) ? '.' : ',');
+  ;;       out.width(3);
+  ;;       out.fill('0');
+  ;;     }
+  ;;     out << *i;
+  ;;
+  ;;     printed = true;
+  ;;   }
+  ;; }
+  ;;
+  ;; if (quantity && precision) {
+  ;;   std::ostringstream final;
+  ;;   final.width(precision);
+  ;;   final.fill('0');
+  ;;   char * p = mpz_get_str(NULL, 10, rquotient);
+  ;;   final << p;
+  ;;   std::free(p);
+  ;;
+  ;;   const string& str(final.str());
+  ;;   int i, len = str.length();
+  ;;   const char * q = str.c_str();
+  ;;   for (i = len; i > 0; i--)
+  ;;     if (q[i - 1] != '0')
+  ;;       break;
+  ;;
+  ;;   string ender;
+  ;;   if (i == len)
+  ;;     ender = str;
+  ;;   else if (i < comm.precision())
+  ;;     ender = string(str, 0, comm.precision());
+  ;;   else
+  ;;     ender = string(str, 0, i);
+  ;;
+  ;;   if (! ender.empty()) {
+  ;;     if (omit_commodity)
+  ;;       out << '.';
+  ;;     else
+  ;;       out << (comm.has_flags(COMMODITY_STYLE_EUROPEAN) ? ',' : '.');
+  ;;     out << ender;
+  ;;   }
+  ;; }
+  ;;
+  ;; if (! omit_commodity && comm.has_flags(COMMODITY_STYLE_SUFFIXED)) {
+  ;;   if (comm.has_flags(COMMODITY_STYLE_SEPARATED))
+  ;;     out << " ";
+  ;;   comm.print(out);
+  ;; }
+  ;;
+  ;; mpz_clear(quotient);
+  ;; mpz_clear(rquotient);
+  ;; mpz_clear(remainder);
+  ;;
+  ;; // If there are any annotations associated with this commodity,
+  ;; // output them now.
+  ;;
+  ;; if (! omit_commodity && comm.annotated) {
+  ;;   annotated_commodity_t& ann(static_cast<annotated_commodity_t&>(comm));
+  ;;   assert(&*ann.details.price != this);
+  ;;   ann.write_annotations(out);
+  ;; }
+  ;;
+  ;; // Things are output to a string first, so that if anyone has
+  ;; // specified a width or fill for _out, it will be applied to the
+  ;; // entire amount string, and not just the first part.
+  ;;
+  ;; _out << out.str();
+  (assert (or amount out omit-commodity full-precision)))
 
 ;; jww (2007-10-15): Add back this builtin commodity
 ;;  commodity->add_flags(COMMODITY_STYLE_NOMARKET | COMMODITY_STYLE_BUILTIN);
@@ -1635,19 +1702,19 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
 ;;  parse_conversion("1.0h", "60m");
 
 (defun amount--resize (amount precision)
-;; assert(prec < 256);
-;;
-;; if (! quantity || prec == quantity->prec)
-;;   return;
-;;
-;; _dup();
-;;
-;; assert(prec > quantity->prec);
-;; mpz_ui_pow_ui(divisor, 10, prec - quantity->prec);
-;; mpz_mul(MPZ(quantity), MPZ(quantity), divisor);
-;;
-;; quantity->prec = prec;
-)
+  ;; assert(prec < 256);
+  ;;
+  ;; if (! quantity || prec == quantity->prec)
+  ;;   return;
+  ;;
+  ;; _dup();
+  ;;
+  ;; assert(prec > quantity->prec);
+  ;; mpz_ui_pow_ui(divisor, 10, prec - quantity->prec);
+  ;; mpz_mul(MPZ(quantity), MPZ(quantity), divisor);
+  ;;
+  ;; quantity->prec = prec;
+  (assert (or amount precision)))
 
 ;; jww (2007-10-15): This requires FFI binding to gdtoa
 (defun parse-double (string)
@@ -1690,320 +1757,330 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
   ;; freedtoa(buf);
   ;;
   ;; return decpt;
-  )
+  (assert string))
 
 (defclass balance ()
   (amounts-map))
 
 (defmethod add-to-balance ((balance balance) (amount amount))
-;; TRACE_CTOR(balance_t, "const amount_t&");
-;; if (amt.is_null())
-;;   throw_(balance_error,
-;;          "Cannot initialize a balance from an uninitialized amount");
-;; if (! amt.is_realzero())
-;;   amounts.insert(amounts_map::value_type(&amt.commodity(), amt));
-  )
+  ;; TRACE_CTOR(balance_t, "const amount_t&");
+  ;; if (amt.is_null())
+  ;;   throw_(balance_error,
+  ;;          "Cannot initialize a balance from an uninitialized amount");
+  ;; if (! amt.is_realzero())
+  ;;   amounts.insert(amounts_map::value_type(&amt.commodity(), amt));
+  (assert (or balance amount)))
 
 ;; jww (2007-10-15): What's the difference between FLOAT and REAL?
 (defmethod add-to-balance ((balance balance) (real real))
-;; TRACE_CTOR(balance_t, "const double");
-;; amounts.insert
-;;   (amounts_map::value_type(amount_t::current_pool->null_commodity, val));
-  )
+  ;; TRACE_CTOR(balance_t, "const double");
+  ;; amounts.insert
+  ;;   (amounts_map::value_type(amount_t::current_pool->null_commodity, val));
+  (assert (or balance real)))
 
 (defmethod add-to-balance ((balance balance) (integer integer))
-;; TRACE_CTOR(balance_t, "const unsigned long");
-;; amounts.insert
-;;   (amounts_map::value_type(amount_t::current_pool->null_commodity, val));
-  )
+  ;; TRACE_CTOR(balance_t, "const unsigned long");
+  ;; amounts.insert
+  ;;   (amounts_map::value_type(amount_t::current_pool->null_commodity, val));
+  (assert (or balance integer)))
 
 (defun balance-set-to-amount (amount)
-;; if (amt.is_null())
-;;   throw_(balance_error,
-;;          "Cannot assign an uninitialized amount to a balance");
-;;
-;; amounts.clear();
-;; if (! amt.is_realzero())
-;;   amounts.insert(amounts_map::value_type(&amt.commodity(), amt));
-;;
-;; return *this;
-  )
+  ;; if (amt.is_null())
+  ;;   throw_(balance_error,
+  ;;          "Cannot assign an uninitialized amount to a balance");
+  ;;
+  ;; amounts.clear();
+  ;; if (! amt.is_realzero())
+  ;;   amounts.insert(amounts_map::value_type(&amt.commodity(), amt));
+  ;;
+  ;; return *this;
+  (assert amount))
 
 (defun balances-equal (balance)
-;; amounts_map::const_iterator i, j;
-;; for (i = amounts.begin(), j = bal.amounts.begin();
-;;      i != amounts.end() && j != bal.amounts.end();
-;;      i++, j++) {
-;;   if (! (i->first == j->first && i->second == j->second))
-;;     return false;
-;; }
-;; return i == amounts.end() && j == bal.amounts.end();
-  )
+  ;; amounts_map::const_iterator i, j;
+  ;; for (i = amounts.begin(), j = bal.amounts.begin();
+  ;;      i != amounts.end() && j != bal.amounts.end();
+  ;;      i++, j++) {
+  ;;   if (! (i->first == j->first && i->second == j->second))
+  ;;     return false;
+  ;; }
+  ;; return i == amounts.end() && j == bal.amounts.end();
+  (assert balance))
+
 (defun balance-equal-to-amount (amount)
-;; if (amt.is_null())
-;;   throw_(balance_error,
-;;          "Cannot compare a balance to an uninitialized amount");
-;;
-;; if (amt.is_realzero())
-;;   return amounts.empty();
-;; else
-;;   return amounts.size() == 1 && amounts.begin()->second == amt;
-  )
+  ;; if (amt.is_null())
+  ;;   throw_(balance_error,
+  ;;          "Cannot compare a balance to an uninitialized amount");
+  ;;
+  ;; if (amt.is_realzero())
+  ;;   return amounts.empty();
+  ;; else
+  ;;   return amounts.size() == 1 && amounts.begin()->second == amt;
+  (assert amount))
 
 ;; Binary arithmetic operators.  Balances support addition and
 ;; subtraction of other balances or amounts, but multiplication and
 ;; division are restricted to uncommoditized amounts only.
 (defmethod balance-add ((balance balance) (other balance))
-;; for (amounts_map::const_iterator i = bal.amounts.begin();
-;;      i != bal.amounts.end();
-;;      i++)
-;;   *this += i->second;
-;; return *this;
-  )
-(defmethod balance-add ((balance balance) (other amount))
-;; if (amt.is_null())
-;;   throw_(balance_error,
-;;          "Cannot add an uninitialized amount to a balance");
-;;
-;; if (amt.is_realzero())
-;;   return *this;
-;;
-;; amounts_map::iterator i = amounts.find(&amt.commodity());
-;; if (i != amounts.end())
-;;   i->second += amt;
-;; else
-;;   amounts.insert(amounts_map::value_type(&amt.commodity(), amt));
-;;
-;; return *this;
-  )
-(defmethod balance-sub ((balance balance) (other balance))
-;; for (amounts_map::const_iterator i = bal.amounts.begin();
-;;      i != bal.amounts.end();
-;;      i++)
-;;   *this -= i->second;
-;; return *this;
-  )
-(defmethod balance-sub ((balance balance) (other amount))
-;; if (amt.is_null())
-;;   throw_(balance_error,
-;;          "Cannot subtract an uninitialized amount from a balance");
-;;
-;; if (amt.is_realzero())
-;;   return *this;
-;;
-;; amounts_map::iterator i = amounts.find(&amt.commodity());
-;; if (i != amounts.end()) {
-;;   i->second -= amt;
-;;   if (i->second.is_realzero())
-;;     amounts.erase(i);
-;; } else {
-;;   amounts.insert(amounts_map::value_type(&amt.commodity(), amt.negate()));
-;; }
-;; return *this;
-  )
-(defmethod balance-multiply ((balance balance) (other amount))
-;; if (amt.is_null())
-;;   throw_(balance_error,
-;;          "Cannot multiply a balance by an uninitialized amount");
-;;
-;; if (is_realzero()) {
-;;   ;
-;; }
-;; else if (amt.is_realzero()) {
-;;   *this = amt;
-;; }
-;; else if (! amt.commodity()) {
-;;   // Multiplying by an amount with no commodity causes all the
-;;   // component amounts to be increased by the same factor.
-;;   for (amounts_map::iterator i = amounts.begin();
-;;        i != amounts.end();
-;;        i++)
-;;     i->second *= amt;
-;; }
-;; else if (amounts.size() == 1) {
-;;   // Multiplying by a commoditized amount is only valid if the sole
-;;   // commodity in the balance is of the same kind as the amount's
-;;   // commodity.
-;;   if (*amounts.begin()->first == amt.commodity())
-;;     amounts.begin()->second *= amt;
-;;   else
-;;     throw_(balance_error,
-;;            "Cannot multiply a balance with annotated commodities by a commoditized amount");
-;; }
-;; else {
-;;   assert(amounts.size() > 1);
-;;   throw_(balance_error,
-;;          "Cannot multiply a multi-commodity balance by a commoditized amount");
-;; }
-;; return *this;
-  )
-(defmethod balance-divide ((balance balance) (other amount))
-;; if (amt.is_null())
-;;   throw_(balance_error,
-;;          "Cannot divide a balance by an uninitialized amount");
-;;
-;; if (is_realzero()) {
-;;   ;
-;; }
-;; else if (amt.is_realzero()) {
-;;   throw_(balance_error, "Divide by zero");
-;; }
-;; else if (! amt.commodity()) {
-;;   // Dividing by an amount with no commodity causes all the
-;;   // component amounts to be divided by the same factor.
-;;   for (amounts_map::iterator i = amounts.begin();
-;;        i != amounts.end();
-;;        i++)
-;;     i->second /= amt;
-;; }
-;; else if (amounts.size() == 1) {
-;;   // Dividing by a commoditized amount is only valid if the sole
-;;   // commodity in the balance is of the same kind as the amount's
-;;   // commodity.
-;;   if (*amounts.begin()->first == amt.commodity())
-;;     amounts.begin()->second /= amt;
-;;   else
-;;     throw_(balance_error,
-;;            "Cannot divide a balance with annotated commodities by a commoditized amount");
-;; }
-;; else {
-;;   assert(amounts.size() > 1);
-;;   throw_(balance_error,
-;;          "Cannot divide a multi-commodity balance by a commoditized amount");
-;; }
-;; return *this;
-  )
+  ;; for (amounts_map::const_iterator i = bal.amounts.begin();
+  ;;      i != bal.amounts.end();
+  ;;      i++)
+  ;;   *this += i->second;
+  ;; return *this;
+  (assert (or balance other)))
 
-(defun copy-balance (balance))
+(defmethod balance-add ((balance balance) (other amount))
+  ;; if (amt.is_null())
+  ;;   throw_(balance_error,
+  ;;          "Cannot add an uninitialized amount to a balance");
+  ;;
+  ;; if (amt.is_realzero())
+  ;;   return *this;
+  ;;
+  ;; amounts_map::iterator i = amounts.find(&amt.commodity());
+  ;; if (i != amounts.end())
+  ;;   i->second += amt;
+  ;; else
+  ;;   amounts.insert(amounts_map::value_type(&amt.commodity(), amt));
+  ;;
+  ;; return *this;
+  (assert (or balance other)))
+
+(defmethod balance-sub ((balance balance) (other balance))
+  ;; for (amounts_map::const_iterator i = bal.amounts.begin();
+  ;;      i != bal.amounts.end();
+  ;;      i++)
+  ;;   *this -= i->second;
+  ;; return *this;
+  (assert (or balance other)))
+
+(defmethod balance-sub ((balance balance) (other amount))
+  ;; if (amt.is_null())
+  ;;   throw_(balance_error,
+  ;;          "Cannot subtract an uninitialized amount from a balance");
+  ;;
+  ;; if (amt.is_realzero())
+  ;;   return *this;
+  ;;
+  ;; amounts_map::iterator i = amounts.find(&amt.commodity());
+  ;; if (i != amounts.end()) {
+  ;;   i->second -= amt;
+  ;;   if (i->second.is_realzero())
+  ;;     amounts.erase(i);
+  ;; } else {
+  ;;   amounts.insert(amounts_map::value_type(&amt.commodity(), amt.negate()));
+  ;; }
+  ;; return *this;
+  (assert (or balance other)))
+
+(defmethod balance-multiply ((balance balance) (other amount))
+  ;; if (amt.is_null())
+  ;;   throw_(balance_error,
+  ;;          "Cannot multiply a balance by an uninitialized amount");
+  ;;
+  ;; if (is_realzero()) {
+  ;;   ;
+  ;; }
+  ;; else if (amt.is_realzero()) {
+  ;;   *this = amt;
+  ;; }
+  ;; else if (! amt.commodity()) {
+  ;;   // Multiplying by an amount with no commodity causes all the
+  ;;   // component amounts to be increased by the same factor.
+  ;;   for (amounts_map::iterator i = amounts.begin();
+  ;;        i != amounts.end();
+  ;;        i++)
+  ;;     i->second *= amt;
+  ;; }
+  ;; else if (amounts.size() == 1) {
+  ;;   // Multiplying by a commoditized amount is only valid if the sole
+  ;;   // commodity in the balance is of the same kind as the amount's
+  ;;   // commodity.
+  ;;   if (*amounts.begin()->first == amt.commodity())
+  ;;     amounts.begin()->second *= amt;
+  ;;   else
+  ;;     throw_(balance_error,
+  ;;            "Cannot multiply a balance with annotated commodities by a commoditized amount");
+  ;; }
+  ;; else {
+  ;;   assert(amounts.size() > 1);
+  ;;   throw_(balance_error,
+  ;;          "Cannot multiply a multi-commodity balance by a commoditized amount");
+  ;; }
+  ;; return *this;
+  (assert (or balance other)))
+
+(defmethod balance-divide ((balance balance) (other amount))
+  ;; if (amt.is_null())
+  ;;   throw_(balance_error,
+  ;;          "Cannot divide a balance by an uninitialized amount");
+  ;;
+  ;; if (is_realzero()) {
+  ;;   ;
+  ;; }
+  ;; else if (amt.is_realzero()) {
+  ;;   throw_(balance_error, "Divide by zero");
+  ;; }
+  ;; else if (! amt.commodity()) {
+  ;;   // Dividing by an amount with no commodity causes all the
+  ;;   // component amounts to be divided by the same factor.
+  ;;   for (amounts_map::iterator i = amounts.begin();
+  ;;        i != amounts.end();
+  ;;        i++)
+  ;;     i->second /= amt;
+  ;; }
+  ;; else if (amounts.size() == 1) {
+  ;;   // Dividing by a commoditized amount is only valid if the sole
+  ;;   // commodity in the balance is of the same kind as the amount's
+  ;;   // commodity.
+  ;;   if (*amounts.begin()->first == amt.commodity())
+  ;;     amounts.begin()->second /= amt;
+  ;;   else
+  ;;     throw_(balance_error,
+  ;;            "Cannot divide a balance with annotated commodities by a commoditized amount");
+  ;; }
+  ;; else {
+  ;;   assert(amounts.size() > 1);
+  ;;   throw_(balance_error,
+  ;;          "Cannot divide a multi-commodity balance by a commoditized amount");
+  ;; }
+  ;; return *this;
+  (assert (or balance other)))
+
+(defun copy-balance (balance)
+  (assert balance))
+
+(defmethod negate-in-place ((balance balance))
+  ;; for (amounts_map::iterator i = amounts.begin();
+  ;;      i != amounts.end();
+  ;;      i++)
+  ;;   i->second.in_place_negate();
+  ;; return *this;
+  (assert balance))
 
 (defmethod balance-negate ((balance balance))
   (let ((tmp (copy-balance balance)))
     (negate-in-place tmp)))
 
-(defmethod negate-in-place ((balance balance))
-;; for (amounts_map::iterator i = amounts.begin();
-;;      i != amounts.end();
-;;      i++)
-;;   i->second.in_place_negate();
-;; return *this;
-  )
-
 (defmethod balance-abs ((balance balance))
-;; balance_t temp;
-;; for (amounts_map::const_iterator i = amounts.begin();
-;;      i != amounts.end();
-;;      i++)
-;;   temp += i->second.abs();
-;; return temp;
-)
+  ;; balance_t temp;
+  ;; for (amounts_map::const_iterator i = amounts.begin();
+  ;;      i != amounts.end();
+  ;;      i++)
+  ;;   temp += i->second.abs();
+  ;; return temp;
+  (assert balance))
 
 (defmethod balance-reduce ((balance balance))
-;; balance_t temp(*this);
-;; temp.in_place_reduce();
-;; return temp;
-)
+  ;; balance_t temp(*this);
+  ;; temp.in_place_reduce();
+  ;; return temp;
+  (assert balance))
 
 (defmethod reduce-in-place ((balance balance))
-;; // A temporary must be used here because reduction may cause
-;; // multiple component amounts to collapse to the same commodity.
-;; balance_t temp;
-;; for (amounts_map::const_iterator i = amounts.begin();
-;;      i != amounts.end();
-;;      i++)
-;;   temp += i->second.reduce();
-;; return *this = temp;
-)
+  ;; // A temporary must be used here because reduction may cause
+  ;; // multiple component amounts to collapse to the same commodity.
+  ;; balance_t temp;
+  ;; for (amounts_map::const_iterator i = amounts.begin();
+  ;;      i != amounts.end();
+  ;;      i++)
+  ;;   temp += i->second.reduce();
+  ;; return *this = temp;
+  (assert balance))
 
 (defmethod unreduce ((balance balance))
-;; balance_t temp(*this);
-;; temp.in_place_unreduce();
-;; return temp;
-)
+  ;; balance_t temp(*this);
+  ;; temp.in_place_unreduce();
+  ;; return temp;
+  (assert balance))
 
 (defmethod unreduce-in-place ((balance balance))
-;; // A temporary must be used here because unreduction may cause
-;; // multiple component amounts to collapse to the same commodity.
-;; balance_t temp;
-;; for (amounts_map::const_iterator i = amounts.begin();
-;;      i != amounts.end();
-;;      i++)
-;;   temp += i->second.unreduce();
-;; return *this = temp;
-)
+  ;; // A temporary must be used here because unreduction may cause
+  ;; // multiple component amounts to collapse to the same commodity.
+  ;; balance_t temp;
+  ;; for (amounts_map::const_iterator i = amounts.begin();
+  ;;      i != amounts.end();
+  ;;      i++)
+  ;;   temp += i->second.unreduce();
+  ;; return *this = temp;
+  (assert balance))
 
 (defmethod market-value ((balance balance) &optional datetime)
-;; optional<balance_t> temp;
-;;
-;; for (amounts_map::const_iterator i = amounts.begin();
-;;      i != amounts.end();
-;;      i++)
-;;   if (optional<amount_t> val = i->second.value(moment)) {
-;;     if (! temp)
-;;       temp = balance_t();
-;;     *temp += *val;
-;;   }
-;;
-;; return temp;
-  )
+  ;; optional<balance_t> temp;
+  ;;
+  ;; for (amounts_map::const_iterator i = amounts.begin();
+  ;;      i != amounts.end();
+  ;;      i++)
+  ;;   if (optional<amount_t> val = i->second.value(moment)) {
+  ;;     if (! temp)
+  ;;       temp = balance_t();
+  ;;     *temp += *val;
+  ;;   }
+  ;;
+  ;; return temp;
+  (assert balance)
+  (assert datetime))
 
 (defmethod zero-p ((balance balance))
-;; if (is_empty())
-;;   return true;
-;;
-;; for (amounts_map::const_iterator i = amounts.begin();
-;;      i != amounts.end();
-;;      i++)
-;;   if (! i->second.is_zero())
-;;     return false;
-;; return true;
-  )
+  ;; if (is_empty())
+  ;;   return true;
+  ;;
+  ;; for (amounts_map::const_iterator i = amounts.begin();
+  ;;      i != amounts.end();
+  ;;      i++)
+  ;;   if (! i->second.is_zero())
+  ;;     return false;
+  ;; return true;
+  (assert balance))
 
 (defmethod to-amount ((balance balance))
-;; if (is_empty())
-;;   throw_(balance_error, "Cannot convert an empty balance to an amount");
-;; else if (amounts.size() == 1)
-;;   return amounts.begin()->second;
-;; else
-;;   throw_(balance_error,
-;;          "Cannot convert a balance with multiple commodities to an amount");
-  )
+  ;; if (is_empty())
+  ;;   throw_(balance_error, "Cannot convert an empty balance to an amount");
+  ;; else if (amounts.size() == 1)
+  ;;   return amounts.begin()->second;
+  ;; else
+  ;;   throw_(balance_error,
+  ;;          "Cannot convert a balance with multiple commodities to an amount");
+  (assert balance))
 
 (defmethod amount-in-balance ((balance balance) (commodity commodity))
-;; // jww (2007-05-20): Needs work
-;; if (! commodity) {
-;;   if (amounts.size() == 1) {
-;;     amounts_map::const_iterator i = amounts.begin();
-;;     return i->second;
-;;   }
-;;   else if (amounts.size() > 1) {
-;;     // Try stripping annotations before giving an error.
-;;     balance_t temp(strip_annotations());
-;;     if (temp.amounts.size() == 1)
-;;       return temp.commodity_amount(commodity);
-;;
-;;     throw_(amount_error,
-;;            "Requested amount of a balance with multiple commodities: " << temp);
-;;   }
-;; }
-;; else if (amounts.size() > 0) {
-;;   amounts_map::const_iterator i = amounts.find(&*commodity);
-;;   if (i != amounts.end())
-;;     return i->second;
-;; }
-;; return none;
-  )
+  ;; // jww (2007-05-20): Needs work
+  ;; if (! commodity) {
+  ;;   if (amounts.size() == 1) {
+  ;;     amounts_map::const_iterator i = amounts.begin();
+  ;;     return i->second;
+  ;;   }
+  ;;   else if (amounts.size() > 1) {
+  ;;     // Try stripping annotations before giving an error.
+  ;;     balance_t temp(strip_annotations());
+  ;;     if (temp.amounts.size() == 1)
+  ;;       return temp.commodity_amount(commodity);
+  ;;
+  ;;     throw_(amount_error,
+  ;;            "Requested amount of a balance with multiple commodities: " << temp);
+  ;;   }
+  ;; }
+  ;; else if (amounts.size() > 0) {
+  ;;   amounts_map::const_iterator i = amounts.find(&*commodity);
+  ;;   if (i != amounts.end())
+  ;;     return i->second;
+  ;; }
+  ;; return none;
+  (assert balance)
+  (assert commodity))
 
 (defmethod strip-annotations ((balance balance)
 			      &optional keep-price keep-date keep-tag)
-;; balance_t temp;
-;;
-;; for (amounts_map::const_iterator i = amounts.begin();
-;;      i != amounts.end();
-;;      i++)
-;;   temp += i->second.strip_annotations(keep_price, keep_date, keep_tag);
-;;
-;; return temp;
-  )
+  ;; balance_t temp;
+  ;;
+  ;; for (amounts_map::const_iterator i = amounts.begin();
+  ;;      i != amounts.end();
+  ;;      i++)
+  ;;   temp += i->second.strip_annotations(keep_price, keep_date, keep_tag);
+  ;;
+  ;; return temp;
+  (assert balance)
+  (assert (or keep-price keep-date keep-tag)))
 
 (defun print-balance (balance &optional out first-width latter-width)
   "Printing methods.  A balance may be output to a stream using the `print'
@@ -2022,46 +2099,46 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
    In addition to the width constraints, balances will also print with
    commodities in alphabetized order, regardless of the relative amounts of
    those commodities.  There is no option to change this behavior."
-;; bool first  = true;
-;; int  lwidth = latter_width;
-;;
-;; if (lwidth == -1)
-;;   lwidth = first_width;
-;;
-;; typedef std::vector<const amount_t *> amounts_array;
-;; amounts_array sorted;
-;;
-;; for (amounts_map::const_iterator i = amounts.begin();
-;;      i != amounts.end();
-;;      i++)
-;;   if (i->second)
-;;     sorted.push_back(&i->second);
-;;
-;; std::stable_sort(sorted.begin(), sorted.end(),
-;;                  compare_amount_commodities());
-;;
-;; for (amounts_array::const_iterator i = sorted.begin();
-;;      i != sorted.end();
-;;      i++) {
-;;   int width;
-;;   if (! first) {
-;;     out << std::endl;
-;;     width = lwidth;
-;;   } else {
-;;     first = false;
-;;     width = first_width;
-;;   }
-;;
-;;   out.width(width);
-;;   out.fill(' ');
-;;   out << std::right << **i;
-;; }
-;;
-;; if (first) {
-;;   out.width(first_width);
-;;   out.fill(' ');
-;;   out << std::right << "0";
-;; }
-  )
+  ;; bool first  = true;
+  ;; int  lwidth = latter_width;
+  ;;
+  ;; if (lwidth == -1)
+  ;;   lwidth = first_width;
+  ;;
+  ;; typedef std::vector<const amount_t *> amounts_array;
+  ;; amounts_array sorted;
+  ;;
+  ;; for (amounts_map::const_iterator i = amounts.begin();
+  ;;      i != amounts.end();
+  ;;      i++)
+  ;;   if (i->second)
+  ;;     sorted.push_back(&i->second);
+  ;;
+  ;; std::stable_sort(sorted.begin(), sorted.end(),
+  ;;                  compare_amount_commodities());
+  ;;
+  ;; for (amounts_array::const_iterator i = sorted.begin();
+  ;;      i != sorted.end();
+  ;;      i++) {
+  ;;   int width;
+  ;;   if (! first) {
+  ;;     out << std::endl;
+  ;;     width = lwidth;
+  ;;   } else {
+  ;;     first = false;
+  ;;     width = first_width;
+  ;;   }
+  ;;
+  ;;   out.width(width);
+  ;;   out.fill(' ');
+  ;;   out << std::right << **i;
+  ;; }
+  ;;
+  ;; if (first) {
+  ;;   out.width(first_width);
+  ;;   out.fill(' ');
+  ;;   out << std::right << "0";
+  ;; }
+  (assert (or balance out first-width latter-width)))
 
 ;; cambl.lisp ends here
