@@ -187,20 +187,18 @@
 (defclass commodity ()
   ((basic-commodity :accessor basic-commodity :initarg :base
 		    :type basic-commodity)
-   (commodity-pool :accessor commodity-pool :type commodity-pool)
+   (commodity-pool :accessor commodity-pool :initarg :pool
+		   :type commodity-pool)
    (serial-number :accessor commodity-serial-number :type fixnum)
    qualified-symbol
-   (has-qualified-symbol-p :type boolean)
+   (has-qualified-symbol-p :type boolean :initform nil)
    mapping-key
-   (annotated-p :accessor commodity-annotated-p :type boolean)))
+   (annotated-p :accessor commodity-annotated-p
+		:initform nil :type boolean)))
 
 (defmethod commodity-symbol ((commodity commodity))
   (if (slot-value commodity 'has-qualified-symbol-p)
       (slot-value commodity 'qualified-symbol)
-      (commodity-symbol (basic-commodity commodity))))
-
-(defmethod commodity-mapping-key ((commodity commodity))
-  (or (slot-value commodity 'mapping-key)
       (commodity-symbol (basic-commodity commodity))))
 
 (defmethod commodity-equalp ((a commodity) (b commodity))
@@ -395,9 +393,6 @@
 (defmethod commodity-symbol ((annotated-commodity annotated-commodity))
   (commodity-symbol (slot-value annotated-commodity 'referent)))
 
-(defmethod commodity-mapping-key ((annotated-commodity annotated-commodity))
-  (commodity-mapping-key (slot-value annotated-commodity 'referent)))
-
 (defmethod market-value ((annotated-commodity annotated-commodity) &optional datetime)
   (market-value (slot-value annotated-commodity 'referent) datetime))
 
@@ -471,10 +466,8 @@
   (assert in))
 
 (defun annotation-string (annotation &optional out)
-  ;; jww (2007-10-15): Don't output the fields which don't exist here.
   (assert annotation)
-  (assert out)
-  (format "{~a} [~a] (~a)"
+  (format out "~:[ {~a}~;~]~:[ [~a]~;~]~:[ (~a)~;~]"
           (commodity-annotation-price annotation)
           (commodity-annotation-date annotation)
           (commodity-annotation-tag annotation)))
@@ -527,13 +520,13 @@
 ;; up.
 
 (defstruct commodity-pool
-  (commodities-by-name-map (make-hash-table) :type hash-table)
+  (commodities-by-name-map (make-hash-table :test 'equal) :type hash-table)
   (commodities-by-serial-list '((0 . nil)) :type list)
   (default-commodity nil :type (or commodity null)))
 
 (defparameter *default-commodity-pool* (make-commodity-pool))
 
-(defun create-commodity (symbol &key (pool *default-commodity-pool*))
+(defun create-commodity (name &key (pool *default-commodity-pool*))
   ;; shared_ptr<commodity_t::base_t>
   ;;   base_commodity(new commodity_t::base_t(symbol));
   ;; std::auto_ptr<commodity_t> commodity(new commodity_t(this, base_commodity));
@@ -563,25 +556,27 @@
   ;;
   ;; commodities.push_back(commodity.get());
   ;; return commodity.release();
-  (let* ((base (make-instance 'basic-commodity :symbol symbol))
-	 (commodity (make-instance 'commodity :base base))
-	 (symbol (commodity-symbol commodity)))
+  (let* ((symbol (parse-commodity-symbol name))
+	 (base (make-instance 'basic-commodity :symbol symbol))
+	 (commodity (make-instance 'commodity :base base :pool pool)))
+
+    (assert (string= name (commodity-symbol-name symbol)))
     (if (commodity-symbol-needs-quoting-p symbol)
 	(setf (slot-value commodity 'qualified-symbol)
-	      (concatenate 'string
-			   "\"" (commodity-symbol-name symbol) "\"")))
+	      (concatenate 'string "\"" name "\"")))
 
     (let ((commodities-by-serial-list
 	   (commodity-pool-commodities-by-serial-list pool)))
-      (setf (commodity-serial-number symbol)
-	    (1+ (car (last commodities-by-serial-list))))
-      (setf (cdr (last commodities-by-serial-list))
-	    (cons (commodity-serial-number symbol) commodity)))
+      (setf (commodity-serial-number commodity)
+	    (1+ (caar (last commodities-by-serial-list))))
+      (nconc commodities-by-serial-list
+	     (list (cons (commodity-serial-number commodity) commodity))))
 
-    (setf (gethash symbol (commodity-pool-commodities-by-name-map pool))
-	  commodity)))
+    (let ((names-map (commodity-pool-commodities-by-name-map pool)))
+      (assert (not (gethash name names-map)))
+      (setf (gethash name names-map) commodity))))
 
-(defun find-commodity (symbol &key (pool *default-commodity-pool*))
+(defun find-commodity (name &key (pool *default-commodity-pool*))
   ;; DEBUG("amounts.commodities", "Find commodity " << symbol);
   ;;
   ;; typedef commodity_pool_t::commodities_t::nth_index<1>::type
@@ -594,7 +589,7 @@
   ;; else
   ;;   return NULL;
   (assert pool)
-  (assert symbol))
+  (assert name))
 
 (defun find-commodity-by-serial (serial &key (pool *default-commodity-pool*))
   ;; DEBUG("amounts.commodities", "Find commodity by ident " << ident);
@@ -607,7 +602,7 @@
   (assert pool)
   (assert serial))
 
-(defun find-or-create-commodity (symbol &key (pool *default-commodity-pool*))
+(defun find-or-create-commodity (name &key (pool *default-commodity-pool*))
   ;; DEBUG("amounts.commodities", "Find-or-create commodity " << symbol);
   ;;
   ;; commodity_t * commodity = find(symbol);
@@ -615,9 +610,9 @@
   ;;   return commodity;
   ;; return create(symbol);
   (assert pool)
-  (assert symbol))
+  (assert name))
 
-(defun create-annotated-commodity (symbol details
+(defun create-annotated-commodity (name details
 				   &key (pool *default-commodity-pool*))
   ;; commodity_t * new_comm = create(symbol);
   ;; if (! new_comm)
@@ -628,7 +623,7 @@
   ;; else
   ;;   return new_comm;
   (assert pool)
-  (assert symbol)
+  (assert name)
   (assert details))
 
 (defun make-qualified-name (commodity commodity-annotation)
@@ -649,7 +644,7 @@
   (assert commodity)
   (assert commodity-annotation))
 
-(defun find-annotated-commodity (symbol details
+(defun find-annotated-commodity (name details
 				 &key (pool *default-commodity-pool*))
   ;; commodity_t * comm = find(symbol);
   ;; if (! comm)
@@ -667,10 +662,10 @@
   ;;   return comm;
   ;; }
   (assert pool)
-  (assert symbol)
+  (assert name)
   (assert details))
 
-(defun find-or-create-annotated-commodity (symbol details
+(defun find-or-create-annotated-commodity (name details
 					   &key (pool *default-commodity-pool*))
   ;; commodity_t * comm = find(symbol);
   ;; if (! comm)
@@ -681,7 +676,7 @@
   ;; else
   ;;   return comm;
   (assert pool)
-  (assert symbol)
+  (assert name)
   (assert details))
 
 (defun create-annotated-commodity-internal (commodity details mapping-key
