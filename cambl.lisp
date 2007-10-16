@@ -533,7 +533,7 @@
 
 (defparameter *default-commodity-pool* (make-commodity-pool))
 
-(defmethod create-commodity ((pool commodity-pool) (symbol string))
+(defun create-commodity (symbol &key (pool *default-commodity-pool*))
   ;; shared_ptr<commodity_t::base_t>
   ;;   base_commodity(new commodity_t::base_t(symbol));
   ;; std::auto_ptr<commodity_t> commodity(new commodity_t(this, base_commodity));
@@ -581,7 +581,7 @@
     (setf (gethash symbol (commodity-pool-commodities-by-name-map pool))
 	  commodity)))
 
-(defmethod find-commodity ((pool commodity-pool) (symbol string))
+(defun find-commodity (symbol &key (pool *default-commodity-pool*))
   ;; DEBUG("amounts.commodities", "Find commodity " << symbol);
   ;;
   ;; typedef commodity_pool_t::commodities_t::nth_index<1>::type
@@ -596,7 +596,7 @@
   (assert pool)
   (assert symbol))
 
-(defmethod find-commodity ((pool commodity-pool) (serial integer))
+(defun find-commodity-by-serial (serial &key (pool *default-commodity-pool*))
   ;; DEBUG("amounts.commodities", "Find commodity by ident " << ident);
   ;;
   ;; typedef commodity_pool_t::commodities_t::nth_index<0>::type
@@ -607,7 +607,7 @@
   (assert pool)
   (assert serial))
 
-(defmethod find-or-create-commodity ((pool commodity-pool) (symbol string))
+(defun find-or-create-commodity (symbol &key (pool *default-commodity-pool*))
   ;; DEBUG("amounts.commodities", "Find-or-create commodity " << symbol);
   ;;
   ;; commodity_t * commodity = find(symbol);
@@ -617,8 +617,8 @@
   (assert pool)
   (assert symbol))
 
-(defmethod create-annotated-commodity ((pool commodity-pool) (symbol string)
-				       (details commodity-annotation))
+(defun create-annotated-commodity (symbol details
+				   &key (pool *default-commodity-pool*))
   ;; commodity_t * new_comm = create(symbol);
   ;; if (! new_comm)
   ;;   return NULL;
@@ -649,8 +649,8 @@
   (assert commodity)
   (assert commodity-annotation))
 
-(defmethod find-annotated-commodity ((pool commodity-pool) (symbol string)
-				     (details commodity-annotation))
+(defun find-annotated-commodity (symbol details
+				 &key (pool *default-commodity-pool*))
   ;; commodity_t * comm = find(symbol);
   ;; if (! comm)
   ;;   return NULL;
@@ -670,8 +670,8 @@
   (assert symbol)
   (assert details))
 
-(defmethod find-or-create-annotated-commodity ((pool commodity-pool) (symbol string)
-					       (details commodity-annotation))
+(defun find-or-create-annotated-commodity (symbol details
+					   &key (pool *default-commodity-pool*))
   ;; commodity_t * comm = find(symbol);
   ;; if (! comm)
   ;;   return NULL;
@@ -684,9 +684,8 @@
   (assert symbol)
   (assert details))
 
-(defmethod create-annotated-commodity-internal ((pool commodity-pool) (commodity commodity)
-						(details commodity-annotation)
-						(mapping-key string))
+(defun create-annotated-commodity-internal (commodity details mapping-key
+					    &key (pool *default-commodity-pool*))
   ;; assert(comm);
   ;; assert(details);
   ;; assert(! mapping_key.empty());
@@ -713,8 +712,8 @@
   (assert details)
   (assert mapping-key))
 
-(defmethod find-or-create-annotated-commodity ((pool commodity-pool) (commodity commodity)
-					       (details commodity-annotation))
+(defun find-or-create-annotated-commodity-internal
+    (commodity details &key (pool *default-commodity-pool*))
   ;; assert(comm);
   ;; assert(details);
   ;;
