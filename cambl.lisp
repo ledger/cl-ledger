@@ -58,6 +58,9 @@
 
 ;; Commodity symbols
 
+(deftype datetime ()
+  'integer)
+
 (defstruct commodity-symbol
   (name "" :type string)
   (needs-quoting-p nil :type boolean)
@@ -91,6 +94,74 @@
      0-9 . , ; - + * / ^ ? : & | ! = \"
      < > { } [ ] ( ) @")
 
+;; Commodities are references to basic commodities, which store the common
+;; details.  This is so the commodities USD and $ can both refer to the same
+;; underlying kind.
+
+(defstruct commodity-price-history
+  (prices nil :type list)
+  (last-lookup nil :type (or datetime null)))
+
+(defclass basic-commodity ()
+  ((symbol :initarg :symbol :type commodity-symbol)
+   (name :accessor commodity-name)
+   (note :accessor commodity-note)
+   (smaller-unit-equivalence :accessor smaller-unit-equivalence)
+   (larger-unit-equivalence :accessor larger-unit-equivalence)
+   (use-thousand-marks-p :initarg :thousand-marks-p
+			 :accessor use-thousand-marks-p :type boolean)
+   (no-market-price-p :initarg :no-market-price-p
+		      :accessor no-market-price-p :type boolean)
+   (builtin-commodity-p :initarg :builtin-commodity-p
+			:accessor builtin-commodity-p :type boolean)
+   (default-display-precision :initform 0
+     :accessor default-display-precision :type fixnum)
+   (price-history :accessor commodity-price-history
+		  :type commodity-price-history)))
+
+(defstruct commodity-pool
+  (commodities-by-name-map (make-hash-table :test 'equal) :type hash-table)
+  (commodities-by-serial-list '((0 . nil)) :type list)
+  (default-commodity nil))
+
+(defparameter *default-commodity-pool* (make-commodity-pool))
+
+(defclass commodity ()
+  ((basic-commodity :accessor basic-commodity :initarg :base
+		    :type basic-commodity)
+   (commodity-pool :accessor commodity-pool :initarg :pool
+		   :type commodity-pool)
+   (serial-number :accessor commodity-serial-number :type fixnum)
+   qualified-symbol
+   (has-qualified-symbol-p :type boolean :initform nil)
+   mapping-key
+   (annotated-p :initform nil :type boolean)))
+
+(defclass amount ()
+  (commodity
+   quantity
+   value-origins-list
+   display-precision
+   internal-precision
+   commodity-pool
+   keep-base
+   keep-price
+   keep-date
+   keep-tag
+   stream-fullstrings))
+
+(defclass balance ()
+  (amounts-map))
+
+(defclass annotated-commodity (commodity)
+  ((referent :type commodity)
+   (annotation :type commodity-annotation)))
+
+(defstruct commodity-annotation
+  (price nil :type (or amount null))
+  (date nil :type (or datetime null))
+  (tag nil :type (or string null)))
+
 (defun symbol-name-needs-quoting-p (name)
   "Return T if the given symbol NAME requires quoting."
   (declare (type string name))
@@ -110,19 +181,7 @@
   invalid character is reading, reading from the stream stops and the invalid
   character is put back."
   (declare (type (or stream string null) in))
-  ;; char buf[256];
-  ;; char c = peek_next_nonws(in);
-  ;; if (c == '"') {
-  ;;   in.get(c);
-  ;;   READ_INTO(in, buf, 255, c, c != '"');
-  ;;   if (c == '"')
-  ;;     in.get(c);
-  ;;   else
-  ;;     throw_(amount_error, "Quoted commodity symbol lacks closing quote");
-  ;; } else {
-  ;;   READ_INTO(in, buf, 255, c, ! invalid_chars[(unsigned char)c]);
-  ;; }
-  ;; symbol = buf;
+
   (let ((buf (make-string-output-stream))
 	(in (if in
 		(if (typep in 'stream)
@@ -155,44 +214,8 @@
     (make-commodity-symbol :name (get-output-stream-string buf)
 			   :needs-quoting-p needs-quoting-p)))
 
-;; Commodities are references to basic commodities, which store the common
-;; details.  This is so the commodities USD and $ can both refer to the same
-;; underlying kind.
-
-(defstruct commodity-price-history
-  (prices nil :type list)
-  (last-lookup nil :type (or integer null)))
-
-(defclass basic-commodity ()
-  ((symbol :initarg :symbol :type commodity-symbol)
-   (name :accessor commodity-name)
-   (note :accessor commodity-note)
-   (smaller-unit-equivalence :accessor smaller-unit-equivalence)
-   (larger-unit-equivalence :accessor larger-unit-equivalence)
-   (use-thousand-marks-p :initarg :thousand-marks-p
-			 :accessor use-thousand-marks-p :type boolean)
-   (no-market-price-p :initarg :no-market-price-p
-		      :accessor no-market-price-p :type boolean)
-   (builtin-commodity-p :initarg :builtin-commodity-p
-			:accessor builtin-commodity-p :type boolean)
-   (default-display-precision :initform 0
-     :accessor default-display-precision :type fixnum)
-   (price-history :accessor commodity-price-history
-		  :type commodity-price-history)))
-
 ;; The commodity and annotated-commodity classes are the main interface class
 ;; for dealing with commodities themselves (which most people will never do).
-
-(defclass commodity ()
-  ((basic-commodity :accessor basic-commodity :initarg :base
-		    :type basic-commodity)
-   (commodity-pool :accessor commodity-pool :initarg :pool
-		   :type commodity-pool)
-   (serial-number :accessor commodity-serial-number :type fixnum)
-   qualified-symbol
-   (has-qualified-symbol-p :type boolean :initform nil)
-   mapping-key
-   (annotated-p :initform nil :type boolean)))
 
 (defgeneric commodity-symbol (commodity))
 
@@ -386,15 +409,6 @@
 ;; reference a basic-commodity) which carry along additional contextual
 ;; information relating to a point in time.
 
-(defstruct commodity-annotation
-  price
-  date
-  tag)
-
-(defclass annotated-commodity (commodity)
-  ((referent :type commodity)
-   (annotation :type commodity-annotation)))
-
 (defgeneric commodity-annotated-p (item))
 
 (defmethod initialize-instance :after
@@ -534,51 +548,23 @@
 ;; All commodities are allocated within a pool, which can be used to look them
 ;; up.
 
-(defstruct commodity-pool
-  (commodities-by-name-map (make-hash-table :test 'equal) :type hash-table)
-  (commodities-by-serial-list '((0 . nil)) :type list)
-  (default-commodity nil :type (or commodity null)))
-
-(defparameter *default-commodity-pool* (make-commodity-pool))
-
 (defun create-commodity (name &key (pool *default-commodity-pool*))
-  ;; shared_ptr<commodity_t::base_t>
-  ;;   base_commodity(new commodity_t::base_t(symbol));
-  ;; std::auto_ptr<commodity_t> commodity(new commodity_t(this, base_commodity));
-  ;;
-  ;; DEBUG("amounts.commodities", "Creating base commodity " << symbol);
-  ;;
-  ;; // Create the "qualified symbol" version of this commodity's symbol
-  ;; if (commodity_t::symbol_needs_quotes(symbol)) {
-  ;;   commodity->qualified_symbol = "\"";
-  ;;   *commodity->qualified_symbol += symbol;
-  ;;   *commodity->qualified_symbol += "\"";
-  ;; }
-  ;;
-  ;; DEBUG("amounts.commodities",
-  ;;       "Creating commodity '" << commodity->symbol() << "'");
-  ;;
-  ;; // Start out the new commodity with the default commodity's flags
-  ;; // and precision, if one has been defined.
-  ;; #if 0
-  ;; // jww (2007-05-02): This doesn't do anything currently!
-  ;; if (default_commodity)
-  ;;   commodity->drop_flags(COMMODITY_STYLE_THOUSANDS |
-  ;;                         COMMODITY_STYLE_NOMARKET);
-  ;; #endif
-  ;;
-  ;; commodity->ident = commodities.size();
-  ;;
-  ;; commodities.push_back(commodity.get());
-  ;; return commodity.release();
+  "Create a COMMODITY after the symbol name found by parsing NAME.
+  The NAME can be either a string or an input stream, or nil, in which
+  case the name is read from *standard-input*.
+  The argument :pool specifies the commodity pool which will maintain
+  this commodity, and by which other code may access it again.
+  The resulting COMMODITY object is returned."
+  (declare (type (or string stream null) name))
+  (declare (type commodity-pool pool))
   (let* ((symbol (parse-commodity-symbol name))
 	 (base (make-instance 'basic-commodity :symbol symbol))
-	 (commodity (make-instance 'commodity :base base :pool pool)))
+	 (commodity (make-instance 'commodity :base base :pool pool))
+	 (symbol-name (commodity-symbol-name symbol)))
 
-    (assert (string= name (commodity-symbol-name symbol)))
     (if (commodity-symbol-needs-quoting-p symbol)
 	(setf (slot-value commodity 'qualified-symbol)
-	      (concatenate 'string "\"" name "\"")))
+	      (concatenate 'string "\"" symbol-name "\"")))
 
     (let ((commodities-by-serial-list
 	   (commodity-pool-commodities-by-serial-list pool)))
@@ -588,44 +574,37 @@
 	     (list (cons (commodity-serial-number commodity) commodity))))
 
     (let ((names-map (commodity-pool-commodities-by-name-map pool)))
-      (assert (not (gethash name names-map)))
-      (setf (gethash name names-map) commodity))))
+      (assert (not (gethash symbol-name names-map)))
+      (setf (gethash symbol-name names-map) commodity))))
 
-(defun find-commodity (name &key (pool *default-commodity-pool*))
-  ;; DEBUG("amounts.commodities", "Find commodity " << symbol);
-  ;;
-  ;; typedef commodity_pool_t::commodities_t::nth_index<1>::type
-  ;;   commodities_by_name;
-  ;;
-  ;; commodities_by_name& name_index = commodities.get<1>();
-  ;; commodities_by_name::const_iterator i = name_index.find(symbol);
-  ;; if (i != name_index.end())
-  ;;   return *i;
-  ;; else
-  ;;   return NULL;
-  (assert pool)
-  (assert name))
+(defun find-commodity (name &key (pool *default-commodity-pool*)
+		       (create-if-not-exists-p nil))
+  "Find a COMMODITY identifier by the symbol name found by parsing NAME.
+  The NAME can be either a string or an input stream, or nil, in which
+  case the name is read from *standard-input*.
+  The argument :POOL specifies the commodity pool which will maintain
+  this commodity, and by which other code may access it again.
+  The resulting COMMODITY object is returned.
+  The argument :CREATE-IF-NOT-EXISTS-P indicates whether a new commodity
+  should be created if one cannot already be found."
+  (declare (type (or string stream null) name))
+  (declare (type commodity-pool pool))
+  (let ((by-name-map (commodity-pool-commodities-by-name-map pool)))
+    (multiple-value-bind (entry present-p)
+	(gethash name by-name-map)
+      (if present-p
+	  entry
+	  (and create-if-not-exists-p
+	       (create-commodity name :pool pool))))))
 
 (defun find-commodity-by-serial (serial &key (pool *default-commodity-pool*))
-  ;; DEBUG("amounts.commodities", "Find commodity by ident " << ident);
-  ;;
-  ;; typedef commodity_pool_t::commodities_t::nth_index<0>::type
-  ;;   commodities_by_ident;
-  ;;
-  ;; commodities_by_ident& ident_index = commodities.get<0>();
-  ;; return ident_index[ident];
-  (assert pool)
-  (assert serial))
-
-(defun find-or-create-commodity (name &key (pool *default-commodity-pool*))
-  ;; DEBUG("amounts.commodities", "Find-or-create commodity " << symbol);
-  ;;
-  ;; commodity_t * commodity = find(symbol);
-  ;; if (commodity)
-  ;;   return commodity;
-  ;; return create(symbol);
-  (assert pool)
-  (assert name))
+  "Find the commodity with the matching unique SERIAL number.
+  nil is returned if no such commodity exists."
+  (declare (type fixnum serial))
+  (declare (type commodity-pool pool))
+  (let ((commodities-by-serial-list
+	 (commodity-pool-commodities-by-serial-list pool)))
+    (cdr (assoc serial commodities-by-serial-list))))
 
 (defun create-annotated-commodity (name details
 				   &key (pool *default-commodity-pool*))
@@ -742,19 +721,6 @@
 ;; Amounts are bignums with a specific attached commodity.  [TODO: Also, when
 ;; math is performed with them, they retain knowledge of the origins of their
 ;; value].
-
-(defclass amount ()
-  (commodity
-   quantity
-   value-origins-list
-   display-precision
-   internal-precision
-   commodity-pool
-   keep-base
-   keep-price
-   keep-date
-   keep-tag
-   stream-fullstrings))
 
 ;; The `keep-base' member determines whether scalable commodities are
 ;; automatically converted to their most reduced form when printing.  The
@@ -1789,9 +1755,6 @@
   ;;
   ;; return decpt;
   (assert string))
-
-(defclass balance ()
-  (amounts-map))
 
 (defgeneric add-to-balance (balance value))
 
