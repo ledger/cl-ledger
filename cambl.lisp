@@ -58,22 +58,76 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
 
 (defstruct commodity-symbol
   (name "" :type string)
+  (needs-quoting-p nil :type boolean)
   (prefixed-p nil :type boolean)
   (connected-p nil :type boolean))
 
-(defun commodity-symbol-needs-quoting-p (name)
+(defun symbol-name-needs-quoting-p (name)
   "Return T if the given symbol NAME requires quoting."
-  (if (typep name 'commodity-symbol)
-      (setq name (commodity-symbol-name name)))
-
-  (assert (typep name 'string))
-
+  (declare (type string name))
   (loop for c across name do
        (and (or (char= c #\Space) (char= c #\Tab)
 		(digit-char-p c)
 		(char= c #\-) (char= c #\.))
 	    (return t))))
    
+(defmethod parse-commodity-symbol ((commodity-pool commodity-pool) &optional in)
+  "Parse a commodity symbol from the input stream IN.  This is the correct
+  entry point for creating a new commodity symbol.
+
+  A commodity may not contain any of the characters found in
+  `+invalid-symbol-chars+'.  To include such characters in a symbol name --
+  except for #\\\", which may never appear in a symbol name -- surround the
+  commodity name with double quotes.  It is an error if EOF is reached without
+  reading the ending double quote.  If the symbol name is not quoted, and an
+  invalid character is reading, reading from the stream stops and the invalid
+  character is put back."
+  (declare (type (or stream string null) in))
+  ;; char buf[256];
+  ;; char c = peek_next_nonws(in);
+  ;; if (c == '"') {
+  ;;   in.get(c);
+  ;;   READ_INTO(in, buf, 255, c, c != '"');
+  ;;   if (c == '"')
+  ;;     in.get(c);
+  ;;   else
+  ;;     throw_(amount_error, "Quoted commodity symbol lacks closing quote");
+  ;; } else {
+  ;;   READ_INTO(in, buf, 255, c, ! invalid_chars[(unsigned char)c]);
+  ;; }
+  ;; symbol = buf;
+  (let ((buf (make-string-output-stream))
+	(in (if in
+		(if (typep in 'stream)
+		    in
+		    (make-string-input-stream in))
+		*standard-input*))
+	needs-quoting-p)
+    (if (char= #\" (peek-char nil in))
+	(progn
+	  (read-char in)
+	  (loop
+	     (let ((c (read-char in nil)))
+	       (if c
+		   (if (char= #\" c)
+		       (return)
+		       (progn
+			 (if (aref +invalid-symbol-chars+ (char-code c))
+			     (setf needs-quoting-p t))
+			 (write-char c buf)))
+		   (error "Quoted commodity symbol lacks closing quote")))))
+	(loop
+	   (let ((c (read-char in nil)))
+	     (if c
+		 (if (aref +invalid-symbol-chars+ (char-code c))
+		     (progn
+		       (unread-char c in)
+		       (return))
+		     (write-char c buf))
+		 (return)))))
+    (make-commodity-symbol :name (get-output-stream-string buf)
+			   :needs-quoting-p needs-quoting-p)))
+
 ;; Commodities are references to basic commodities, which store the common
 ;; details.  This is so the commodities USD and $ can both refer to the same
 ;; underlying kind.
@@ -100,46 +154,32 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
    (price-history :accessor commodity-price-history
 		  :type commodity-price-history)))
 
-(defun parse-commodity-symbol (in)
-  ;; // Invalid commodity characters:
-  ;; //   SPACE, TAB, NEWLINE, RETURN
-  ;; //   0-9 . , ; - + * / ^ ? : & | ! =
-  ;; //   < > { } [ ] ( ) @
-  ;;
-  ;; static int invalid_chars[256] = {
-  ;;   /* 0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f */
-  ;;   /* 00 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0,
-  ;;   /* 10 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ;;   /* 20 */ 1, 1, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1,
-  ;;   /* 30 */ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  ;;   /* 40 */ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ;;   /* 50 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0,
-  ;;   /* 60 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ;;   /* 70 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0,
-  ;;   /* 80 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ;;   /* 90 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ;;   /* a0 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ;;   /* b0 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ;;   /* c0 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ;;   /* d0 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ;;   /* e0 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ;;   /* f0 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ;; };
-  ;;
-  ;; char buf[256];
-  ;; char c = peek_next_nonws(in);
-  ;; if (c == '"') {
-  ;;   in.get(c);
-  ;;   READ_INTO(in, buf, 255, c, c != '"');
-  ;;   if (c == '"')
-  ;;     in.get(c);
-  ;;   else
-  ;;     throw_(amount_error, "Quoted commodity symbol lacks closing quote");
-  ;; } else {
-  ;;   READ_INTO(in, buf, 255, c, ! invalid_chars[(unsigned char)c]);
-  ;; }
-  ;; symbol = buf;
-  )
+(defmacro define-array-constant (name value &optional doc)
+  `(defconstant ,name (if (boundp ',name) (symbol-value ',name) ,value)
+     ,@(when doc (list doc))))
+
+(define-array-constant +invalid-symbol-chars+
+  #(#|        0   1   2   3   4   5   6   7   8   9   a   b   c   d   e   f |#
+    #| 00 |# nil nil nil nil nil nil nil nil nil  t   t  nil nil  t  nil nil
+    #| 10 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| 20 |#  t   t   t  nil nil nil  t  nil  t   t   t   t   t   t   t   t 
+    #| 30 |#  t   t   t   t   t   t   t   t   t   t   t   t   t   t   t   t 
+    #| 40 |#  t  nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| 50 |# nil nil nil nil nil nil nil nil nil nil nil  t  nil  t   t  nil
+    #| 60 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| 70 |# nil nil nil nil nil nil nil nil nil nil nil  t  nil  t   t  nil
+    #| 80 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| 90 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| a0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| b0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| c0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| d0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| e0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| f0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil)
+  "The invalid commodity symbol characters are:
+     Space Tab Newline Return
+     0-9 . , ; - + * / ^ ? : & | ! = \"
+     < > { } [ ] ( ) @")
 
 ;; The commodity and annotated-commodity classes are the main interface class
 ;; for dealing with commodities themselves (which most people will never do).
