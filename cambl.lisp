@@ -31,6 +31,18 @@
 ;; (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 ;; OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+;;; Commentary:
+
+;; This library aims to provide convenient access to commoditized math.  That
+;; is, math involving numbers with units.  However, unlike scientific units,
+;; this library does not allow the use of "compound" units.  If you divide 1kg
+;; by 1m, you do not get "1 kg/m", but an error.  This is because the intended
+;; use of this library is for situations that do not allow compounded units,
+;; such as financial transactions, and the algorithms have been simplified
+;; accordingly.  It also allows contextual information to be tracked during
+;; commodity calculations -- the time of conversion from one type to another,
+;; the rated value at the time of conversion.
+
 (declaim (optimize debug))
 
 (defpackage :CAMBL
@@ -42,62 +54,191 @@
 The default is US style, which is 1,000.00.  Note that thousand markers are
 only used if the commodity's own `thousand-marks-p' accessor returns T.")
 
-(defclass commodity-pool ()
-  (commodities-by-name-map
-   commodities-by-serial-map
-   default-commodity))
+;; Commodity symbols
 
-(defclass commodity-symbol ()
-  ((name :accessor symbol-name)
-   (prefixed-p :accessor symbol-prefixed-p)
-   (connected-p :accessor symbol-connected-p)))
+(defstruct commodity-symbol
+  (name "" :type string)
+  (prefixed-p nil :type boolean)
+  (connected-p nil :type boolean))
 
-(defun name-needs-quoting-p (name)
+(defun commodity-symbol-needs-quoting-p (name)
   "Return T if the given symbol NAME requires quoting."
-  (declare (type string name))
+  (if (typep name 'commodity-symbol)
+      (setq name (commodity-symbol-name name)))
+
+  (assert (typep name 'string))
+
   (loop for c across name do
        (and (or (char= c #\Space) (char= c #\Tab)
 		(digit-char-p c)
 		(char= c #\-) (char= c #\.))
 	    (return t))))
    
-(defclass commodity-price-history ()
-  (prices
-   last-lookup))
+;; Commodities are references to basic commodities, which store the common
+;; details.  This is so the commodities USD and $ can both refer to the same
+;; underlying kind.
+
+(defstruct commodity-price-history
+  (prices nil :type list)
+  (last-lookup nil :type (or integer null)))
 
 (defclass basic-commodity ()
-  ((symbol :accessor commodity-symbol :initarg :symbol)
+  ((symbol :accessor commodity-symbol :initarg :symbol
+	   :type commodity-symbol)
    (name :accessor commodity-name)
    (note :accessor commodity-note)
-   (smaller-equivalence :accessor smaller-equivalence)
-   (larger-equivalence :accessor larger-equivalence)
-   (thousand-marks-p :initarg :thousand-marks-p)
-   (no-market-price-p :initarg :no-market-price-p)
-   (builtin-commodity-p :initarg :builtin-commodity-p)
-   (default-display-precision :initform 0)
-   (price-history :accessor commodity-price-history)))
+   (smaller-unit-equivalence :accessor smaller-unit-equivalence)
+   (larger-unit-equivalence :accessor larger-unit-equivalence)
+   (use-thousand-marks-p :initarg :thousand-marks-p
+			 :accessor use-thousand-marks-p :type boolean)
+   (no-market-price-p :initarg :no-market-price-p
+		      :accessor no-market-price-p :type boolean)
+   (builtin-commodity-p :initarg :builtin-commodity-p
+			:accessor builtin-commodity-p :type boolean)
+   (default-display-precision :initform 0
+     :accessor default-display-precision :type fixnum)
+   (price-history :accessor commodity-price-history
+		  :type commodity-price-history)))
+
+(defun parse-commodity-symbol (in)
+  ;; // Invalid commodity characters:
+  ;; //   SPACE, TAB, NEWLINE, RETURN
+  ;; //   0-9 . , ; - + * / ^ ? : & | ! =
+  ;; //   < > { } [ ] ( ) @
+  ;;
+  ;; static int invalid_chars[256] = {
+  ;;   /* 0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f */
+  ;;   /* 00 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0,
+  ;;   /* 10 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ;;   /* 20 */ 1, 1, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1,
+  ;;   /* 30 */ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+  ;;   /* 40 */ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ;;   /* 50 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0,
+  ;;   /* 60 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ;;   /* 70 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0,
+  ;;   /* 80 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ;;   /* 90 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ;;   /* a0 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ;;   /* b0 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ;;   /* c0 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ;;   /* d0 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ;;   /* e0 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ;;   /* f0 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  ;; };
+  ;;
+  ;; char buf[256];
+  ;; char c = peek_next_nonws(in);
+  ;; if (c == '"') {
+  ;;   in.get(c);
+  ;;   READ_INTO(in, buf, 255, c, c != '"');
+  ;;   if (c == '"')
+  ;;     in.get(c);
+  ;;   else
+  ;;     throw_(amount_error, "Quoted commodity symbol lacks closing quote");
+  ;; } else {
+  ;;   READ_INTO(in, buf, 255, c, ! invalid_chars[(unsigned char)c]);
+  ;; }
+  ;; symbol = buf;
+  )
+
+;; The commodity and annotated-commodity classes are the main interface class
+;; for dealing with commodities themselves (which most people will never do).
 
 (defclass commodity ()
-  (basic-commodity
-   commodity-pool
-   serial-number
-   qualified-name
-   qualified-name-p
-   (mapping-key :accessor mapping-key)
-   annotated-p))
+  ((basic-commodity :accessor basic-commodity :type basic-commodity)
+   (commodity-pool :accessor commodity-pool :type commodity-pool)
+   (serial-number :accessor commodity-serial-number :type fixnum)
+   qualified-symbol
+   (has-qualified-symbol-p :type boolean)
+   mapping-key
+   (annotated-p :accessor commodity-annotated-p :type boolean)))
 
 (defmethod commodity-symbol ((commodity commodity))
-  (if (qualified-name-p commodity)
-      (qualified-name commodity)
-      (commodity-symbol (base-commodity commodity))))
+  (if (slot-value commodity 'has-qualified-symbol-p)
+      (slot-value commodity 'qualified-symbol)
+      (commodity-symbol (basic-commodity commodity))))
 
-(defmethod mapping-key ((commodity commodity))
-  (or (mapping-key commodity)
-      (commodity-symbol (base-commodity commodity))))
+(defmethod commodity-mapping-key ((commodity commodity))
+  (or (slot-value commodity 'mapping-key)
+      (commodity-symbol (basic-commodity commodity))))
 
-(defun commodity-equalp (a b)
+(defmethod commodity-equalp ((a commodity) (b commodity))
   "Two commodities are considered EQUALP if they refer to the same base."
+  (assert (nth-value 0 (subtypep (type-of a) 'commodity)))
+  (assert (nth-value 0 (subtypep (type-of b) 'commodity)))
   (eq (basic-commodity a) (basic-commodity b)))
+
+(defmethod strip-annotations ((commodity commodity)
+			      &optional keep-price keep-date keep-tag))
+
+(defun compare-commodity-representations (left right)
+  "Return T if commodity LEFT should be sorted before RIGHT."
+  ;; commodity_t& leftcomm(left->commodity());
+  ;; commodity_t& rightcomm(right->commodity());
+  ;;
+  ;; int cmp = leftcomm.base_symbol().compare(rightcomm.base_symbol());
+  ;; if (cmp != 0)
+  ;;   return cmp < 0;
+  ;;
+  ;; if (! leftcomm.annotated) {
+  ;;   assert(rightcomm.annotated);
+  ;;   return true;
+  ;; }
+  ;; else if (! rightcomm.annotated) {
+  ;;   assert(leftcomm.annotated);
+  ;;   return false;
+  ;; }
+  ;; else {
+  ;;   annotated_commodity_t& aleftcomm(static_cast<annotated_commodity_t&>(leftcomm));
+  ;;   annotated_commodity_t& arightcomm(static_cast<annotated_commodity_t&>(rightcomm));
+  ;;
+  ;;   if (! aleftcomm.details.price && arightcomm.details.price)
+  ;;     return true;
+  ;;   if (aleftcomm.details.price && ! arightcomm.details.price)
+  ;;     return false;
+  ;;
+  ;;   if (aleftcomm.details.price && arightcomm.details.price) {
+  ;;     amount_t leftprice(*aleftcomm.details.price);
+  ;;     leftprice.in_place_reduce();
+  ;;     amount_t rightprice(*arightcomm.details.price);
+  ;;     rightprice.in_place_reduce();
+  ;;
+  ;;     if (leftprice.commodity() == rightprice.commodity()) {
+  ;;       return (leftprice - rightprice).sign() < 0;
+  ;;     } else {
+  ;;       // Since we have two different amounts, there's really no way
+  ;;       // to establish a true sorting order; we'll just do it based
+  ;;       // on the numerical values.
+  ;;       leftprice.clear_commodity();
+  ;;       rightprice.clear_commodity();
+  ;;       return (leftprice - rightprice).sign() < 0;
+  ;;     }
+  ;;   }
+  ;;
+  ;;   if (! aleftcomm.details.date && arightcomm.details.date)
+  ;;     return true;
+  ;;   if (aleftcomm.details.date && ! arightcomm.details.date)
+  ;;     return false;
+  ;;
+  ;;   if (aleftcomm.details.date && arightcomm.details.date) {
+  ;;     duration_t diff = *aleftcomm.details.date - *arightcomm.details.date;
+  ;;     return diff.is_negative();
+  ;;   }
+  ;;
+  ;;   if (! aleftcomm.details.tag && arightcomm.details.tag)
+  ;;     return true;
+  ;;   if (aleftcomm.details.tag && ! arightcomm.details.tag)
+  ;;     return false;
+  ;;
+  ;;   if (aleftcomm.details.tag && arightcomm.details.tag)
+  ;;     return *aleftcomm.details.tag < *arightcomm.details.tag;
+  ;;
+  ;;   assert(false);
+  ;;   return true;
+  ;; }
+  )
+
+;; Routines for accessing the historical prices of a commodity
 
 (defun add-price-point (commodity price datetime)
   ;; if (! base->history)
@@ -169,132 +310,16 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
   ;; return price;
   )
 
-(defun parse-commodity-symbol (in)
-  ;; // Invalid commodity characters:
-  ;; //   SPACE, TAB, NEWLINE, RETURN
-  ;; //   0-9 . , ; - + * / ^ ? : & | ! =
-  ;; //   < > { } [ ] ( ) @
-  ;;
-  ;; static int invalid_chars[256] = {
-  ;;   /* 0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f */
-  ;;   /* 00 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0,
-  ;;   /* 10 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ;;   /* 20 */ 1, 1, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1,
-  ;;   /* 30 */ 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-  ;;   /* 40 */ 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ;;   /* 50 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0,
-  ;;   /* 60 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ;;   /* 70 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0,
-  ;;   /* 80 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ;;   /* 90 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ;;   /* a0 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ;;   /* b0 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ;;   /* c0 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ;;   /* d0 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ;;   /* e0 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ;;   /* f0 */ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-  ;; };
-  ;;
-  ;; char buf[256];
-  ;; char c = peek_next_nonws(in);
-  ;; if (c == '"') {
-  ;;   in.get(c);
-  ;;   READ_INTO(in, buf, 255, c, c != '"');
-  ;;   if (c == '"')
-  ;;     in.get(c);
-  ;;   else
-  ;;     throw_(amount_error, "Quoted commodity symbol lacks closing quote");
-  ;; } else {
-  ;;   READ_INTO(in, buf, 255, c, ! invalid_chars[(unsigned char)c]);
-  ;; }
-  ;; symbol = buf;
-  )
+(defun get-price-quote (symbol &optional datetime)
+  (format t "I don't know how to download prices yet."))
 
-(defclass commodity-annotation ()
-  (price
-   date
-   tag))
+;; All commodities are allocated within a pool, which can be used to look them
+;; up.
 
-(defmethod annotation-exists-p ((annotation commodity-annotation))
-  (or (annotation-price annotation)
-      (annotation-date annotation)
-      (annotation-tag annotation)))
-
-(defun parse-commodity-annotation (in)
-  ;; do {
-  ;;   char buf[256];
-  ;;   char c = peek_next_nonws(in);
-  ;;   if (c == '{') {
-  ;;     if (price)
-  ;;       throw_(amount_error, "Commodity specifies more than one price");
-  ;;
-  ;;     in.get(c);
-  ;;     READ_INTO(in, buf, 255, c, c != '}');
-  ;;     if (c == '}')
-  ;;       in.get(c);
-  ;;     else
-  ;;       throw_(amount_error, "Commodity price lacks closing brace");
-  ;;
-  ;;     amount_t temp;
-  ;;     temp.parse(buf, AMOUNT_PARSE_NO_MIGRATE);
-  ;;     temp.in_place_reduce();
-  ;;
-  ;;     // Since this price will maintain its own precision, make sure
-  ;;     // it is at least as large as the base commodity, since the user
-  ;;     // may have only specified {$1} or something similar.
-  ;;
-  ;;     if (temp.has_commodity() &&
-  ;;         temp.precision() < temp.commodity().precision())
-  ;;       temp = temp.round();    // no need to retain individual precision
-  ;;
-  ;;     price = temp;
-  ;;   }
-  ;;   else if (c == '[') {
-  ;;     if (date)
-  ;;       throw_(amount_error, "Commodity specifies more than one date");
-  ;;
-  ;;     in.get(c);
-  ;;     READ_INTO(in, buf, 255, c, c != ']');
-  ;;     if (c == ']')
-  ;;       in.get(c);
-  ;;     else
-  ;;       throw_(amount_error, "Commodity date lacks closing bracket");
-  ;;
-  ;;     date = parse_datetime(buf);
-  ;;   }
-  ;;   else if (c == '(') {
-  ;;     if (tag)
-  ;;       throw_(amount_error, "Commodity specifies more than one tag");
-  ;;
-  ;;     in.get(c);
-  ;;     READ_INTO(in, buf, 255, c, c != ')');
-  ;;     if (c == ')')
-  ;;       in.get(c);
-  ;;     else
-  ;;       throw_(amount_error, "Commodity tag lacks closing parenthesis");
-  ;;
-  ;;     tag = buf;
-  ;;   }
-  ;;   else {
-  ;;     break;
-  ;;   }
-  ;; } while (true);
-  ;;
-  ;; DEBUG("amounts.commodities",
-  ;;       "Parsed commodity annotations: " << std::endl << *this);
-  )
-
-(defun annotation-string (annotation &optional out)
-  ;; jww (2007-10-15): Don't output the fields which don't exist here.
-  (format "{~a} [~a] (~a)"
-          (annotation-price annotation)
-          (annotation-date annotation)
-          (annotation-tag annotation)))
-
-;; jww (2007-10-15): When one of these is made, set annotated-p to T.
-(defclass annotated-commodity (commodity)
-  (referent
-   details))
+(defstruct commodity-pool
+  (commodities-by-name-map (make-hash-table) :type hash-table)
+  (commodities-by-serial-map (make-hash-table) :type hash-table)
+  (default-commodity nil :type commodity))
 
 (defmethod create-commodity ((pool commodity-pool) (symbol string))
   ;; shared_ptr<commodity_t::base_t>
@@ -462,6 +487,109 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
   ;; return create(comm, details, name);
   )
 
+;; annotated-commodity's are references to other commodities (which in turn
+;; reference a basic-commodity) which carry along additional contextual
+;; information relating to a point in time.
+
+(defstruct commodity-annotation
+  (price nil :type (or amount null))
+  (date nil :type (or integer null))
+  (tag nil :type (or string null)))
+
+(defclass annotated-commodity (commodity)
+  ((referent :type commodity)
+   (annotation :accessor commodity-annotation :type commodity-annotation)))
+
+(defmethod initialize-instance :after
+    ((annotated-commodity annotated-commodity) &key)
+  (setf (commodity-annotated-p (slot-value annotated-commodity 'referent)) t))
+
+(defmethod commodity-symbol ((annotated-commodity annotated-commodity))
+  (commodity-symbol (slot-value annotated-commodity 'referent)))
+
+(defmethod commodity-mapping-key ((annotated-commodity annotated-commodity))
+  (commodity-mapping-key (slot-value annotated-commodity 'referent)))
+
+(defmethod market-value ((annotated-commodity annotated-commodity)
+			 &optional datetime)
+  (market-value (slot-value annotated-commodity 'referent)))
+
+(defmethod commodity-annotation-empty-p ((annotation commodity-annotation))
+  (not (or (commodity-annotation-price annotation)
+	   (commodity-annotation-date annotation)
+	   (commodity-annotation-tag annotation))))
+
+(defun parse-commodity-annotation (in)
+  ;; do {
+  ;;   char buf[256];
+  ;;   char c = peek_next_nonws(in);
+  ;;   if (c == '{') {
+  ;;     if (price)
+  ;;       throw_(amount_error, "Commodity specifies more than one price");
+  ;;
+  ;;     in.get(c);
+  ;;     READ_INTO(in, buf, 255, c, c != '}');
+  ;;     if (c == '}')
+  ;;       in.get(c);
+  ;;     else
+  ;;       throw_(amount_error, "Commodity price lacks closing brace");
+  ;;
+  ;;     amount_t temp;
+  ;;     temp.parse(buf, AMOUNT_PARSE_NO_MIGRATE);
+  ;;     temp.in_place_reduce();
+  ;;
+  ;;     // Since this price will maintain its own precision, make sure
+  ;;     // it is at least as large as the base commodity, since the user
+  ;;     // may have only specified {$1} or something similar.
+  ;;
+  ;;     if (temp.has_commodity() &&
+  ;;         temp.precision() < temp.commodity().precision())
+  ;;       temp = temp.round();    // no need to retain individual precision
+  ;;
+  ;;     price = temp;
+  ;;   }
+  ;;   else if (c == '[') {
+  ;;     if (date)
+  ;;       throw_(amount_error, "Commodity specifies more than one date");
+  ;;
+  ;;     in.get(c);
+  ;;     READ_INTO(in, buf, 255, c, c != ']');
+  ;;     if (c == ']')
+  ;;       in.get(c);
+  ;;     else
+  ;;       throw_(amount_error, "Commodity date lacks closing bracket");
+  ;;
+  ;;     date = parse_datetime(buf);
+  ;;   }
+  ;;   else if (c == '(') {
+  ;;     if (tag)
+  ;;       throw_(amount_error, "Commodity specifies more than one tag");
+  ;;
+  ;;     in.get(c);
+  ;;     READ_INTO(in, buf, 255, c, c != ')');
+  ;;     if (c == ')')
+  ;;       in.get(c);
+  ;;     else
+  ;;       throw_(amount_error, "Commodity tag lacks closing parenthesis");
+  ;;
+  ;;     tag = buf;
+  ;;   }
+  ;;   else {
+  ;;     break;
+  ;;   }
+  ;; } while (true);
+  ;;
+  ;; DEBUG("amounts.commodities",
+  ;;       "Parsed commodity annotations: " << std::endl << *this);
+  )
+
+(defun annotation-string (annotation &optional out)
+  ;; jww (2007-10-15): Don't output the fields which don't exist here.
+  (format "{~a} [~a] (~a)"
+          (commodity-annotation-price annotation)
+          (commodity-annotation-date annotation)
+          (commodity-annotation-tag annotation)))
+
 (defmethod strip-annotations ((annotated-commodity annotated-commodity)
 			      &optional keep-price keep-date keep-tag)
   ;; DEBUG("commodity.annotated.strip",
@@ -489,76 +617,7 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
   ;; return *new_comm;
   )
 
-(defun compare-commodities (left right)
-  "Return T if commodity LEFT should be sorted before RIGHT."
-  ;; commodity_t& leftcomm(left->commodity());
-  ;; commodity_t& rightcomm(right->commodity());
-  ;;
-  ;; int cmp = leftcomm.base_symbol().compare(rightcomm.base_symbol());
-  ;; if (cmp != 0)
-  ;;   return cmp < 0;
-  ;;
-  ;; if (! leftcomm.annotated) {
-  ;;   assert(rightcomm.annotated);
-  ;;   return true;
-  ;; }
-  ;; else if (! rightcomm.annotated) {
-  ;;   assert(leftcomm.annotated);
-  ;;   return false;
-  ;; }
-  ;; else {
-  ;;   annotated_commodity_t& aleftcomm(static_cast<annotated_commodity_t&>(leftcomm));
-  ;;   annotated_commodity_t& arightcomm(static_cast<annotated_commodity_t&>(rightcomm));
-  ;;
-  ;;   if (! aleftcomm.details.price && arightcomm.details.price)
-  ;;     return true;
-  ;;   if (aleftcomm.details.price && ! arightcomm.details.price)
-  ;;     return false;
-  ;;
-  ;;   if (aleftcomm.details.price && arightcomm.details.price) {
-  ;;     amount_t leftprice(*aleftcomm.details.price);
-  ;;     leftprice.in_place_reduce();
-  ;;     amount_t rightprice(*arightcomm.details.price);
-  ;;     rightprice.in_place_reduce();
-  ;;
-  ;;     if (leftprice.commodity() == rightprice.commodity()) {
-  ;;       return (leftprice - rightprice).sign() < 0;
-  ;;     } else {
-  ;;       // Since we have two different amounts, there's really no way
-  ;;       // to establish a true sorting order; we'll just do it based
-  ;;       // on the numerical values.
-  ;;       leftprice.clear_commodity();
-  ;;       rightprice.clear_commodity();
-  ;;       return (leftprice - rightprice).sign() < 0;
-  ;;     }
-  ;;   }
-  ;;
-  ;;   if (! aleftcomm.details.date && arightcomm.details.date)
-  ;;     return true;
-  ;;   if (aleftcomm.details.date && ! arightcomm.details.date)
-  ;;     return false;
-  ;;
-  ;;   if (aleftcomm.details.date && arightcomm.details.date) {
-  ;;     duration_t diff = *aleftcomm.details.date - *arightcomm.details.date;
-  ;;     return diff.is_negative();
-  ;;   }
-  ;;
-  ;;   if (! aleftcomm.details.tag && arightcomm.details.tag)
-  ;;     return true;
-  ;;   if (aleftcomm.details.tag && ! arightcomm.details.tag)
-  ;;     return false;
-  ;;
-  ;;   if (aleftcomm.details.tag && arightcomm.details.tag)
-  ;;     return *aleftcomm.details.tag < *arightcomm.details.tag;
-  ;;
-  ;;   assert(false);
-  ;;   return true;
-  ;; }
-  )
-
-(defun get-price-quote (symbol &optional datetime))
-
-(defun annotated-commodity-equalp (left right)
+(defmethod commodity-equalp ((a annotated-commodity) (b annotated-commodity))
   ;; // If the base commodities don't match, the game's up.
   ;; if (base != comm.base)
   ;;   return false;
@@ -572,6 +631,10 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
   ;;
   ;; return true;
   )
+
+;; Amounts are bignums with a specific attached commodity.  [TODO: Also, when
+;; math is performed with them, they retain knowledge of the origins of their
+;; value].
 
 (defclass amount ()
   (commodity
@@ -1106,8 +1169,6 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
 ;;
 ;; DEBUG("amounts.commodities", "  Annotated amount is " << *this);
   )
-
-(defmethod commodity-annotated-p ((commodity commodity)))
 
 (defmethod commodity-annotated-p ((amount amount))
 ;; if (! quantity)
@@ -1772,6 +1833,8 @@ only used if the commodity's own `thousand-marks-p' accessor returns T.")
 ;; }
 ;; return *this;
   )
+
+(defun copy-balance (balance))
 
 (defmethod balance-negate ((balance balance))
   (let ((tmp (copy-balance balance)))
