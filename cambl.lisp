@@ -162,6 +162,34 @@
   (date nil :type (or datetime null))
   (tag nil :type (or string null)))
 
+(defgeneric commodity-symbol (commodity))
+(defgeneric commodity-equalp (commodity commodity))
+(defgeneric strip-annotations (commodity &optional keep-price keep-date keep-tag))
+(defgeneric market-value (commodity &optional datetime))
+(defgeneric commodity-annotated-p (item))
+(defgeneric commodity-annotation-empty-p (annotation))
+(defgeneric negate-in-place (value))
+(defgeneric negate (value))
+(defgeneric reduce-in-place (value))
+(defgeneric unreduce-in-place (value))
+(defgeneric unreduce (value))
+(defgeneric zero-p (amount))
+(defgeneric annotate-commodity (commodity annotation))
+(defgeneric commodity-annotation (item))
+(defgeneric add-to-balance (balance value))
+(defgeneric balance-add (balance value))
+(defgeneric balance-sub (balance value))
+(defgeneric balance-multiply (balance value))
+(defgeneric balance-divide (balance value))
+(defgeneric balance-negate (balance))
+(defgeneric balance-abs (balance))
+(defgeneric balance-reduce (balance))
+(defgeneric to-amount (balance))
+
+(defgeneric amount-in-balance (balance commodity))
+
+;;; Functions:
+
 (defun symbol-name-needs-quoting-p (name)
   "Return T if the given symbol NAME requires quoting."
   (declare (type string name))
@@ -217,8 +245,6 @@
 ;; The commodity and annotated-commodity classes are the main interface class
 ;; for dealing with commodities themselves (which most people will never do).
 
-(defgeneric commodity-symbol (commodity))
-
 (defmethod commodity-symbol ((basic-commodity basic-commodity))
   (slot-value basic-commodity 'symbol))
 
@@ -227,15 +253,11 @@
       (slot-value commodity 'qualified-symbol)
       (commodity-symbol (basic-commodity commodity))))
 
-(defgeneric commodity-equalp (commodity commodity))
-
 (defmethod commodity-equalp ((a commodity) (b commodity))
   "Two commodities are considered EQUALP if they refer to the same base."
   (assert (nth-value 0 (subtypep (type-of a) 'commodity)))
   (assert (nth-value 0 (subtypep (type-of b) 'commodity)))
   (eq (basic-commodity a) (basic-commodity b)))
-
-(defgeneric strip-annotations (commodity &optional keep-price keep-date keep-tag))
 
 ;; jww (2007-10-15): use keywords here
 (defmethod strip-annotations ((commodity commodity)
@@ -353,8 +375,6 @@
   (assert commodity)
   (assert datetime))
 
-(defgeneric market-value (commodity &optional datetime))
-
 (defmethod market-value ((commodity commodity) &optional datetime)
   ;; optional<moment_t> age;
   ;; optional<amount_t> price;
@@ -409,8 +429,6 @@
 ;; reference a basic-commodity) which carry along additional contextual
 ;; information relating to a point in time.
 
-(defgeneric commodity-annotated-p (item))
-
 (defmethod initialize-instance :after
     ((annotated-commodity annotated-commodity) &key)
   (setf (slot-value (slot-value annotated-commodity 'referent)
@@ -422,8 +440,6 @@
 (defmethod market-value ((annotated-commodity annotated-commodity) &optional datetime)
   ;; (market-value (slot-value annotated-commodity 'referent) datetime)
   (assert (or annotated-commodity datetime)))
-
-(defgeneric commodity-annotation-empty-p (annotation))
 
 (defmethod commodity-annotation-empty-p ((annotation commodity-annotation))
   (not (or (commodity-annotation-price annotation)
@@ -494,12 +510,24 @@
   ;;       "Parsed commodity annotations: " << std::endl << *this);
   (assert in))
 
-(defun annotation-string (annotation &optional out)
+(defun commodity-annotation-string (annotation &optional out)
+  "Return the canonical annotation string for ANNOTATION.
+  A fully annotated commodity always follows the form:
+
+    [-]SYMBOL <VALUE> {PRICE} [DATE] (TAG)
+  or
+    <VALUE> SYMBOL {PRICE} [DATE] (TAG)
+
+  If a particular annotation is not present, those sections is simply dropped
+  from the string, for example:
+
+    <VALUE> SYMBOL {PRICE}"
+  (declare (type commodity-annotation annotation))
   (assert annotation)
-  (format out "~:[ {~a}~;~]~:[ [~a]~;~]~:[ (~a)~;~]"
-          (commodity-annotation-price annotation)
-          (commodity-annotation-date annotation)
-          (commodity-annotation-tag annotation)))
+  (format out "~:[~; {~:*~A}~]~:[~; [~:*~A]~]~:[~; (~:*~A)~]"
+	  (commodity-annotation-price annotation)
+	  (commodity-annotation-date annotation)
+	  (commodity-annotation-tag annotation)))
 
 (defmethod strip-annotations ((annotated-commodity annotated-commodity)
 			      &optional keep-price keep-date keep-tag)
@@ -1009,8 +1037,6 @@
   ;; return *this;
   (assert (and amount other)))
 
-(defgeneric negate-in-place (value))
-
 (defmethod negate-in-place ((amount amount))
   ;; if (quantity) {
   ;;   _dup();
@@ -1020,8 +1046,6 @@
   ;; }
   ;; return *this;
   (assert amount))
-
-(defgeneric negate (value))
 
 (defmethod negate ((amount amount))
   (let ((tmp (copy-amount amount)))
@@ -1083,8 +1107,6 @@
   ;; return t;
   (assert amount))
 
-(defgeneric reduce-in-place (value))
-
 (defmethod reduce-in-place ((amount amount))
   ;; if (! quantity)
   ;;   throw_(amount_error, "Cannot reduce an uninitialized amount");
@@ -1102,8 +1124,6 @@
     (assert tmp)
     ))
 
-(defgeneric unreduce-in-place (value))
-
 (defmethod unreduce-in-place ((amount amount))
   ;; if (! quantity)
   ;;   throw_(amount_error, "Cannot unreduce an uninitialized amount");
@@ -1116,8 +1136,6 @@
   ;; }
   ;; return *this;
   (assert amount))
-
-(defgeneric unreduce (value))
 
 (defmethod unreduce ((amount amount))
   (let ((tmp (copy-amount amount)))
@@ -1140,8 +1158,6 @@
 (defun sign (amount)
   ;; jww (2007-10-15): How do I find the sign of an integer?
   (assert amount))
-
-(defgeneric zero-p (amount))
 
 (defmethod zero-p ((amount amount))
   ;; if (! quantity)
@@ -1244,8 +1260,6 @@
   ;; return temp;
   (assert amount))
 
-(defgeneric annotate-commodity (commodity annotation))
-
 (defmethod annotate-commodity ((commodity commodity)
 			       (commodity-annotation commodity-annotation))
   (assert commodity)
@@ -1292,8 +1306,6 @@
   ;; assert(! commodity().annotated || as_annotated_commodity(commodity()).details);
   ;; return commodity().annotated;
   (assert amount))
-
-(defgeneric commodity-annotation (item))
 
 (defmethod commodity-annotation ((commodity commodity))
   (assert commodity))
@@ -1756,8 +1768,6 @@
   ;; return decpt;
   (assert string))
 
-(defgeneric add-to-balance (balance value))
-
 (defmethod add-to-balance ((balance balance) (amount amount))
   ;; TRACE_CTOR(balance_t, "const amount_t&");
   ;; if (amt.is_null())
@@ -1814,8 +1824,6 @@
   ;;   return amounts.size() == 1 && amounts.begin()->second == amt;
   (assert amount))
 
-(defgeneric balance-add (balance value))
-
 ;; Binary arithmetic operators.  Balances support addition and
 ;; subtraction of other balances or amounts, but multiplication and
 ;; division are restricted to uncommoditized amounts only.
@@ -1844,8 +1852,6 @@
   ;; return *this;
   (assert (or balance other)))
 
-(defgeneric balance-sub (balance value))
-
 (defmethod balance-sub ((balance balance) (other balance))
   ;; for (amounts_map::const_iterator i = bal.amounts.begin();
   ;;      i != bal.amounts.end();
@@ -1872,8 +1878,6 @@
   ;; }
   ;; return *this;
   (assert (or balance other)))
-
-(defgeneric balance-multiply (balance value))
 
 (defmethod balance-multiply ((balance balance) (other amount))
   ;; if (amt.is_null())
@@ -1911,8 +1915,6 @@
   ;; }
   ;; return *this;
   (assert (or balance other)))
-
-(defgeneric balance-divide (balance value))
 
 (defmethod balance-divide ((balance balance) (other amount))
   ;; if (amt.is_null())
@@ -1962,15 +1964,11 @@
   ;; return *this;
   (assert balance))
 
-(defgeneric balance-negate (balance))
-
 (defmethod balance-negate ((balance balance))
   (let ((tmp (copy-balance balance)))
     ;; (negate-in-place tmp)
     (assert tmp)
     ))
-
-(defgeneric balance-abs (balance))
 
 (defmethod balance-abs ((balance balance))
   ;; balance_t temp;
@@ -1980,8 +1978,6 @@
   ;;   temp += i->second.abs();
   ;; return temp;
   (assert balance))
-
-(defgeneric balance-reduce (balance))
 
 (defmethod balance-reduce ((balance balance))
   ;; balance_t temp(*this);
@@ -2045,8 +2041,6 @@
   ;; return true;
   (assert balance))
 
-(defgeneric to-amount (balance))
-
 (defmethod to-amount ((balance balance))
   ;; if (is_empty())
   ;;   throw_(balance_error, "Cannot convert an empty balance to an amount");
@@ -2056,8 +2050,6 @@
   ;;   throw_(balance_error,
   ;;          "Cannot convert a balance with multiple commodities to an amount");
   (assert balance))
-
-(defgeneric amount-in-balance (balance commodity))
 
 (defmethod amount-in-balance ((balance balance) (commodity commodity))
   ;; // jww (2007-05-20): Needs work
