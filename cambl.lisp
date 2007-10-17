@@ -208,7 +208,15 @@
   (loop for c across name do
        (and (aref +invalid-symbol-chars+ (char-code c))
 	    (return t))))
-   
+
+(defun get-input-stream (&optional in)
+  (declare (type (or stream string null) in))
+  (if in
+      (if (typep in 'stream)
+	  in
+	  (make-string-input-stream in))
+      *standard-input*))
+
 (defun parse-commodity-symbol (&optional in)
   "Parse a commodity symbol from the input stream IN.
   This is the correct entry point for creating a new commodity symbol.
@@ -223,11 +231,7 @@
   (declare (type (or stream string null) in))
 
   (let ((buf (make-string-output-stream))
-	(in (if in
-		(if (typep in 'stream)
-		    in
-		    (make-string-input-stream in))
-		*standard-input*))
+	(in (get-input-stream in))
 	needs-quoting-p)
     (if (char= #\" (peek-char nil in))
 	(progn
@@ -457,6 +461,7 @@
 	   (commodity-annotation-tag annotation))))
 
 (defun parse-commodity-annotation (in)
+  (declare (type (or stream string null) in))
   ;; do {
   ;;   char buf[256];
   ;;   char c = peek_next_nonws(in);
@@ -1343,8 +1348,8 @@
   (assert (or keep-price keep-date keep-tag)))
 
 (defun parse-amount-quantity (in)
-  (let ((in (or in *standard-input*))
-	(buf (make-string-output-stream))
+  (declare (type stream in))
+  (let ((buf (make-string-output-stream))
 	last-special)
     (do ((c (read-char in) (read-char in nil 'the-end)))
 	((not (characterp c)))
@@ -1367,6 +1372,7 @@
     (get-output-stream-string buf)))
 
 (defun peek-char-in-line (in)
+  (declare (type stream in))
   (do ((c (peek-char nil in) (peek-char nil in nil 'the-end)))
       ((or (not (characterp c))
 	   (char= #\Newline c)))
@@ -1535,10 +1541,10 @@
   ;;   in_place_reduce();
   ;;
   ;; safe_holder.release();        // `this->quantity' owns the pointer
-  (let (symbol
-	quantity
-	details
-	negative
+  (declare (type (or stream string null) in))
+
+  (let ((in (get-input-stream in))
+	symbol quantity details negative
 	(connected-p t)
 	(prefixed-p t))
 
