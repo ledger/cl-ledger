@@ -232,9 +232,9 @@
     (if (char= #\" (peek-char nil in))
 	(progn
 	  (read-char in)
-	  (do ((c (read-char in) (read-char in nil)))
-	      ((nil))
-	    (if c
+	  (do ((c (read-char in) (read-char in nil 'the-end)))
+	      (nil)
+	    (if (characterp c)
 		(if (char= #\" c)
 		    (return)
 		    (progn
@@ -1346,7 +1346,6 @@
   (let ((in (or in *standard-input*))
 	(buf (make-string-output-stream))
 	last-special)
-    (peek-char t in)			; skip leading whitespace
     (do ((c (read-char in) (read-char in nil 'the-end)))
 	((not (characterp c)))
       (if (digit-char-p c)
@@ -1360,17 +1359,27 @@
 		       (char= c #\.)
 		       (char= c #\,)))
 	      (setq last-special c)
-	      (return))))
+	      (progn
+		(unread-char c in)
+		(return)))))
     (if last-special
 	(unread-char last-special in))
     (get-output-stream-string buf)))
 
-;; jww (2007-10-15): use keywords here
+(defun peek-char-in-line (in)
+  (do ((c (peek-char nil in) (peek-char nil in nil 'the-end)))
+      ((or (not (characterp c))
+	   (char= #\Newline c)))
+    (if (or (char= #\Space c)
+	    (char= #\Tab c))
+	(read-char in)
+	(return c))))
+
 (defun parse-amount (in &key (migrate-properties t) (reduce-to-smallest-units t))
-  ;; // The possible syntax for an amount is:
-  ;; //
-  ;; //   [-]NUM[ ]SYM [@ AMOUNT]
-  ;; //   SYM[ ][-]NUM [@ AMOUNT]
+  ;; The possible syntax for an amount is:
+  ;; 
+  ;;   [-]NUM[ ]SYM [@ PRICE]
+  ;;   SYM[ ][-]NUM [@ PRICE]
   ;;
   ;; string       symbol;
   ;; string       quant;
@@ -1526,9 +1535,50 @@
   ;;   in_place_reduce();
   ;;
   ;; safe_holder.release();        // `this->quantity' owns the pointer
-  (assert in)
-  (assert migrate-properties)
-  (assert reduce-to-smallest-units))
+  (let (symbol
+	quantity
+	details
+	negative
+	(connected-p t)
+	(prefixed-p t))
+
+    (when (char= #\- (peek-char t in))
+      (setq negative t)
+      (read-char in))
+
+    (if (digit-char-p (peek-char t in))
+	(progn
+	  (setq quantity (parse-amount-quantity in))
+	  (assert quantity)
+
+	  (let ((c (peek-char nil in nil 'the-end)))
+	    (if (and (characterp c)
+		     (char= #\Space c))
+		(setq connected-p nil))
+	    (peek-char-in-line in)	; skip leading whitespace
+	    (setq symbol (parse-commodity-symbol in))
+	    (if symbol
+		(setq prefixed-p nil))))
+	(progn
+	  (setq symbol (parse-commodity-symbol in))
+	  (if (char= #\Space (peek-char nil in))
+	      (setq connected-p nil))
+	  (peek-char-in-line in)	; skip leading whitespace
+	  (setq quantity (parse-amount-quantity in))
+	  (unless (= 0 (length quantity))
+	    (error "No quantity specified for amount"))))
+
+    (let ((c (peek-char nil in nil 'the-end)))
+      (if (and (characterp c)
+	       (or (char= #\{)
+		   (char= #\[)
+		   (char= #\()))
+	  (setq details (parse-commodity-annotation in))))
+
+    (setf (commodity-symbol-prefixed-p symbol) prefixed-p)
+    (setf (commodity-symbol-connected-p symbol) connected-p)
+    
+    (values symbol quantity)))
 
 (defun parse-amount-conversion (larger-string smaller-string)
   ;; amount_t larger, smaller;
