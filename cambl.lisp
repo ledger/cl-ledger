@@ -957,26 +957,21 @@
   (let ((tmp (copy-amount left)))
     (multiply* tmp right)))
 
-(defmethod multiply* ((left amount) (right amount))
-  (verify-amounts left right "multiply" "Multiplying" "by")
-  (setf (slot-value left 'quantity)
-	(* (slot-value left 'quantity)
-	   (slot-value right 'quantity)))
-  (setf (slot-value left 'internal-precision)
-	(+ (slot-value left 'internal-precision)
-	   (slot-value right 'internal-precision)))
+(defun set-amount-commodity-and-round* (left right)
+  (declare (type amount left))
+  (declare (type amount right))
 
   (let ((commodity (amount-commodity left)))
     (unless commodity
       (setf (slot-value left 'commodity)
 	    (setq commodity (amount-commodity right))))
 
+    ;; If this amount has a commodity, and we're not dealing with plain
+    ;; numbers, or internal numbers (which keep full precision at all
+    ;; times), then round the number to within the commodity's precision
+    ;; plus six places.
     (when (and commodity (not (slot-value left 'keep-precision)))
       (let ((commodity-precision (commodity-display-precision commodity)))
-	(format t "left internal-precision ~A~%"
-		(slot-value left 'internal-precision))
-	(format t "commodity-precision + 6 ~A"
-		(+ 6 commodity-precision))
 	(when (> (slot-value left 'internal-precision)
 		 (+ 6 commodity-precision))
 	  (setf (slot-value left 'quantity)
@@ -987,58 +982,42 @@
 		(+ 6 commodity-precision))))))
   left)
 
+(defmethod multiply* ((left amount) (right amount))
+  (verify-amounts left right "multiply" "Multiplying" "by")
+
+  (setf (slot-value left 'quantity)
+	(* (slot-value left 'quantity)
+	   (slot-value right 'quantity)))
+  (setf (slot-value left 'internal-precision)
+	(+ (slot-value left 'internal-precision)
+	   (slot-value right 'internal-precision)))
+
+  (set-amount-commodity-and-round* left right))
+
+(defmethod divide ((left amount) (right amount))
+  (let ((tmp (copy-amount left)))
+    (divide* tmp right)))
+
 (defmethod divide* ((left amount) (right amount))
-  ;; if (! quantity || ! amt.quantity) {
-  ;;   if (quantity)
-  ;;     throw_(amount_error, "Cannot divide an amount by an uninitialized amount");
-  ;;   else if (amt.quantity)
-  ;;     throw_(amount_error, "Cannot divide an uninitialized amount by an amount");
-  ;;   else
-  ;;     throw_(amount_error, "Cannot divide two uninitialized amounts");
-  ;; }
-  ;;
-  ;; if (has_commodity() && amt.has_commodity() &&
-  ;;     commodity() != amt.commodity())
-  ;;   throw_(amount_error,
-  ;;          "Dividing amounts with different commodities: " <<
-  ;;          (has_commodity() ? commodity().symbol() : "NONE") <<
-  ;;          " != " <<
-  ;;          (amt.has_commodity() ? amt.commodity().symbol() : "NONE"));
-  ;;
-  ;; if (! amt)
-  ;;   throw_(amount_error, "Divide by zero");
-  ;;
-  ;; _dup();
-  ;;
-  ;; // Increase the value's precision, to capture fractional parts after
-  ;; // the divide.  Round up in the last position.
-  ;;
-  ;; mpz_ui_pow_ui(divisor, 10, (2 * amt.quantity->prec) + quantity->prec + 7U);
-  ;; mpz_mul(MPZ(quantity), MPZ(quantity), divisor);
-  ;; mpz_tdiv_q(MPZ(quantity), MPZ(quantity), MPZ(amt.quantity));
-  ;; quantity->prec += amt.quantity->prec + quantity->prec + 7U;
-  ;;
-  ;; mpz_round(MPZ(quantity), MPZ(quantity), quantity->prec, quantity->prec - 1);
-  ;; quantity->prec -= 1;
-  ;;
-  ;; if (! has_commodity())
-  ;;   commodity_ = amt.commodity_;
-  ;;
-  ;; // If this amount has a commodity, and we're not dealing with plain
-  ;; // numbers, or internal numbers (which keep full precision at all
-  ;; // times), then round the number to within the commodity's precision
-  ;; // plus six places.
-  ;;
-  ;; if (has_commodity() && ! (quantity->has_flags(BIGINT_KEEP_PREC))) {
-  ;;   precision_t comm_prec = commodity().precision();
-  ;;   if (quantity->prec > comm_prec + 6U) {
-  ;;     mpz_round(MPZ(quantity), MPZ(quantity), quantity->prec, comm_prec + 6U);
-  ;;     quantity->prec = comm_prec + 6U;
-  ;;   }
-  ;; }
-  ;;
-  ;; return *this;
-  (assert (and left right)))
+  (verify-amounts left right "divide" "Dividing" "by")
+
+  ;; Increase the value's precision, to capture fractional parts after
+  ;; the divide.  Round up in the last position.
+  (setf (slot-value left 'quantity)
+	(round (* (slot-value left 'quantity)
+		  (expt 10 (+ 7 (* 2 (slot-value right 'internal-precision))
+			      (slot-value left 'internal-precision))))
+	       (slot-value right 'quantity)))
+  (setf (slot-value left 'internal-precision)
+	(+ 6 (* 2 (slot-value left 'internal-precision))
+	   (slot-value right 'internal-precision)))
+
+  (setf (slot-value left 'quantity)
+	(round (slot-value left 'quantity)
+	       (expt 10 (- (1+ (slot-value left 'internal-precision))
+			   (slot-value left 'internal-precision)))))
+
+  (set-amount-commodity-and-round* left right))
 
 (defmethod negate* ((amount amount))
   (setf (slot-value amount 'quantity)
