@@ -55,14 +55,24 @@
 (defpackage :cambl
   (:use :common-lisp)
   (:export :create-commodity
+	   :commodity-error
 	   :amount
+	   :amount-error
 	   :amount-commodity
+	   :copy-amount
+	   :copy-value
+	   :exact-amount
 	   :parse-amount
+	   :parse-amount-lightly
 	   :read-amount
+	   :read-amount-lightly
 	   :print-value
-	   :format-to-string
+	   :format-value
 	   :display-precision
 	   :value=
+	   :value-equal
+	   :value-equalp
+	   :*european-style*
 	   :*amount-stream-fullstrings*))
 
 (in-package :CAMBL)
@@ -93,9 +103,11 @@
    (note :accessor commodity-note)
    (smaller-unit-equivalence :accessor smaller-unit-equivalence)
    (larger-unit-equivalence :accessor larger-unit-equivalence)
-   (thousand-marks-p :initarg :thousand-marks-p :type boolean)
-   (no-market-price-p :initarg :no-market-price-p :type boolean)
-   (builtin-p :initarg :builtin-p :type boolean)
+   (thousand-marks-p :initarg :thousand-marks-p :initform nil
+		     :type boolean)
+   (no-market-price-p :initarg :no-market-price-p :initform nil
+		      :type boolean)
+   (builtin-p :initarg :builtin-p :initform nil :type boolean)
    (display-precision :initform 0 :type fixnum)
    (price-history :accessor commodity-price-history
 		  :type commodity-price-history)))
@@ -163,13 +175,16 @@
 (defgeneric commodity-annotation (item))
 (defgeneric commodity-annotation-empty-p (annotation))
 (defgeneric annotate-commodity (commodity annotation))
+(defgeneric copy-value (value))
 (defgeneric print-value (value &key output-stream omit-commodity-p full-precision-p))
-(defgeneric format-to-string (value))
+(defgeneric format-value (value))
 (defgeneric negate* (value))
 (defgeneric negate (value))
 (defgeneric zero-p (amount))
 (defgeneric real-zero-p (amount))
 (defgeneric value= (left right))
+(defgeneric value-equal (left right))
+(defgeneric value-equalp (left right))
 (defgeneric add-to-balance (balance value))
 (defgeneric add (left right))
 (defgeneric add* (left right))
@@ -871,9 +886,12 @@
 
 (defun exact-amount (in &key (reduce-to-smallest-units-p t)
 		     (pool *default-commodity-pool*))
-  (read-amount in :migrate-properties-p nil
-	       :reduce-to-smallest-units-p reduce-to-smallest-units-p
-	       :pool pool))
+  (let ((amount
+	 (read-amount in :migrate-properties-p nil
+			 :reduce-to-smallest-units-p reduce-to-smallest-units-p
+			 :pool pool)))
+    (setf (slot-value amount 'keep-precision) t)
+    amount))
 
 (defun copy-amount (amount)
   (let ((tmp (make-instance 'amount :commodity (amount-commodity amount))))
@@ -887,6 +905,9 @@
     (setf (slot-value tmp 'keep-precision)
 	  (slot-value amount 'keep-precision))
     tmp))
+
+(defmethod copy-value ((amount amount))
+  (copy-amount amount))
 
 (defun amount-commodity-name (amount)
   (let ((symbol (commodity-symbol (amount-commodity amount))))
@@ -941,6 +962,29 @@
 	      (slot-value tmp 'quantity))))))
 
 (defmethod value= ((left amount) (right amount))
+  (let ((greatest-precision
+	 (max (slot-value left 'internal-precision)
+	      (slot-value right 'internal-precision))))
+    (cond ((< (slot-value left 'internal-precision)
+	      greatest-precision)
+	   (let ((tmp (copy-amount left)))
+	     (round-to-precision* tmp greatest-precision)
+	     (= (slot-value tmp 'quantity)
+		(slot-value right 'quantity))))
+	  ((< (slot-value right 'internal-precision)
+	      greatest-precision)
+	   (let ((tmp (copy-amount right)))
+	     (round-to-precision* tmp greatest-precision)
+	     (= (slot-value left 'quantity)
+		(slot-value tmp 'quantity))))
+	  (t
+	   (= (slot-value left 'quantity)
+	      (slot-value right 'quantity))))))
+
+(defmethod value-equal ((left amount) (right amount))
+  (value= left right))
+
+(defmethod value-equal-p ((left amount) (right amount))
   (assert (and left right)))
 
 (defmethod add ((left amount) (right amount))
@@ -1073,40 +1117,24 @@
       (negate amount)
       amount))
 
-(defmethod round-to-precision ((amount amount) &optional precision)
-  ;; if (! quantity)
-  ;;   throw_(amount_error, "Cannot round an uninitialized amount");
-  ;;
-  ;; if (! has_commodity())
-  ;;   return *this;
-  ;;
-  ;; return round(commodity().precision());
-
-  ;; ;; with a precision specified:
-
-  ;; if (! quantity)
-  ;;   throw_(amount_error, "Cannot round an uninitialized amount");
-  ;;
-  ;; amount_t t(*this);
-  ;;
-  ;; if (quantity->prec <= prec) {
-  ;;   if (quantity && quantity->has_flags(BIGINT_KEEP_PREC)) {
-  ;;     t._dup();
-  ;;     t.quantity->drop_flags(BIGINT_KEEP_PREC);
-  ;;   }
-  ;;   return t;
-  ;; }
-  ;;
-  ;; t._dup();
-  ;;
-  ;; mpz_round(MPZ(t.quantity), MPZ(t.quantity), t.quantity->prec, prec);
-  ;;
-  ;; t.quantity->prec = prec;
-  ;; t.quantity->drop_flags(BIGINT_KEEP_PREC);
-  ;;
-  ;; return t;
-  (assert amount)
-  (assert precision))
+(defmethod round-to-precision* ((amount amount) &optional precision)
+  "Round the given AMOUNT to the stated internal PRECISION.
+  If PRECISION is less than the current internal precision, data will
+  be lost.  If it is greater, the integer value of the amount is
+  increased until the target precision is reached."
+  (let ((internal-precision (slot-value amount 'internal-precision)))
+    (cond ((< precision internal-precision)
+	   (setf (slot-value amount 'quantity)
+		 (nth-value 0 (truncate (slot-value amount 'quantity)
+					(expt 10 (- internal-precision
+						    precision)))))
+	   (setf (slot-value amount 'internal-precision) precision))
+	  ((> precision internal-precision)
+	   (setf (slot-value amount 'quantity)
+		 (* (slot-value amount 'quantity)
+		    (expt 10 (- precision internal-precision))))
+	   (setf (slot-value amount 'internal-precision) precision))))
+  amount)
 
 (defmethod unround ((amount amount))
   (assert amount)
@@ -1243,7 +1271,7 @@
   (assert amount)
   (assert no-check))
 
-(defmethod format-to-string ((amount amount))
+(defmethod format-value ((amount amount))
   (assert amount)
   (with-output-to-string (out)
     (print-value amount :output-stream out)
@@ -1405,8 +1433,8 @@
 
   The possible syntax for an amount is:
   
-    [-]NUM[ ]SYM [ANNOTATION]
-    SYM[ ][-]NUM [ANNOTATION]"
+  [-]NUM[ ]SYM [ANNOTATION]
+  SYM[ ][-]NUM [ANNOTATION]"
   (declare (type (or stream string null) in))
 
   (let ((in (get-input-stream in))
@@ -1472,8 +1500,10 @@
 
     (let ((last-comma (position #\, quantity :from-end t))
 	  (last-period (position #\. quantity :from-end t)))
+      (if (or (and *european-style* last-period)
+	      (and (not *european-style*) last-comma))
+	  (setq thousand-marks-p t))
       (cond ((and last-comma last-period)
-	     (setq thousand-marks-p t)
 	     (setf (slot-value amount 'internal-precision)
 		   (- (length quantity) (if (> last-comma last-period)
 					    last-comma last-period) 1)))
@@ -1499,16 +1529,14 @@
 	     (commodity-symbol commodity)) prefixed-p)
       (setf (commodity-symbol-connected-p
 	     (commodity-symbol commodity)) connected-p)
-      (setf (slot-value (commodity-base commodity) 'thousand-marks-p)
-	    thousand-marks-p)
+      (if thousand-marks-p
+	  (setf (slot-value (commodity-base commodity) 'thousand-marks-p)
+		thousand-marks-p))
 
       (if (> (slot-value amount 'internal-precision)
 	     (display-precision commodity))
 	  (setf (slot-value (commodity-base commodity) 'display-precision)
 		(slot-value amount 'internal-precision))))
-
-    (unless migrate-properties-p
-      (setf (slot-value amount 'keep-precision) t))
 
     (if negative-p
 	(negate* amount))
@@ -1518,10 +1546,22 @@
 
     amount))
 
+(defun read-amount-lightly (in &key (reduce-to-smallest-units-p t)
+			    (pool *default-commodity-pool*))
+  (read-amount in :migrate-properties-p nil
+	       :reduce-to-smallest-units-p reduce-to-smallest-units-p
+	       :pool pool))
+
 (defun parse-amount (in &key (migrate-properties-p t)
 		     (reduce-to-smallest-units-p t)
 		     (pool *default-commodity-pool*))
   (read-amount in :migrate-properties-p migrate-properties-p
+	       :reduce-to-smallest-units-p reduce-to-smallest-units-p
+	       :pool pool))
+
+(defun parse-amount-lightly (in &key (reduce-to-smallest-units-p t)
+			     (pool *default-commodity-pool*))
+  (read-amount in :migrate-properties-p nil
 	       :reduce-to-smallest-units-p reduce-to-smallest-units-p
 	       :pool pool))
 
@@ -1583,32 +1623,28 @@
 	     (setq remainder (* remainder
 				(expt 10 (- display-precision
 					    precision))))))
-      (format output-stream
-	      (concatenate 'string
-			   "~A"
-			   (if (commodity-thousand-marks-p commodity)
-			       "~,,v:D" "~,,vD")
-			   "~C~v,'0D~A")
-	      (if (and (not omit-commodity-p)
-		       (commodity-symbol-prefixed-p commodity-symbol))
-		  (concatenate 'string
-			       (amount-commodity-name amount)
-			       (if (commodity-symbol-connected-p
-				    commodity-symbol)
-				   "" " "))
-		  "")
-	      (if *european-style* #\. #\,)
-	      quotient
-	      (if *european-style* #\, #\.)
-	      display-precision remainder
-	      (if (and (not omit-commodity-p)
-		       (not (commodity-symbol-prefixed-p commodity-symbol)))
-		  (concatenate 'string
-			       (if (commodity-symbol-connected-p
-				    commodity-symbol)
-				   "" " ")
-			       (amount-commodity-name amount))
-		  ""))
+      (flet ((maybe-gap ()
+	       (unless (commodity-symbol-connected-p commodity-symbol)
+		 (princ #\Space output-stream))))
+	(when (and (not omit-commodity-p)
+		   (commodity-symbol-prefixed-p commodity-symbol))
+	  (princ (amount-commodity-name amount) output-stream)
+	  (maybe-gap))
+
+	(format output-stream "~:[~,,vD~;~,,v:D~]" ;
+  (commodity-thousand-marks-p commodity)
+  (if *european-style* #\. #\,)
+  quotient)
+	(unless (zerop display-precision)
+	  (format output-stream "~C~v,'0D"
+		  (if *european-style* #\, #\.)
+		  display-precision remainder))
+      
+	(when (and (not omit-commodity-p)
+		   (not (commodity-symbol-prefixed-p commodity-symbol)))
+	  (maybe-gap)
+	  (princ (amount-commodity-name amount) output-stream)))
+
       (if (and (not omit-commodity-p)
 	       (commodity-annotated-p commodity))
 	  (format-commodity-annotation commodity

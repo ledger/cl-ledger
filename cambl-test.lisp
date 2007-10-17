@@ -75,48 +75,42 @@
 (defmethod set-up ((test amount-test-case))
   ;; Cause the display precision for dollars to be initialized to 2.
   (setq cambl:*european-style* nil)
-  (let ((dummy (cambl:parse-amount "$1.00")))
-    (setq cambl:*amount-stream-fullstrings* t)))
+  (cambl:parse-amount "$1,000.00")
+  (setq cambl:*amount-stream-fullstrings* t))
 
 (defmethod tear-down ((test amount-test-case))
-  (let ((dummy (make-instance 'cambl:amount)))
-    (setq cambl:*amount-stream-fullstrings* nil)))
+  (setq cambl:*amount-stream-fullstrings* nil))
 
 (def-test-method test-parser ((test amount-test-case) :run nil)
-  (let (
-	;;(x4 (cambl:float-to-amount 123.456))
-	;;(x5 (cambl:copy-amount x4))
-	(x6(cambl:copy-amount x4))
-	(x7(cambl:copy-amount x4))
-	(x8(cambl:parse-amount "$123.45"))
-	(x9(cambl:copy-amount x8))
-	(x10(cambl:copy-amount x8))
-	(x11(cambl:copy-amount x8))
-	(x12(cambl:parse-amount "$100"))
-	))
+  (let* (
+	 ;;(x4 (cambl:float-to-amount 123.456))
+	 ;;(x5 (cambl:copy-amount x4))
+	 ;;(x6(cambl:copy-amount x4))
+	 ;;(x7(cambl:copy-amount x4))
+	 ;;(x8 (cambl:parse-amount-lightly "$123.45"))
+	 ;;(x9 (cambl:copy-amount x8))
+	 ;;(x10 (cambl:copy-amount x8))
+	 ;;(x11 (cambl:copy-amount x8))
+	 (x12 (cambl:parse-amount-lightly "$100"))
+	 )
   
-  (assert-equal 2 (cambl:display-precision (amount-commodity x12)))
+    (assert-equal 2 (cambl:display-precision (amount-commodity x12)))
 
-  (with-input-from-string (in "$100...")
-    (let ((x13 (cambl:read-amount in)))
-      (assert-value-equal x12 x13)))
+    (with-input-from-string (in "$100...")
+      (let ((x13 (cambl:read-amount-lightly in)))
+	(assert-value-equal x12 x13)))
 
-  (assert-condition 'amount-error (cambl:parse-amount "DM"))
+    (assert-condition 'end-of-file (cambl:parse-amount "DM"))
 
-  (setq cambl:*european-style* t)
+    (let ((cambl:*european-style* t))
 
-  (assert-equal "$2.000,00"
-		(cambl:convert-to-string (cambl:parse-amount "$2000")))
-  ;; amount_t x16();
-  ;; assert-value-equal(string(), x16.to_string());
-  ;; x16.parse("$2000,00");
-  ;; assert-value-equal(string("$2.000,00"), x16.to_string());
-
-  ;; // Since European-ness is an additive quality, we must switch back
-  ;; // to American-ness manually
-  ;; x15.commodity().drop_flags(COMMODITY_STYLE_EUROPEAN);
-
-  (setq cambl:*european-style* nil)
+      (assert-equal "$2.000,00"
+		    (cambl:format-value (cambl:parse-amount-lightly "$2000")))
+      ;; amount_t x16();
+      ;; assert-value-equal(string(), x16.to_string());
+      ;; x16.parse("$2000,00");
+      ;; assert-value-equal(string("$2.000,00"), x16.to_string());
+      ))
 
   ;; amount_t x18("$2000");
   ;; assert-value-equal(string("$2,000.00"), x18.to_string());
@@ -177,6 +171,7 @@
   ;; assert-valid(x11);
   ;; assert-valid(x12);
   )
+  
 
 (def-test-method test-constructors ((test amount-test-case) :run nil)
   ;; amount_t x0;
