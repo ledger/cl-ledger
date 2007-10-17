@@ -181,9 +181,10 @@
 (defgeneric value= (value value))
 (defgeneric add-to-balance (balance value))
 (defgeneric add (value value))
-(defgeneric subtract (value value))
-(defgeneric multiply (value value))
-(defgeneric divide (value value))
+(defgeneric add* (value value))
+(defgeneric subtract* (value value))
+(defgeneric multiply* (value value))
+(defgeneric divide* (value value))
 (defgeneric absolute (value))
 (defgeneric round-to-precision (value &optional precision))
 (defgeneric unround (value))
@@ -281,6 +282,12 @@
   (if (slot-value commodity 'has-qualified-symbol-p)
       (slot-value commodity 'qualified-symbol)
       (commodity-symbol (slot-value commodity 'basic-commodity))))
+
+(defmethod commodity-equal ((a commodity) (b commodity))
+  "Two commodities are considered EQUALP if they refer to the same base."
+  (assert (nth-value 0 (subtypep (type-of a) 'commodity)))
+  (assert (nth-value 0 (subtypep (type-of b) 'commodity)))
+  (eq (slot-value a 'basic-commodity) (slot-value b 'basic-commodity)))
 
 (defmethod commodity-equalp ((a commodity) (b commodity))
   "Two commodities are considered EQUALP if they refer to the same base."
@@ -840,12 +847,23 @@
   (assert string))
 
 (defun copy-amount (amount)
-  ;; TRACE_CTOR(amount_t, "copy");
-  ;; if (amt.quantity)
-  ;;   _copy(amt);
-  ;; else
-  ;;   commodity_ = NULL;
-  (assert amount))
+  (let ((tmp (make-instance 'amount :commodity (amount-commodity amount))))
+    (assert (slot-boundp amount 'quantity))
+    (setf (slot-value tmp 'quantity)
+	  (slot-value amount 'quantity))
+    (if (slot-boundp amount 'display-precision)
+	(setf (slot-value tmp 'display-precision)
+	      (slot-value amount 'display-precision)))
+    (assert (slot-boundp amount 'internal-precision))
+    (setf (slot-value tmp 'internal-precision)
+	  (slot-value amount 'internal-precision))
+    (assert (slot-boundp amount 'keep-precision))
+    (setf (slot-value tmp 'keep-precision)
+	  (slot-value amount 'keep-precision))
+    tmp))
+
+(defun amount-commodity-symbol-name (amount)
+  (commodity-symbol-name (commodity-symbol (amount-commodity amount))))
 
 (defun compare-amounts (amount other)
   ;; if (! quantity || ! amt.quantity) {
@@ -882,41 +900,44 @@
   (assert (and left right)))
 
 (defmethod add ((left amount) (right amount))
-  ;; if (! quantity || ! amt.quantity) {
-  ;;   if (quantity)
-  ;;     throw_(amount_error, "Cannot add an amount to an uninitialized amount");
-  ;;   else if (amt.quantity)
-  ;;     throw_(amount_error, "Cannot add an uninitialized amount to an amount");
-  ;;   else
-  ;;     throw_(amount_error, "Cannot add two uninitialized amounts");
-  ;; }
-  ;;
-  ;; if (commodity() != amt.commodity())
-  ;;   throw_(amount_error,
-  ;;          "Adding amounts with different commodities: " <<
-  ;;          (has_commodity() ? commodity().symbol() : "NONE") <<
-  ;;          " != " <<
-  ;;          (amt.has_commodity() ? amt.commodity().symbol() : "NONE"));
-  ;;
-  ;; _dup();
-  ;;
-  ;; if (quantity->prec == amt.quantity->prec) {
-  ;;   mpz_add(MPZ(quantity), MPZ(quantity), MPZ(amt.quantity));
-  ;; }
-  ;; else if (quantity->prec < amt.quantity->prec) {
-  ;;   _resize(amt.quantity->prec);
-  ;;   mpz_add(MPZ(quantity), MPZ(quantity), MPZ(amt.quantity));
-  ;; }
-  ;; else {
-  ;;   amount_t t = amt;
-  ;;   t._resize(quantity->prec);
-  ;;   mpz_add(MPZ(quantity), MPZ(quantity), MPZ(t.quantity));
-  ;; }
-  ;;
-  ;; return *this;
-  (assert (and left right)))
+  (let ((tmp (copy-amount left)))
+    (add* tmp right)))
 
-(defmethod subtract ((left amount) (right amount))
+(defmethod add* ((left amount) (right amount))
+  (if (or (not (slot-boundp left 'quantity))
+	  (not (slot-boundp right 'quantity)))
+      (cond ((slot-boundp left 'quantity)
+	     (error "Cannot add an amount to an uninitialized amount"))
+	    ((slot-boundp right 'quantity)
+	     (error "Cannot add an uninitialized amount to an amount"))
+	    (t
+	     (error "Cannot add two uninitialized amounts"))))
+
+  (unless (commodity-equal (amount-commodity left)
+			   (amount-commodity right))
+    (error "Adding amounts with different commodities: ~A != ~A"
+	   (amount-commodity-symbol-name left)
+	   (amount-commodity-symbol-name right)))
+    
+  (let ((left-quantity (slot-value left 'quantity))
+	(right-quantity (slot-value right 'quantity)))
+    (cond ((= (slot-value left 'internal-precision)
+	      (slot-value right 'internal-precision))
+	   (setf (slot-value left 'quantity)
+		 (+ left-quantity right-quantity)))
+	  ((< (slot-value left 'internal-precision)
+	      (slot-value right 'internal-precision))
+	   (amount--resize left (slot-value right 'internal-precision))
+	   (setf (slot-value left 'quantity)
+		 (+ left-quantity right-quantity)))
+	  (t
+	   (let ((tmp (copy-amount right)))
+	     (amount--resize tmp (slot-value left 'internal-precision))
+	     (setf (slot-value left 'quantity)
+		   (+ left-quantity right-quantity))))))
+  left)
+
+(defmethod subtract* ((left amount) (right amount))
   ;; if (! quantity || ! amt.quantity) {
   ;;   if (quantity)
   ;;     throw_(amount_error, "Cannot subtract an amount from an uninitialized amount");
@@ -951,7 +972,7 @@
   ;; return *this;
   (assert (and left right)))
 
-(defmethod multiply ((left amount) (right amount))
+(defmethod multiply* ((left amount) (right amount))
   ;; void mpz_round(mpz_t out, mpz_t value, int value_prec, int round_prec)
   ;; {
   ;;   // Round `value', with an encoding precision of `value_prec', to a
@@ -1034,7 +1055,7 @@
   ;; return *this;
   (assert (and left right)))
 
-(defmethod divide ((left amount) (right amount))
+(defmethod divide* ((left amount) (right amount))
   ;; if (! quantity || ! amt.quantity) {
   ;;   if (quantity)
   ;;     throw_(amount_error, "Cannot divide an amount by an uninitialized amount");
@@ -1375,6 +1396,7 @@
 
 (defmethod strip-annotations ((amount amount)
 			      &optional keep-price keep-date keep-tag)
+  ;; jww (2007-10-17): NYI
   (assert amount)
   (assert (or keep-price keep-date keep-tag)))
 
@@ -1417,165 +1439,24 @@
 (defun parse-amount (in &key (migrate-properties-p t)
 		     (reduce-to-smallest-units-p t)
 		     (pool *default-commodity-pool*))
-  ;; The possible syntax for an amount is:
-  ;; 
-  ;;   [-]NUM[ ]SYM [@ PRICE]
-  ;;   SYM[ ][-]NUM [@ PRICE]
-  ;;
-  ;; string       symbol;
-  ;; string       quant;
-  ;; annotation_t details;
-  ;; bool         negative   = false;
-  ;;
-  ;; commodity_t::flags_t comm_flags = COMMODITY_STYLE_DEFAULTS;
-  ;;
-  ;; char c = peek_next_nonws(in);
-  ;; if (c == '-') {
-  ;;   negative = true;
-  ;;   in.get(c);
-  ;;   c = peek_next_nonws(in);
-  ;; }
-  ;;
-  ;; char n;
-  ;; if (std::isdigit(c)) {
-  ;;   parse_quantity(in, quant);
-  ;;
-  ;;   if (! in.eof() && ((n = in.peek()) != '\n')) {
-  ;;     if (std::isspace(n))
-  ;;       comm_flags |= COMMODITY_STYLE_SEPARATED;
-  ;;
-  ;;     commodity_t::parse_symbol(in, symbol);
-  ;;
-  ;;     if (! symbol.empty())
-  ;;       comm_flags |= COMMODITY_STYLE_SUFFIXED;
-  ;;
-  ;;     if (! in.eof() && ((n = in.peek()) != '\n'))
-  ;;       details.parse(in);
-  ;;   }
-  ;; } else {
-  ;;   commodity_t::parse_symbol(in, symbol);
-  ;;
-  ;;   if (! in.eof() && ((n = in.peek()) != '\n')) {
-  ;;     if (std::isspace(in.peek()))
-  ;;       comm_flags |= COMMODITY_STYLE_SEPARATED;
-  ;;
-  ;;     parse_quantity(in, quant);
-  ;;
-  ;;     if (! quant.empty() && ! in.eof() && ((n = in.peek()) != '\n'))
-  ;;       details.parse(in);
-  ;;   }
-  ;; }
-  ;;
-  ;; if (quant.empty())
-  ;;   throw_(amount_error, "No quantity specified for amount");
-  ;;
-  ;; // Allocate memory for the amount's quantity value.  We have to
-  ;; // monitor the allocation in an auto_ptr because this function gets
-  ;; // called sometimes from amount_t's constructor; and if there is an
-  ;; // exeception thrown by any of the function calls after this point,
-  ;; // the destructor will never be called and the memory never freed.
-  ;;
-  ;; std::auto_ptr<bigint_t> safe_holder;
-  ;;
-  ;; if (! quantity) {
-  ;;   quantity = new bigint_t;
-  ;;   safe_holder.reset(quantity);
-  ;; }
-  ;; else if (quantity->ref > 1) {
-  ;;   _release();
-  ;;   quantity = new bigint_t;
-  ;;   safe_holder.reset(quantity);
-  ;; }
-  ;;
-  ;; // Create the commodity if has not already been seen, and update the
-  ;; // precision if something greater was used for the quantity.
-  ;;
-  ;; bool newly_created = false;
-  ;;
-  ;; if (symbol.empty()) {
-  ;;   commodity_ = NULL;
-  ;; } else {
-  ;;   commodity_ = current_pool->find(symbol);
-  ;;   if (! commodity_) {
-  ;;     commodity_ = current_pool->create(symbol);
-  ;;     newly_created = true;
-  ;;   }
-  ;;   assert(commodity_);
-  ;;
-  ;;   if (details)
-  ;;     commodity_ = current_pool->find_or_create(*commodity_, details);
-  ;; }
-  ;;
-  ;; // Determine the precision of the amount, based on the usage of
-  ;; // comma or period.
-  ;;
-  ;; string::size_type last_comma  = quant.rfind(',');
-  ;; string::size_type last_period = quant.rfind('.');
-  ;;
-  ;; if (last_comma != string::npos && last_period != string::npos) {
-  ;;   comm_flags |= COMMODITY_STYLE_THOUSANDS;
-  ;;   if (last_comma > last_period) {
-  ;;     comm_flags |= COMMODITY_STYLE_EUROPEAN;
-  ;;     quantity->prec = quant.length() - last_comma - 1;
-  ;;   } else {
-  ;;     quantity->prec = quant.length() - last_period - 1;
-  ;;   }
-  ;; }
-  ;; else if (last_comma != string::npos &&
-  ;;          commodity().has_flags(COMMODITY_STYLE_EUROPEAN)) {
-  ;;   quantity->prec = quant.length() - last_comma - 1;
-  ;; }
-  ;; else if (last_period != string::npos &&
-  ;;          ! (commodity().has_flags(COMMODITY_STYLE_EUROPEAN))) {
-  ;;   quantity->prec = quant.length() - last_period - 1;
-  ;; }
-  ;; else {
-  ;;   quantity->prec = 0;
-  ;; }
-  ;;
-  ;; // Set the commodity's flags and precision accordingly
-  ;;
-  ;; if (commodity_ && (newly_created || ! (flags & AMOUNT_PARSE_NO_MIGRATE))) {
-  ;;   commodity().add_flags(comm_flags);
-  ;;
-  ;;   if (quantity->prec > commodity().precision())
-  ;;     commodity().set_precision(quantity->prec);
-  ;; }
-  ;;
-  ;; // Setup the amount's own flags
-  ;;
-  ;; if (flags & AMOUNT_PARSE_NO_MIGRATE)
-  ;;   quantity->add_flags(BIGINT_KEEP_PREC);
-  ;;
-  ;; // Now we have the final number.  Remove commas and periods, if
-  ;; // necessary.
-  ;;
-  ;; if (last_comma != string::npos || last_period != string::npos) {
-  ;;   int          len = quant.length();
-  ;;   char *       buf = new char[len + 1];
-  ;;   const char * p   = quant.c_str();
-  ;;   char *       t   = buf;
-  ;;
-  ;;   while (*p) {
-  ;;     if (*p == ',' || *p == '.')
-  ;;       p++;
-  ;;     *t++ = *p++;
-  ;;   }
-  ;;   *t = '\0';
-  ;;
-  ;;   mpz_set_str(MPZ(quantity), buf, 10);
-  ;;   checked_array_delete(buf);
-  ;; } else {
-  ;;   mpz_set_str(MPZ(quantity), quant.c_str(), 10);
-  ;; }
-  ;;
-  ;; if (negative)
-  ;;   in_place_negate();
-  ;;
-  ;; if (! (flags & AMOUNT_PARSE_NO_REDUCE))
-  ;;   in_place_reduce();
-  ;;
-  ;; safe_holder.release();        // `this->quantity' owns the pointer
+  "Parse an AMOUNT from the input IN, which may be a stream or string.
+
+  If :MIGRATE-PROPERTIES-P is T (the default), any display details noticed in
+  this amount will be set as defaults for displaying this kind of commodity in
+  the future.
+
+  If :REDUCE-TO-SMALLEST-UNITS is T (the default), the resulting value will be
+  expressed in terms of its finest units -- for example, 1h might be returned
+  as 60m or 3600s, depending on what other units have been defined.
+
+  If :POOL is set, any commodities created by this routine (a maximum possible
+  of two, if an annotated price is given with a second commodity) will be
+  associated with the given commodity pool.
+
+  The possible syntax for an amount is:
+  
+    [-]NUM[ ]SYM [ANNOTATION]
+    SYM[ ][-]NUM [ANNOTATION]"
   (declare (type (or stream string null) in))
 
   (let ((in (get-input-stream in))
@@ -1630,9 +1511,8 @@
 	      commodity-newly-created-p t))
       (assert commodity)
       (if details
-	  (setq commodity
-		(find-or-create-annotated-commodity-internal
-		 commodity details :pool pool))))
+	  (setq commodity (find-or-create-annotated-commodity-internal
+			   commodity details :pool pool))))
 
     ;; Determine the precision of the amount, based on the usage of
     ;; comma or period.
@@ -1888,19 +1768,15 @@
 ;;  parse_conversion("1.0h", "60m");
 
 (defun amount--resize (amount precision)
-  ;; assert(prec < 256);
-  ;;
-  ;; if (! quantity || prec == quantity->prec)
-  ;;   return;
-  ;;
-  ;; _dup();
-  ;;
-  ;; assert(prec > quantity->prec);
-  ;; mpz_ui_pow_ui(divisor, 10, prec - quantity->prec);
-  ;; mpz_mul(MPZ(quantity), MPZ(quantity), divisor);
-  ;;
-  ;; quantity->prec = prec;
-  (assert (or amount precision)))
+  (assert (< precision 256))
+  (unless (or (not (slot-boundp amount 'quantity))
+	      (= precision (slot-value amount 'internal-precision)))
+    (assert (> precision (slot-value amount 'internal-precision)))
+    (setf (slot-value amount 'quantity)
+	  (* (slot-value amount 'quantity)
+	     (expt 10 (- precision
+			 (slot-value amount 'internal-precision)))))
+    (setf (slot-value amount 'internal-precision) precision)))
 
 ;; jww (2007-10-15): This requires FFI binding to gdtoa
 (defun parse-double (string)
@@ -2004,7 +1880,7 @@
 ;; Binary arithmetic operators.  Balances support addition and
 ;; subtraction of other balances or amounts, but multiplication and
 ;; division are restricted to uncommoditized amounts only.
-(defmethod add ((balance balance) (other balance))
+(defmethod add* ((balance balance) (other balance))
   ;; for (amounts_map::const_iterator i = bal.amounts.begin();
   ;;      i != bal.amounts.end();
   ;;      i++)
@@ -2012,7 +1888,7 @@
   ;; return *this;
   (assert (or balance other)))
 
-(defmethod add ((balance balance) (other amount))
+(defmethod add* ((balance balance) (other amount))
   ;; if (amt.is_null())
   ;;   throw_(balance_error,
   ;;          "Cannot add an uninitialized amount to a balance");
@@ -2029,7 +1905,7 @@
   ;; return *this;
   (assert (or balance other)))
 
-(defmethod subtract ((balance balance) (other balance))
+(defmethod subtract* ((balance balance) (other balance))
   ;; for (amounts_map::const_iterator i = bal.amounts.begin();
   ;;      i != bal.amounts.end();
   ;;      i++)
@@ -2037,7 +1913,7 @@
   ;; return *this;
   (assert (or balance other)))
 
-(defmethod subtract ((balance balance) (other amount))
+(defmethod subtract* ((balance balance) (other amount))
   ;; if (amt.is_null())
   ;;   throw_(balance_error,
   ;;          "Cannot subtract an uninitialized amount from a balance");
@@ -2056,7 +1932,7 @@
   ;; return *this;
   (assert (or balance other)))
 
-(defmethod multiply ((balance balance) (other amount))
+(defmethod multiply* ((balance balance) (other amount))
   ;; if (amt.is_null())
   ;;   throw_(balance_error,
   ;;          "Cannot multiply a balance by an uninitialized amount");
@@ -2093,7 +1969,7 @@
   ;; return *this;
   (assert (or balance other)))
 
-(defmethod divide ((balance balance) (other amount))
+(defmethod divide* ((balance balance) (other amount))
   ;; if (amt.is_null())
   ;;   throw_(balance_error,
   ;;          "Cannot divide a balance by an uninitialized amount");
