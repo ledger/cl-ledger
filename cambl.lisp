@@ -168,7 +168,7 @@
 
 (defclass annotated-commodity (commodity)
   ((referent-commodity :type commodity)
-   (annotation :accessor commodity-annotation :type commodity-annotation)))
+   (annotation :type commodity-annotation)))
 
 (defclass balance ()
   (amounts-map))
@@ -182,7 +182,7 @@
 (defgeneric commodity-builtin-p (commodity))
 (defgeneric display-precision (item))
 (defgeneric market-value (commodity &optional datetime))
-(defgeneric strip-annotations (commodity &optional keep-price keep-date keep-tag))
+(defgeneric strip-annotations (commodity &key keep-price keep-date keep-tag))
 (defgeneric commodity-annotated-p (item))
 (defgeneric commodity-annotation (item))
 (defgeneric commodity-annotation-empty-p (annotation))
@@ -542,7 +542,7 @@
 
 ;; jww (2007-10-15): use keywords here
 (defmethod strip-annotations ((commodity commodity)
-			      &optional keep-price keep-date keep-tag)
+			      &key keep-price keep-date keep-tag)
   ;; if (! quantity)
   ;;   throw_(amount_error,
   ;;          "Cannot strip commodity annotations from an uninitialized amount");
@@ -559,7 +559,7 @@
   (assert (or keep-price keep-date keep-tag)))
 
 (defmethod strip-annotations ((annotated-commodity annotated-commodity)
-			      &optional keep-price keep-date keep-tag)
+			      &key keep-price keep-date keep-tag)
   ;; DEBUG("commodity.annotated.strip",
   ;;       "Reducing commodity " << *this << std::endl
   ;;        << "  keep price " << _keep_price << " "
@@ -1426,7 +1426,7 @@
   (assert amount))
 
 (defmethod strip-annotations ((amount amount)
-			      &optional keep-price keep-date keep-tag)
+			      &key keep-price keep-date keep-tag)
   ;; jww (2007-10-17): NYI
   (assert amount)
   (assert (or keep-price keep-date keep-tag)))
@@ -2080,7 +2080,7 @@
   (assert commodity))
 
 (defmethod strip-annotations ((balance balance)
-			      &optional keep-price keep-date keep-tag)
+			      &key keep-price keep-date keep-tag)
   ;; balance_t temp;
   ;;
   ;; for (amounts_map::const_iterator i = amounts.begin();
