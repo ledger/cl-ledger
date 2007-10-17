@@ -50,7 +50,7 @@
 ;; commodity calculations -- the time of conversion from one type to another,
 ;; the rated value at the time of conversion.
 
-(declaim (optimize (debug 3)))
+(declaim (optimize (safety 3) (debug 3)))
 
 (defpackage :cambl
   (:use :common-lisp)
@@ -147,7 +147,7 @@
 
 (defclass amount ()
   ((commodity :accessor amount-commodity :initarg :commodity
-	      :initform nil :type commodity)
+	      :initform nil :type (or commodity null))
    (quantity :type integer)
    (internal-precision :type fixnum)
    (keep-precision :initform nil :type boolean)
@@ -168,7 +168,7 @@
 
 (defclass annotated-commodity (commodity)
   ((referent-commodity :type commodity)
-   (annotation :type commodity-annotation)))
+   (annotation :accessor commodity-annotation :type commodity-annotation)))
 
 (defclass balance ()
   (amounts-map))
@@ -210,8 +210,8 @@
 (defgeneric round-to-precision (value &optional precision))
 (defgeneric round-to-precision* (value &optional precision))
 (defgeneric unround (value))
-(defgeneric smaller-units* (value))
-(defgeneric smaller-units (value))
+(defgeneric smallest-units* (value))
+(defgeneric smallest-units (value))
 (defgeneric larger-units* (value))
 (defgeneric larger-units (value))
 (defgeneric convert-to-amount (value))
@@ -323,7 +323,9 @@
   (slot-value commodity 'basic-commodity))
 
 (defmethod commodity-symbol ((basic-commodity basic-commodity))
-  (slot-value basic-commodity 'symbol))
+  (let ((symbol (slot-value basic-commodity 'symbol)))
+    (assert (not (zerop (length (commodity-symbol-name symbol)))))
+    symbol))
 
 (defmethod commodity-symbol ((commodity commodity))
   (if (slot-value commodity 'has-qualified-symbol-p)
@@ -369,72 +371,80 @@
   (assert (nth-value 0 (subtypep (type-of b) 'commodity)))
   (eq (slot-value a 'basic-commodity) (slot-value b 'basic-commodity)))
 
-(defun compare-commodity-representations (left right)
+(defun commodity-representation-lessp (left right)
   "Return T if commodity LEFT should be sorted before RIGHT."
-  ;; commodity_t& leftcomm(left->commodity());
-  ;; commodity_t& rightcomm(right->commodity());
-  ;;
-  ;; int cmp = leftcomm.base_symbol().compare(rightcomm.base_symbol());
-  ;; if (cmp != 0)
-  ;;   return cmp < 0;
-  ;;
-  ;; if (! leftcomm.annotated) {
-  ;;   assert(rightcomm.annotated);
-  ;;   return true;
-  ;; }
-  ;; else if (! rightcomm.annotated) {
-  ;;   assert(leftcomm.annotated);
-  ;;   return false;
-  ;; }
-  ;; else {
-  ;;   annotated_commodity_t& aleftcomm(static_cast<annotated_commodity_t&>(leftcomm));
-  ;;   annotated_commodity_t& arightcomm(static_cast<annotated_commodity_t&>(rightcomm));
-  ;;
-  ;;   if (! aleftcomm.details.price && arightcomm.details.price)
-  ;;     return true;
-  ;;   if (aleftcomm.details.price && ! arightcomm.details.price)
-  ;;     return false;
-  ;;
-  ;;   if (aleftcomm.details.price && arightcomm.details.price) {
-  ;;     amount_t leftprice(*aleftcomm.details.price);
-  ;;     leftprice.in_place_reduce();
-  ;;     amount_t rightprice(*arightcomm.details.price);
-  ;;     rightprice.in_place_reduce();
-  ;;
-  ;;     if (leftprice.commodity() == rightprice.commodity()) {
-  ;;       return (leftprice - rightprice).sign() < 0;
-  ;;     } else {
-  ;;       // Since we have two different amounts, there's really no way
-  ;;       // to establish a true sorting order; we'll just do it based
-  ;;       // on the numerical values.
-  ;;       leftprice.clear_commodity();
-  ;;       rightprice.clear_commodity();
-  ;;       return (leftprice - rightprice).sign() < 0;
-  ;;     }
-  ;;   }
-  ;;
-  ;;   if (! aleftcomm.details.date && arightcomm.details.date)
-  ;;     return true;
-  ;;   if (aleftcomm.details.date && ! arightcomm.details.date)
-  ;;     return false;
-  ;;
-  ;;   if (aleftcomm.details.date && arightcomm.details.date) {
-  ;;     duration_t diff = *aleftcomm.details.date - *arightcomm.details.date;
-  ;;     return diff.is_negative();
-  ;;   }
-  ;;
-  ;;   if (! aleftcomm.details.tag && arightcomm.details.tag)
-  ;;     return true;
-  ;;   if (aleftcomm.details.tag && ! arightcomm.details.tag)
-  ;;     return false;
-  ;;
-  ;;   if (aleftcomm.details.tag && arightcomm.details.tag)
-  ;;     return *aleftcomm.details.tag < *arightcomm.details.tag;
-  ;;
-  ;;   assert(false);
-  ;;   return true;
-  ;; }
-  (assert (and left right)))
+  (declare (type (or amount commodity annotated-commodity) left))
+  (declare (type (or amount commodity annotated-commodity) right))
+  (block nil
+    (let ((left-commodity (if (typep left 'amount)
+			      (amount-commodity left)
+			      left))
+	  (right-commodity (if (typep right 'amount)
+			       (amount-commodity right)
+			       right)))
+
+      (unless (commodity-equal left-commodity right-commodity)
+	(return (string-lessp (commodity-symbol-name
+			       (commodity-symbol left-commodity))
+			      (commodity-symbol-name
+			       (commodity-symbol right-commodity)))))
+
+      (if (and (commodity-annotated-p left-commodity)
+	       (not (commodity-annotated-p right-commodity)))
+	  (return t))
+
+      (if (and (not (commodity-annotated-p left-commodity))
+	       (commodity-annotated-p right-commodity))
+	  (return nil))
+
+      (let ((left-annotation (commodity-annotation left-commodity))
+	    (right-annotation (commodity-annotation right-commodity)))
+
+	(let ((left-price (commodity-annotation-price left-annotation))
+	      (right-price (commodity-annotation-price right-annotation)))
+	  (if (and (not left-price) right-price)
+	      (return t))
+
+	  (if (and left-price (not right-price))
+	      (return nil))
+
+	  (when (and left-price right-price)
+	    (setq left-price (smallest-units left-price)
+		  right-price (smallest-units right-price))
+
+	    (if (commodity-equal (amount-commodity left-price)
+				 (amount-commodity right-price))
+		(return (amount-lessp left-price right-price)))
+
+	    ;; Since we have two different amounts, there's really no way to
+	    ;; establish a true sorting order; we'll just do it based on the
+	    ;; numerical values.
+	    (return (amount-lessp (amount-quantity left)
+				  (amount-quantity right)))))
+
+	(let ((left-date (commodity-annotation-date left-annotation))
+	      (right-date (commodity-annotation-date right-annotation)))
+	  (if (and (not left-date) right-date)
+	      (return t))
+
+	  (if (and left-date (not right-date))
+	      (return nil))
+
+	  (when (and left-date right-date)
+	    (return (< left-date right-date))))
+
+	(let ((left-tag (commodity-annotation-tag left-annotation))
+	      (right-tag (commodity-annotation-tag right-annotation)))
+	  (if (and (not left-tag) right-tag)
+	      (return t))
+
+	  (if (and left-tag (not right-tag))
+	      (return nil))
+
+	  (when (and left-tag right-tag)
+	    (return (string-lessp left-tag right-tag))))))
+
+    (return t)))
 
 ;; Routines for accessing the historical prices of a commodity
 
@@ -1004,24 +1014,7 @@
 	      (slot-value tmp 'quantity))))))
 
 (defmethod value= ((left amount) (right amount))
-  (let ((greatest-precision
-	 (max (slot-value left 'internal-precision)
-	      (slot-value right 'internal-precision))))
-    (cond ((< (slot-value left 'internal-precision)
-	      greatest-precision)
-	   (let ((tmp (copy-amount left)))
-	     (round-to-precision* tmp greatest-precision)
-	     (= (slot-value tmp 'quantity)
-		(slot-value right 'quantity))))
-	  ((< (slot-value right 'internal-precision)
-	      greatest-precision)
-	   (let ((tmp (copy-amount right)))
-	     (round-to-precision* tmp greatest-precision)
-	     (= (slot-value left 'quantity)
-		(slot-value tmp 'quantity))))
-	  (t
-	   (= (slot-value left 'quantity)
-	      (slot-value right 'quantity))))))
+  (zerop (amount-compare left right)))
 
 (defmethod value-equal ((left amount) (right amount))
   (value= left right))
@@ -1163,7 +1156,7 @@
 
 (defmethod absolute ((amount amount))
   (assert amount)
-  (if (< (slot-value amount 'quantity) 0)
+  (if (minusp (slot-value amount 'quantity))
       (negate amount)
       amount))
 
@@ -1200,7 +1193,7 @@
     (setf (slot-value tmp 'keep-precision) t)
     tmp))
 
-(defmethod smaller-units* ((amount amount))
+(defmethod smallest-units* ((amount amount))
   ;; if (! quantity)
   ;;   throw_(amount_error, "Cannot reduce an uninitialized amount");
   ;;
@@ -1211,9 +1204,9 @@
   ;; return *this;
   (assert amount))
 
-(defmethod smaller-units ((amount amount))
+(defmethod smallest-units ((amount amount))
   (let ((tmp (copy-amount amount)))
-    (smaller-units* tmp)
+    (smallest-units* tmp)
     tmp))
 
 (defmethod larger-units* ((amount amount))
@@ -1250,9 +1243,9 @@
   "Return -1, 0 or 1 depending on the sign of AMOUNT."
   (assert amount)
   (let ((quantity (slot-value amount 'quantity)))
-    (if (< quantity 0)
+    (if (minusp quantity)
 	-1
-	(if (> quantity 0)
+	(if (plusp quantity)
 	    1
 	    0))))
 
@@ -1353,7 +1346,13 @@
   ;; return *this == amount_t(value);
   (assert amount))
 
-(defun amount-as-quantity (amount)
+(defun amount-lessp (left right)
+  (minusp (amount-compare left right)))
+
+(defun amount-greaterp (left right)
+  (plusp (amount-compare left right)))
+
+(defun amount-quantity (amount)
   ;; if (! has_commodity())
   ;;   return *this;
   ;;
@@ -1597,7 +1596,7 @@
 	(negate* amount))
 
     (if reduce-to-smallest-units-p
-	(smaller-units* amount))
+	(smallest-units* amount))
 
     amount))
 
@@ -1982,13 +1981,13 @@
   ;; return temp;
   (assert balance))
 
-(defmethod smaller-units ((balance balance))
+(defmethod smallest-units ((balance balance))
   ;; balance_t temp(*this);
   ;; temp.in_place_reduce();
   ;; return temp;
   (assert balance))
 
-(defmethod smaller-units* ((balance balance))
+(defmethod smallest-units* ((balance balance))
   ;; // A temporary must be used here because reduction may cause
   ;; // multiple component amounts to collapse to the same commodity.
   ;; balance_t temp;
