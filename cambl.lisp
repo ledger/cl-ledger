@@ -63,6 +63,8 @@
 	   :amount-commodity
 	   :copy-amount
 	   :copy-value
+	   :float-to-amount
+	   :integer-to-amount
 	   :exact-amount
 	   :parse-amount
 	   :parse-amount-lightly
@@ -74,6 +76,14 @@
 	   :value=
 	   :value-equal
 	   :value-equalp
+	   :add
+	   :add*
+	   :subtract
+	   :subtract*
+	   :multiply
+	   :multiply*
+	   :divide
+	   :divide*
 	   :*european-style*
 	   :*amount-stream-fullstrings*))
 
@@ -238,11 +248,16 @@
      0-9 . , ; - + * / ^ ? : & | ! = \"
      < > { } [ ] ( ) @")
 
+(defun symbol-char-invalid-p (c)
+  (let ((code (char-code c)))
+    (and (< code 256)
+	 (aref +invalid-symbol-chars+ code))))
+
 (defun symbol-name-needs-quoting-p (name)
   "Return T if the given symbol NAME requires quoting."
   (declare (type string name))
   (loop for c across name do
-       (and (aref +invalid-symbol-chars+ (char-code c))
+       (and (symbol-char-invalid-p c)
 	    (return t))))
 
 (defun get-input-stream (&optional in)
@@ -283,14 +298,14 @@
 		(if (char= #\" c)
 		    (return)
 		    (progn
-		      (if (aref +invalid-symbol-chars+ (char-code c))
+		      (if (symbol-char-invalid-p c)
 			  (setf needs-quoting-p t))
 		      (write-char c buf)))
 		(error 'commodity-error
 		       :msg "Quoted commodity symbol lacks closing quote"))))
 	(do ((c (read-char in) (read-char in nil 'the-end)))
 	    ((not (characterp c)))
-	  (if (aref +invalid-symbol-chars+ (char-code c))
+	  (if (symbol-char-invalid-p c)
 	      (progn
 		(unread-char c in)
 		(return))
@@ -330,11 +345,23 @@
 (defmethod display-precision ((amount amount))
   (display-precision (amount-commodity amount)))
 
+(defmethod commodity-equal ((a commodity) (b null))
+  nil)
+
+(defmethod commodity-equal ((a null) (b commodity))
+  nil)
+
 (defmethod commodity-equal ((a commodity) (b commodity))
   "Two commodities are considered EQUALP if they refer to the same base."
   (assert (nth-value 0 (subtypep (type-of a) 'commodity)))
   (assert (nth-value 0 (subtypep (type-of b) 'commodity)))
   (eq (slot-value a 'basic-commodity) (slot-value b 'basic-commodity)))
+
+(defmethod commodity-equalp ((a commodity) (b null))
+  nil)
+
+(defmethod commodity-equalp ((a null) (b commodity))
+  nil)
 
 (defmethod commodity-equalp ((a commodity) (b commodity))
   "Two commodities are considered EQUALP if they refer to the same base."
@@ -887,6 +914,14 @@
 ;; @see to_string
 ;; @see to_fullstring
 
+(defun float-to-amount (value)
+  (assert value))
+
+(defun integer-to-amount (value)
+  (let ((tmp (make-instance 'amount)))
+    (setf (slot-value tmp 'quantity) value)
+    tmp))
+
 (defun exact-amount (in &key (reduce-to-smallest-units-p t)
 		     (pool *default-commodity-pool*))
   (let ((amount
@@ -913,10 +948,13 @@
   (copy-amount amount))
 
 (defun amount-commodity-name (amount)
-  (let ((symbol (commodity-symbol (amount-commodity amount))))
-    (if (commodity-symbol-needs-quoting-p symbol)
-	(concatenate 'string "\"" (commodity-symbol-name symbol) "\"")
-	(commodity-symbol-name symbol))))
+  (let* ((commodity (amount-commodity amount))
+	 (symbol (and commodity (commodity-symbol commodity))))
+    (if symbol
+	(if (commodity-symbol-needs-quoting-p symbol)
+	    (concatenate 'string "\"" (commodity-symbol-name symbol) "\"")
+	    (commodity-symbol-name symbol))
+	"")))
 
 (define-condition amount-error (error) 
   ((description :reader error-description :initarg :msg))
@@ -943,7 +981,8 @@
 			   (amount-commodity right))
     (error 'amount-error :msg
 	   (format nil "~A amounts with different commodities: ~A != ~A"
-		   capitalized-gerund (amount-commodity-name left)
+		   capitalized-gerund
+		   (amount-commodity-name left)
 		   (amount-commodity-name right)))))
 
 (defun amount-compare (left right)
@@ -1080,6 +1119,14 @@
 
 (defmethod divide ((left amount) (right amount))
   (let ((tmp (copy-amount left)))
+    (divide* tmp right)))
+
+(defmethod divide ((left amount) (right integer))
+  (let ((tmp (copy-amount left)))
+    (divide* tmp (integer-to-amount right))))
+
+(defmethod divide ((left integer) (right amount))
+  (let ((tmp (integer-to-amount left)))
     (divide* tmp right)))
 
 (defmethod divide* ((left amount) (right amount))
@@ -1620,6 +1667,9 @@
 		  (slot-value amount 'keep-precision))
 	      (slot-value amount 'internal-precision)
 	      (display-precision amount))))
+
+    (assert (or (null commodity-symbol)
+		(> (length (commodity-symbol-name commodity-symbol)) 0)))
 
     (multiple-value-bind (quotient remainder)
 	(truncate (slot-value amount 'quantity)

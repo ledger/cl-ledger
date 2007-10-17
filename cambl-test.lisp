@@ -83,18 +83,8 @@
   (setq cambl:*amount-stream-fullstrings* nil))
 
 (def-test-method test-parser ((test amount-test-case) :run nil)
-  (let* (x0
-	 x1
-	 x2
-	 x3
-	 x4 ;;(x4 (cambl:float-to-amount 123.456))
-	 x5 ;;(x5 (cambl:copy-amount x4))
-	 x6 ;;(x6(cambl:copy-amount x4))
-	 x7 ;;(x7(cambl:copy-amount x4))
-	 x8 ;;(x8 (cambl:parse-amount-lightly "$123.45"))
-	 x9 ;;(x9 (cambl:copy-amount x8))
-	 x10 ;;(x10 (cambl:copy-amount x8))
-	 x11 ;;(x11 (cambl:copy-amount x8))
+  (let* (;;(x4 (cambl:float-to-amount 123.456))
+	 ;;(x8 (cambl:parse-amount-lightly "$123.45"))
 	 (x12 (cambl:parse-amount-lightly "$100")))
   
     (assert-equal 2 (cambl:display-precision (amount-commodity x12)))
@@ -121,53 +111,42 @@
 
     (assert-equal "EUR 100" (cambl:format-value (cambl:parse-amount "EUR 100")))
 
-    (setq x1 (cambl:parse-amount "$100.0000" :migrate-properties-p nil))
-    (assert-eql 2 (display-precision x12))
-    (assert-eql (amount-commodity x1) (amount-commodity x12))
-    (assert-value-equal x1 x12)
+    (let ((x1 (cambl:parse-amount "$100.0000" :migrate-properties-p nil)))
+      (assert-eql 2 (display-precision x12))
+      (assert-eql (amount-commodity x1) (amount-commodity x12))
+      (assert-value-equal x1 x12))
 
-    (setq x0 (cambl:parse-amount "$100.0000"))
-    (assert-eql 4 (display-precision x12)) ; should have changed now
-    (assert-eql (amount-commodity x0) (amount-commodity x12))
-    (assert-value-equal x0 x12)
+    (let ((x0 (cambl:parse-amount "$100.0000")))
+      (assert-eql 4 (display-precision x12)) ; should have changed now
+      (assert-eql (amount-commodity x0) (amount-commodity x12))
+      (assert-value-equal x0 x12))
 
-    (setq x2 (cambl:parse-amount "$100.00" :reduce-to-smallest-units-p nil))
-    (assert-value-equal x2 x12)
-    (setq x3 (cambl:parse-amount "$100.00" :migrate-properties-p nil
-				 :reduce-to-smallest-units-p nil))
-    (assert-value-equal x3 x12)
+    (let ((x2 (cambl:parse-amount "$100.00" :reduce-to-smallest-units-p nil)))
+      (assert-value-equal x2 x12))
+    (let ((x3 (cambl:parse-amount "$100.00" :migrate-properties-p nil
+					    :reduce-to-smallest-units-p nil)))
+      (assert-value-equal x3 x12))
 
-    (setq x4 (cambl:parse-amount "$100.00"))
-    (assert-value-equal x4 x12)
-    (setq x5 (cambl:parse-amount "$100.00" :migrate-properties-p nil))
-    (assert-value-equal x5 x12)
-    (setq x6 (cambl:parse-amount "$100.00" :reduce-to-smallest-units-p nil))
-    (assert-value-equal x6 x12)
-    (setq x7 (cambl:parse-amount "$100.00" :migrate-properties-p nil
-				 :reduce-to-smallest-units-p nil))
-    (assert-value-equal x7 x12)
+    (let ((x4 (cambl:parse-amount "$100.00")))
+      (assert-value-equal x4 x12))
+    (let ((x5 (cambl:parse-amount "$100.00" :migrate-properties-p nil)))
+      (assert-value-equal x5 x12))
+    (let ((x6 (cambl:parse-amount "$100.00" :reduce-to-smallest-units-p nil)))
+      (assert-value-equal x6 x12))
+    (let ((x7 (cambl:parse-amount "$100.00" :migrate-properties-p nil
+					    :reduce-to-smallest-units-p nil)))
+      (assert-value-equal x7 x12))
 
-    (setq x8 (cambl:parse-amount "$100.00"))
-    (assert-value-equal x8 x12)
-    (setq x9 (cambl:parse-amount "$100.00" :migrate-properties-p nil))
-    (assert-value-equal x9 x12)
-    (setq x10 (cambl:parse-amount "$100.00" :reduce-to-smallest-units-p nil))
-    (assert-value-equal x10 x12)
-    (setq x11 (cambl:parse-amount "$100.00" :migrate-properties-p nil
-				  :reduce-to-smallest-units-p nil))
-    (assert-value-equal x11 x12)
+    (let ((x8 (cambl:parse-amount "$100.00")))
+      (assert-value-equal x8 x12))
+    (let ((x9 (cambl:parse-amount "$100.00" :migrate-properties-p nil)))
+      (assert-value-equal x9 x12))
+    (let ((x10 (cambl:parse-amount "$100.00" :reduce-to-smallest-units-p nil)))
+      (assert-value-equal x10 x12))
+    (let ((x11 (cambl:parse-amount "$100.00" :migrate-properties-p nil
+					     :reduce-to-smallest-units-p nil)))
+      (assert-value-equal x11 x12))
 
-    (assert-valid x0)
-    (assert-valid x1)
-    (assert-valid x2)
-    (assert-valid x3)
-    (assert-valid x5)
-    (assert-valid x6)
-    (assert-valid x7)
-    (assert-valid x8)
-    (assert-valid x9)
-    (assert-valid x10)
-    (assert-valid x11)
     (assert-valid x12)))
   
 
@@ -941,64 +920,64 @@
   )
 
 (def-test-method test-commodity-division ((test amount-test-case) :run nil)
-  ;; amount_t x0;
-  ;; amount_t x1("$123.12");
-  ;; amount_t y1("$456.45");
-  ;; amount_t x2(internalAmount("$123.456789"));
-  ;; amount_t x3("DM 123.45");
-  ;; amount_t x4("123.45 euro");
-  ;; amount_t x5("123.45€");
+  (let ((x1 (cambl:parse-amount "$123.12"))
+	(y1 (cambl:parse-amount "$456.45"))
+	(x2 (cambl:exact-amount "$123.456789"))
+	(x3 (cambl:parse-amount "DM 123.45"))
+	(x4 (cambl:parse-amount "123.45 euro"))
+	(x5 (cambl:parse-amount "123.45€"))
+	)
 
-  ;; assert-condition(x1 / 0L, amount_error);
-  ;; assert-value-equal(amount_t("$0.00"), 0L / x1);
-  ;; assert-value-equal(x1, x1 / 1L);
-  ;; assert-value-equal(internalAmount("$0.00812216"), 1L / x1);
-  ;; assert-value-equal(- x1, x1 / -1L);
-  ;; assert-value-equal(internalAmount("$-0.00812216"), -1L / x1);
-  ;; assert-value-equal(internalAmount("$0.26973382"), x1 / y1);
-  ;; assert-value-equal(string("$0.27"), (x1 / y1).to_string());
-  ;; assert-value-equal(internalAmount("$3.70735867"), y1 / x1);
-  ;; assert-value-equal(string("$3.71"), (y1 / x1).to_string());
+    (assert-condition 'amount-error (cambl:divide x1 0))
+    ;; assert-value-equal(amount_t("$0.00"), 0L / x1);
+    ;; assert-value-equal(x1, x1 / 1L);
+    ;; assert-value-equal(internalAmount("$0.00812216"), 1L / x1);
+    ;; assert-value-equal(- x1, x1 / -1L);
+    ;; assert-value-equal(internalAmount("$-0.00812216"), -1L / x1);
+    ;; assert-value-equal(internalAmount("$0.26973382"), x1 / y1);
+    ;; assert-value-equal(string("$0.27"), (x1 / y1).to_string());
+    ;; assert-value-equal(internalAmount("$3.70735867"), y1 / x1);
+    ;; assert-value-equal(string("$3.71"), (y1 / x1).to_string());
 
-  ;; // Internal amounts retain their precision, even when being
-  ;; // converted to strings
-  ;; assert-value-equal(internalAmount("$0.99727201"), x1 / x2);
-  ;; assert-value-equal(internalAmount("$1.00273545321637426901"), x2 / x1);
-  ;; assert-value-equal(string("$1.00"), (x1 / x2).to_string());
-  ;; assert-value-equal(string("$1.00273545321637426901"), (x2 / x1).to_string());
+    ;; // Internal amounts retain their precision, even when being
+    ;; // converted to strings
+    ;; assert-value-equal(internalAmount("$0.99727201"), x1 / x2);
+    ;; assert-value-equal(internalAmount("$1.00273545321637426901"), x2 / x1);
+    ;; assert-value-equal(string("$1.00"), (x1 / x2).to_string());
+    ;; assert-value-equal(string("$1.00273545321637426901"), (x2 / x1).to_string());
 
-  ;; assert-condition(x1 / x0, amount_error);
-  ;; assert-condition(x0 / x1, amount_error);
-  ;; assert-condition(x0 / x0, amount_error);
-  ;; assert-condition(x1 / x3, amount_error);
-  ;; assert-condition(x1 / x4, amount_error);
-  ;; assert-condition(x1 / x5, amount_error);
+    ;; assert-condition(x1 / x0, amount_error);
+    ;; assert-condition(x0 / x1, amount_error);
+    ;; assert-condition(x0 / x0, amount_error);
+    ;; assert-condition(x1 / x3, amount_error);
+    ;; assert-condition(x1 / x4, amount_error);
+    ;; assert-condition(x1 / x5, amount_error);
 
-  ;; x1 /= amount_t("123.12");
-  ;; assert-value-equal(internalAmount("$1.00"), x1);
-  ;; assert-value-equal(string("$1.00"), x1.to_string());
-  ;; x1 /= 123.12;
-  ;; assert-value-equal(internalAmount("$0.00812216"), x1);
-  ;; assert-value-equal(string("$0.01"), x1.to_string());
-  ;; x1 /= 123L;
-  ;; assert-value-equal(internalAmount("$0.00006603"), x1);
-  ;; assert-value-equal(string("$0.00"), x1.to_string());
+    ;; x1 /= amount_t("123.12");
+    ;; assert-value-equal(internalAmount("$1.00"), x1);
+    ;; assert-value-equal(string("$1.00"), x1.to_string());
+    ;; x1 /= 123.12;
+    ;; assert-value-equal(internalAmount("$0.00812216"), x1);
+    ;; assert-value-equal(string("$0.01"), x1.to_string());
+    ;; x1 /= 123L;
+    ;; assert-value-equal(internalAmount("$0.00006603"), x1);
+    ;; assert-value-equal(string("$0.00"), x1.to_string());
 
-  ;; amount_t x6(internalAmount("$237235987235987.98723987235978"));
-  ;; amount_t x7(internalAmount("$123456789123456789.123456789123456789"));
+    ;; amount_t x6(internalAmount("$237235987235987.98723987235978"));
+    ;; amount_t x7(internalAmount("$123456789123456789.123456789123456789"));
 
-  ;; assert-value-equal(amount_t("$1"), x7 / x7);
-  ;; assert-value-equal(internalAmount("$0.0019216115121765559608381226612019501046413574469262"), x6 / x7);
-  ;; assert-value-equal(internalAmount("$520.39654928343335571379527154924040947271699678158689736256"), x7 / x6);
+    ;; assert-value-equal(amount_t("$1"), x7 / x7);
+    ;; assert-value-equal(internalAmount("$0.0019216115121765559608381226612019501046413574469262"), x6 / x7);
+    ;; assert-value-equal(internalAmount("$520.39654928343335571379527154924040947271699678158689736256"), x7 / x6);
 
-  ;; assert-valid(x1);
-  ;; assert-valid(x2);
-  ;; assert-valid(x3);
-  ;; assert-valid(x4);
-  ;; assert-valid(x5);
-  ;; assert-valid(x6);
-  ;; assert-valid(x7);
-  )
+    ;; assert-valid(x1);
+    ;; assert-valid(x2);
+    ;; assert-valid(x3);
+    ;; assert-valid(x4);
+    ;; assert-valid(x5);
+    ;; assert-valid(x6);
+    ;; assert-valid(x7);
+    ))
 
 (def-test-method test-negation ((test amount-test-case) :run nil)
   ;; amount_t x0;
