@@ -840,11 +840,11 @@
 ;; @see to_string
 ;; @see to_fullstring
 
-(defun exact-amount (string)
-  ;; amount_t temp;
-  ;; temp.parse(value, AMOUNT_PARSE_NO_MIGRATE);
-  ;; return temp;
-  (assert string))
+(defun exact-amount (in &key (reduce-to-smallest-units-p t)
+		     (pool *default-commodity-pool*))
+  (parse-amount in :migrate-properties-p nil
+		:reduce-to-smallest-units-p reduce-to-smallest-units-p
+		:pool pool))
 
 (defun copy-amount (amount)
   (let ((tmp (make-instance 'amount :commodity (amount-commodity amount))))
@@ -865,36 +865,41 @@
 (defun amount-commodity-symbol-name (amount)
   (commodity-symbol-name (commodity-symbol (amount-commodity amount))))
 
-(defun compare-amounts (amount other)
-  ;; if (! quantity || ! amt.quantity) {
-  ;;   if (quantity)
-  ;;     throw_(amount_error, "Cannot compare an amount to an uninitialized amount");
-  ;;   else if (amt.quantity)
-  ;;     throw_(amount_error, "Cannot compare an uninitialized amount to an amount");
-  ;;   else
-  ;;     throw_(amount_error, "Cannot compare two uninitialized amounts");
-  ;; }
-  ;;
-  ;; if (has_commodity() && amt.has_commodity() &&
-  ;;     commodity() != amt.commodity())
-  ;;   throw_(amount_error,
-  ;;          "Cannot compare amounts with different commodities: " <<
-  ;;          commodity().symbol() << " and " << amt.commodity().symbol());
-  ;;
-  ;; if (quantity->prec == amt.quantity->prec) {
-  ;;   return mpz_cmp(MPZ(quantity), MPZ(amt.quantity));
-  ;; }
-  ;; else if (quantity->prec < amt.quantity->prec) {
-  ;;   amount_t t(*this);
-  ;;   t._resize(amt.quantity->prec);
-  ;;   return mpz_cmp(MPZ(t.quantity), MPZ(amt.quantity));
-  ;; }
-  ;; else {
-  ;;   amount_t t = amt;
-  ;;   t._resize(quantity->prec);
-  ;;   return mpz_cmp(MPZ(quantity), MPZ(t.quantity));
-  ;; }
-  (assert (and amount other)))
+(defun verify-amounts (left right verb capitalized-gerund preposition)
+  (if (or (not (slot-boundp left 'quantity))
+	  (not (slot-boundp right 'quantity)))
+      (cond ((slot-boundp left 'quantity)
+	     (error "Cannot ~A an amount ~A an uninitialized amount"
+		    verb preposition))
+	    ((slot-boundp right 'quantity)
+	     (error "Cannot ~A an uninitialized amount ~A an amount"
+		    verb preposition))
+	    (t
+	     (error "Cannot ~A two uninitialized amounts" verb))))
+
+  (unless (commodity-equal (amount-commodity left)
+			   (amount-commodity right))
+    (error "~A amounts with different commodities: ~A != ~A"
+	   capitalized-gerund (amount-commodity-symbol-name left)
+	   (amount-commodity-symbol-name right))))
+
+(defun amount-compare (left right)
+  (verify-amounts left right "compare" "Comparing" "to")
+  (cond ((= (slot-value left 'internal-precision)
+	    (slot-value right 'internal-precision))
+	 (- (slot-value left 'quantity)
+	    (slot-value right 'quantity)))
+	((< (slot-value left 'internal-precision)
+	    (slot-value right 'internal-precision))
+	 (let ((tmp (copy-amount left)))
+	   (amount--resize tmp (slot-value right 'internal-precision))
+	   (- (slot-value tmp 'quantity)
+	      (slot-value right 'quantity))))
+	(t
+	 (let ((tmp (copy-amount right)))
+	   (amount--resize tmp (slot-value left 'internal-precision))
+	   (- (slot-value left 'quantity)
+	      (slot-value tmp 'quantity))))))
 
 (defmethod value= ((left amount) (right amount))
   (assert (and left right)))
@@ -904,21 +909,7 @@
     (add* tmp right)))
 
 (defmethod add* ((left amount) (right amount))
-  (if (or (not (slot-boundp left 'quantity))
-	  (not (slot-boundp right 'quantity)))
-      (cond ((slot-boundp left 'quantity)
-	     (error "Cannot add an amount to an uninitialized amount"))
-	    ((slot-boundp right 'quantity)
-	     (error "Cannot add an uninitialized amount to an amount"))
-	    (t
-	     (error "Cannot add two uninitialized amounts"))))
-
-  (unless (commodity-equal (amount-commodity left)
-			   (amount-commodity right))
-    (error "Adding amounts with different commodities: ~A != ~A"
-	   (amount-commodity-symbol-name left)
-	   (amount-commodity-symbol-name right)))
-    
+  (verify-amounts left right "add" "Adding" "to")
   (let ((left-quantity (slot-value left 'quantity))
 	(right-quantity (slot-value right 'quantity)))
     (cond ((= (slot-value left 'internal-precision)
@@ -937,40 +928,28 @@
 		   (+ left-quantity right-quantity))))))
   left)
 
+(defmethod subtract ((left amount) (right amount))
+  (let ((tmp (copy-amount left)))
+    (subtract* tmp right)))
+
 (defmethod subtract* ((left amount) (right amount))
-  ;; if (! quantity || ! amt.quantity) {
-  ;;   if (quantity)
-  ;;     throw_(amount_error, "Cannot subtract an amount from an uninitialized amount");
-  ;;   else if (amt.quantity)
-  ;;     throw_(amount_error, "Cannot subtract an uninitialized amount from an amount");
-  ;;   else
-  ;;     throw_(amount_error, "Cannot subtract two uninitialized amounts");
-  ;; }
-  ;;
-  ;; if (commodity() != amt.commodity())
-  ;;   throw_(amount_error,
-  ;;          "Subtracting amounts with different commodities: " <<
-  ;;          (has_commodity() ? commodity().symbol() : "NONE") <<
-  ;;          " != " <<
-  ;;          (amt.has_commodity() ? amt.commodity().symbol() : "NONE"));
-  ;;
-  ;; _dup();
-  ;;
-  ;; if (quantity->prec == amt.quantity->prec) {
-  ;;   mpz_sub(MPZ(quantity), MPZ(quantity), MPZ(amt.quantity));
-  ;; }
-  ;; else if (quantity->prec < amt.quantity->prec) {
-  ;;   _resize(amt.quantity->prec);
-  ;;   mpz_sub(MPZ(quantity), MPZ(quantity), MPZ(amt.quantity));
-  ;; }
-  ;; else {
-  ;;   amount_t t = amt;
-  ;;   t._resize(quantity->prec);
-  ;;   mpz_sub(MPZ(quantity), MPZ(quantity), MPZ(t.quantity));
-  ;; }
-  ;;
-  ;; return *this;
-  (assert (and left right)))
+  (verify-amounts left right "subtract" "Subtracting" "from")
+  (let ((left-quantity (slot-value left 'quantity))
+	(right-quantity (slot-value right 'quantity)))
+    (cond ((= (slot-value left 'internal-precision)
+	      (slot-value right 'internal-precision))
+	   (setf (slot-value left 'quantity)
+		 (- left-quantity right-quantity)))
+	  ((< (slot-value left 'internal-precision)
+	      (slot-value right 'internal-precision))
+	   (amount--resize left (slot-value right 'internal-precision))
+	   (setf (slot-value left 'quantity)
+		 (- left-quantity right-quantity)))
+	  (t
+	   (let ((tmp (copy-amount right)))
+	     (amount--resize tmp (slot-value left 'internal-precision))
+	     (setf (slot-value left 'quantity)
+		   (- left-quantity right-quantity)))))))
 
 (defmethod multiply* ((left amount) (right amount))
   ;; void mpz_round(mpz_t out, mpz_t value, int value_prec, int round_prec)
