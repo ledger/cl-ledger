@@ -45,8 +45,9 @@
 
 (declaim (optimize debug))
 
-(defpackage :CAMBL
-  (:use :COMMON-LISP))
+(defpackage :cambl
+  (:use :common-lisp)
+  (:export :create-commodity))
 
 (in-package :CAMBL)
 
