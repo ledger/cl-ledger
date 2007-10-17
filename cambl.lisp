@@ -2,6 +2,13 @@
 
 ;; This is the Commoditized AMounts and BaLances library.
 
+;; TODO:
+;; - Create a function for calculating a conversion, which will
+;;   automatically preserve annotation details based on context:
+;;     (amount-exchange "100 DM" "$100.00" &optional datetime "Note")
+;;   This will "exchange" 100 DM for $100.00, at the given datetime with
+;;   the given note.
+
 ;; Copyright (c) 2003-2007, John Wiegley.  All rights reserved.
 ;;
 ;; Redistribution and use in source and binary forms, with or without
@@ -47,7 +54,16 @@
 
 (defpackage :cambl
   (:use :common-lisp)
-  (:export :create-commodity))
+  (:export :create-commodity
+	   :amount
+	   :amount-commodity
+	   :parse-amount
+	   :read-amount
+	   :print-value
+	   :format-to-string
+	   :display-precision
+	   :value=
+	   :*amount-stream-fullstrings*))
 
 (in-package :CAMBL)
 
@@ -109,7 +125,6 @@
   ((commodity :accessor amount-commodity :initarg :commodity
 	      :initform nil :type commodity)
    (quantity :type integer)
-   (display-precision :type fixnum)
    (internal-precision :type fixnum)
    (keep-precision :initform nil :type boolean)
    ;;value-origins-list
@@ -118,8 +133,9 @@
    (keep-base :allocation :class :initform nil :type boolean)
    (keep-price :allocation :class :initform nil :type boolean)
    (keep-date :allocation :class :initform nil :type boolean)
-   (keep-tag :allocation :class :initform nil :type boolean)
-   (stream-fullstrings :allocation :class :initform nil :type boolean)))
+   (keep-tag :allocation :class :initform nil :type boolean)))
+
+(defvar *amount-stream-fullstrings* nil)
 
 (defstruct commodity-annotation
   (price nil :type (or amount null))
@@ -135,32 +151,34 @@
 
 (defgeneric commodity-base (commodity))
 (defgeneric commodity-symbol (commodity))
-(defgeneric commodity-equal (commodity commodity))
-(defgeneric commodity-equalp (commodity commodity))
+(defgeneric commodity-equal (left right))
+(defgeneric commodity-equalp (left right))
 (defgeneric commodity-thousand-marks-p (commodity))
 (defgeneric commodity-no-market-price-p (commodity))
 (defgeneric commodity-builtin-p (commodity))
-(defgeneric commodity-display-precision (commodity))
+(defgeneric display-precision (item))
 (defgeneric market-value (commodity &optional datetime))
 (defgeneric strip-annotations (commodity &optional keep-price keep-date keep-tag))
 (defgeneric commodity-annotated-p (item))
 (defgeneric commodity-annotation (item))
 (defgeneric commodity-annotation-empty-p (annotation))
 (defgeneric annotate-commodity (commodity annotation))
+(defgeneric print-value (value &key output-stream omit-commodity-p full-precision-p))
+(defgeneric format-to-string (value))
 (defgeneric negate* (value))
 (defgeneric negate (value))
 (defgeneric zero-p (amount))
 (defgeneric real-zero-p (amount))
-(defgeneric value= (value value))
+(defgeneric value= (left right))
 (defgeneric add-to-balance (balance value))
-(defgeneric add (value value))
-(defgeneric add* (value value))
-(defgeneric subtract (value value))
-(defgeneric subtract* (value value))
-(defgeneric multiply (value value))
-(defgeneric multiply* (value value))
-(defgeneric divide (value value))
-(defgeneric divide* (value value))
+(defgeneric add (left right))
+(defgeneric add* (left right))
+(defgeneric subtract (left right))
+(defgeneric subtract* (left right))
+(defgeneric multiply (left right))
+(defgeneric multiply* (left right))
+(defgeneric divide (left right))
+(defgeneric divide* (left right))
 (defgeneric absolute (value))
 (defgeneric round-to-precision (value &optional precision))
 (defgeneric unround (value))
@@ -217,7 +235,12 @@
 	  (make-string-input-stream in))
       *standard-input*))
 
-(defun parse-commodity-symbol (&optional in)
+(define-condition commodity-error (error) 
+  ((description :reader error-description :initarg :msg))
+  (:report (lambda (condition stream)
+	     (format stream "~S" (error-description condition)))))
+
+(defun read-commodity-symbol (&optional in)
   "Parse a commodity symbol from the input stream IN.
   This is the correct entry point for creating a new commodity symbol.
 
@@ -245,7 +268,8 @@
 		      (if (aref +invalid-symbol-chars+ (char-code c))
 			  (setf needs-quoting-p t))
 		      (write-char c buf)))
-		(error "Quoted commodity symbol lacks closing quote"))))
+		(error 'commodity-error
+		       :msg "Quoted commodity symbol lacks closing quote"))))
 	(do ((c (read-char in) (read-char in nil 'the-end)))
 	    ((not (characterp c)))
 	  (if (aref +invalid-symbol-chars+ (char-code c))
@@ -279,11 +303,14 @@
 (defmethod commodity-thousand-marks-p ((commodity commodity))
   (commodity-thousand-marks-p (slot-value commodity 'basic-commodity)))
 
-(defmethod commodity-display-precision ((basic-commodity basic-commodity))
+(defmethod display-precision ((basic-commodity basic-commodity))
   (slot-value basic-commodity 'display-precision))
 
-(defmethod commodity-display-precision ((commodity commodity))
-  (commodity-display-precision (slot-value commodity 'basic-commodity)))
+(defmethod display-precision ((commodity commodity))
+  (display-precision (slot-value commodity 'basic-commodity)))
+
+(defmethod display-precision ((amount amount))
+  (display-precision (amount-commodity amount)))
 
 (defmethod commodity-equal ((a commodity) (b commodity))
   "Two commodities are considered EQUALP if they refer to the same base."
@@ -511,9 +538,8 @@
   (commodity-thousand-marks-p
    (slot-value annotated-commodity 'referent-commodity)))
 
-(defmethod commodity-display-precision ((annotated-commodity annotated-commodity))
-  (commodity-display-precision
-   (slot-value annotated-commodity 'referent-commodity)))
+(defmethod display-precision ((annotated-commodity annotated-commodity))
+  (display-precision (slot-value annotated-commodity 'referent-commodity)))
 
 (defmethod market-value ((annotated-commodity annotated-commodity) &optional datetime)
   ;; (market-value (slot-value annotated-commodity 'referent-commodity) datetime)
@@ -524,7 +550,7 @@
 	   (commodity-annotation-date annotation)
 	   (commodity-annotation-tag annotation))))
 
-(defun parse-commodity-annotation (in)
+(defun read-commodity-annotation (in)
   (declare (type (or stream string null) in))
   ;; do {
   ;;   char buf[256];
@@ -589,7 +615,8 @@
   ;;       "Parsed commodity annotations: " << std::endl << *this);
   (assert in))
 
-(defun commodity-annotation-string (annotation &optional out)
+(defun format-commodity-annotation (annotation &key
+				    (output-stream *standard-output*))
   "Return the canonical annotation string for ANNOTATION.
   A fully annotated commodity always follows the form:
 
@@ -603,7 +630,7 @@
     <VALUE> SYMBOL {PRICE}"
   (declare (type commodity-annotation annotation))
   (assert annotation)
-  (format out "~:[~; {~:*~A}~]~:[~; [~:*~A]~]~:[~; (~:*~A)~]"
+  (format output-stream "~:[~; {~:*~A}~]~:[~; [~:*~A]~]~:[~; (~:*~A)~]"
 	  (commodity-annotation-price annotation)
 	  (commodity-annotation-date annotation)
 	  (commodity-annotation-tag annotation)))
@@ -637,7 +664,7 @@
   (declare (type (or string commodity-symbol) name))
   (declare (type commodity-pool pool))
   (let* ((symbol (if (stringp name)
-		     (parse-commodity-symbol name)
+		     (read-commodity-symbol name)
 		     name))
 	 (base (make-instance 'basic-commodity :symbol symbol))
 	 (commodity (make-instance 'commodity :base base :pool pool))
@@ -844,18 +871,15 @@
 
 (defun exact-amount (in &key (reduce-to-smallest-units-p t)
 		     (pool *default-commodity-pool*))
-  (parse-amount in :migrate-properties-p nil
-		:reduce-to-smallest-units-p reduce-to-smallest-units-p
-		:pool pool))
+  (read-amount in :migrate-properties-p nil
+	       :reduce-to-smallest-units-p reduce-to-smallest-units-p
+	       :pool pool))
 
 (defun copy-amount (amount)
   (let ((tmp (make-instance 'amount :commodity (amount-commodity amount))))
     (assert (slot-boundp amount 'quantity))
     (setf (slot-value tmp 'quantity)
 	  (slot-value amount 'quantity))
-    (if (slot-boundp amount 'display-precision)
-	(setf (slot-value tmp 'display-precision)
-	      (slot-value amount 'display-precision)))
     (assert (slot-boundp amount 'internal-precision))
     (setf (slot-value tmp 'internal-precision)
 	  (slot-value amount 'internal-precision))
@@ -864,26 +888,39 @@
 	  (slot-value amount 'keep-precision))
     tmp))
 
-(defun amount-commodity-symbol-name (amount)
-  (commodity-symbol-name (commodity-symbol (amount-commodity amount))))
+(defun amount-commodity-name (amount)
+  (let ((symbol (commodity-symbol (amount-commodity amount))))
+    (if (commodity-symbol-needs-quoting-p symbol)
+	(concatenate 'string "\"" (commodity-symbol-name symbol) "\"")
+	(commodity-symbol-name symbol))))
+
+(define-condition amount-error (error) 
+  ((description :reader error-description :initarg :msg))
+  (:report (lambda (condition stream)
+	     (format stream "~S" (error-description condition)))))
 
 (defun verify-amounts (left right verb capitalized-gerund preposition)
   (if (or (not (slot-boundp left 'quantity))
 	  (not (slot-boundp right 'quantity)))
-      (cond ((slot-boundp left 'quantity)
-	     (error "Cannot ~A an amount ~A an uninitialized amount"
-		    verb preposition))
-	    ((slot-boundp right 'quantity)
-	     (error "Cannot ~A an uninitialized amount ~A an amount"
-		    verb preposition))
-	    (t
-	     (error "Cannot ~A two uninitialized amounts" verb))))
+      (cond
+	((slot-boundp left 'quantity)
+	 (error 'amount-error :msg
+		(format nil "Cannot ~A an amount ~A an uninitialized amount"
+			verb preposition)))
+	((slot-boundp right 'quantity)
+	 (error 'amount-error :msg
+		(format nil "Cannot ~A an uninitialized amount ~A an amount"
+			verb preposition)))
+	(t
+	 (error 'amount-error :msg
+		(format nil "Cannot ~A two uninitialized amounts" verb)))))
 
   (unless (commodity-equal (amount-commodity left)
 			   (amount-commodity right))
-    (error "~A amounts with different commodities: ~A != ~A"
-	   capitalized-gerund (amount-commodity-symbol-name left)
-	   (amount-commodity-symbol-name right))))
+    (error 'amount-error :msg
+	   (format nil "~A amounts with different commodities: ~A != ~A"
+		   capitalized-gerund (amount-commodity-name left)
+		   (amount-commodity-name right)))))
 
 (defun amount-compare (left right)
   (verify-amounts left right "compare" "Comparing" "to")
@@ -971,7 +1008,7 @@
     ;; times), then round the number to within the commodity's precision
     ;; plus six places.
     (when (and commodity (not (slot-value left 'keep-precision)))
-      (let ((commodity-precision (commodity-display-precision commodity)))
+      (let ((commodity-precision (display-precision commodity)))
 	(when (> (slot-value left 'internal-precision)
 		 (+ 6 commodity-precision))
 	  (setf (slot-value left 'quantity)
@@ -1020,20 +1057,21 @@
   (set-amount-commodity-and-round* left right))
 
 (defmethod negate* ((amount amount))
+  (assert amount)
   (setf (slot-value amount 'quantity)
-	(- (slot-value amount 'quantity))))
+	(- (slot-value amount 'quantity)))
+  amount)
 
 (defmethod negate ((amount amount))
+  (assert amount)
   (let ((tmp (copy-amount amount)))
-    ;; (negate* tmp)
-    (assert tmp)
-    ))
+    (negate* tmp)))
 
 (defmethod absolute ((amount amount))
-  ;; if (sign() < 0)
-  ;;   return negate();
-  ;; return *this;
-  (assert amount))
+  (assert amount)
+  (if (< (slot-value amount 'quantity) 0)
+      (negate amount)
+      amount))
 
 (defmethod round-to-precision ((amount amount) &optional precision)
   ;; if (! quantity)
@@ -1071,17 +1109,14 @@
   (assert precision))
 
 (defmethod unround ((amount amount))
-  ;; if (! quantity)
-  ;;   throw_(amount_error, "Cannot unround an uninitialized amount");
-  ;; else if (quantity->has_flags(BIGINT_KEEP_PREC))
-  ;;   return *this;
-  ;;
-  ;; amount_t t(*this);
-  ;; t._dup();
-  ;; t.quantity->add_flags(BIGINT_KEEP_PREC);
-  ;;
-  ;; return t;
-  (assert amount))
+  (assert amount)
+  (if (slot-boundp amount 'quantity)
+      (if (slot-value amount 'keep-precision)
+	  amount)
+      (error 'amount-error :msg "Cannot unround an uninitialized amount"))
+  (let ((tmp (copy-amount amount)))
+    (setf (slot-value tmp 'keep-precision) t)
+    tmp))
 
 (defmethod smaller-units* ((amount amount))
   ;; if (! quantity)
@@ -1096,9 +1131,8 @@
 
 (defmethod smaller-units ((amount amount))
   (let ((tmp (copy-amount amount)))
-    ;; (reduce-in-place tmp)
-    (assert tmp)
-    ))
+    (smaller-units* tmp)
+    tmp))
 
 (defmethod larger-units* ((amount amount))
   ;; if (! quantity)
@@ -1115,9 +1149,8 @@
 
 (defmethod larger-units ((amount amount))
   (let ((tmp (copy-amount amount)))
-    ;; (unreduce-in-place tmp)
-    (assert tmp)
-    ))
+    (larger-units* tmp)
+    tmp))
 
 (defmethod market-value ((amount amount) &optional datetime)
   ;; if (quantity) {
@@ -1133,6 +1166,7 @@
 
 (defun sign (amount)
   "Return -1, 0 or 1 depending on the sign of AMOUNT."
+  (assert amount)
   (let ((quantity (slot-value amount 'quantity)))
     (if (< quantity 0)
 	-1
@@ -1141,20 +1175,25 @@
 	    0))))
 
 (defmethod zero-p ((amount amount))
-  ;; if (! quantity)
-  ;;   throw_(amount_error, "Cannot determine sign if an uninitialized amount is zero");
-  ;;
-  ;; if (has_commodity()) {
-  ;;   if (quantity->prec <= commodity().precision())
-  ;;     return is_realzero();
-  ;;   else
-  ;;     return round(commodity().precision()).sign() == 0;
-  ;; }
-  ;; return is_realzero();
-  (assert amount))
+  (assert amount)
+  (unless (slot-boundp amount 'quantity)
+    (error 'amount-error :msg
+	   "Cannot determine whether an uninitialized amount is zero"))
+  (let ((commodity (amount-commodity amount)))
+    (if commodity
+	(if (<= (slot-value amount 'internal-precision)
+		(display-precision commodity))
+	    (real-zero-p amount)
+	    (= 0 (sign (round-to-precision
+			(display-precision commodity)))))
+	(real-zero-p amount))))
 
 (defmethod real-zero-p ((amount amount))
-  (assert amount))
+  (assert amount)
+  (unless (slot-boundp amount 'quantity)
+    (error 'amount-error :msg
+	   "Cannot determine whether an uninitialized amount is zero"))
+  (= 0 (slot-value amount 'quantity)))
 
 (defun convert-to-double (amount &optional no-check)
   ;; if (! quantity)
@@ -1204,23 +1243,23 @@
   (assert amount)
   (assert no-check))
 
-(defmethod convert-to-string ((amount amount))
-  ;; std::ostringstream bufstream;
-  ;; print(bufstream);
-  ;; return bufstream.str();
-  (assert amount))
+(defmethod format-to-string ((amount amount))
+  (assert amount)
+  (with-output-to-string (out)
+    (print-value amount :output-stream out)
+    out))
 
 (defmethod convert-to-fullstring ((amount amount))
-  ;; std::ostringstream bufstream;
-  ;; print(bufstream, false, true);
-  ;; return bufstream.str();
-  (assert amount))
+  (assert amount)
+  (with-output-to-string (out)
+    (print-value amount :output-stream out :full-precision-p t)
+    out))
 
 (defun quantity-string (amount)
-  ;; std::ostringstream bufstream;
-  ;; print(bufstream, true);
-  ;; return bufstream.str();
-  (assert amount))
+  (assert amount)
+  (with-output-to-string (out)
+    (print-value amount :output-stream out :omit-commodity-p t)
+    out))
 
 (defun fits-in-double-p (amount)
   ;; double value = to_double(true);
@@ -1279,14 +1318,14 @@
   (assert amount)
   (assert commodity-annotation))
 
+(defmethod commodity-annotated-p ((commodity commodity))
+  (slot-value commodity 'annotated-p))
+
+(defmethod commodity-annotated-p ((annotated-commodity annotated-commodity))
+  t)
+
 (defmethod commodity-annotated-p ((amount amount))
-  ;; if (! quantity)
-  ;;   throw_(amount_error,
-  ;;          "Cannot determine if an uninitialized amount's commodity is annotated");
-  ;;
-  ;; assert(! commodity().annotated || as_annotated_commodity(commodity()).details);
-  ;; return commodity().annotated;
-  (assert amount))
+  (commodity-annotated-p (amount-commodity amount)))
 
 (defmethod commodity-annotation ((commodity commodity))
   (assert commodity))
@@ -1311,7 +1350,7 @@
   (assert amount)
   (assert (or keep-price keep-date keep-tag)))
 
-(defun parse-amount-quantity (in)
+(defun read-amount-quantity (in)
   (declare (type stream in))
   (let ((buf (make-string-output-stream))
 	last-special)
@@ -1347,9 +1386,9 @@
 	(read-char in)
 	(return c))))
 
-(defun parse-amount (in &key (migrate-properties-p t)
-		     (reduce-to-smallest-units-p t)
-		     (pool *default-commodity-pool*))
+(defun read-amount (in &key (migrate-properties-p t)
+		    (reduce-to-smallest-units-p t)
+		    (pool *default-commodity-pool*))
   "Parse an AMOUNT from the input IN, which may be a stream or string.
 
   If :MIGRATE-PROPERTIES-P is T (the default), any display details noticed in
@@ -1382,7 +1421,7 @@
 
     (if (digit-char-p (peek-char-in-line in t))
 	(progn
-	  (setq quantity (parse-amount-quantity in))
+	  (setq quantity (read-amount-quantity in))
 	  (assert quantity)
 
 	  (let ((c (peek-char-in-line in)))
@@ -1392,25 +1431,26 @@
 	    (let ((n (peek-char-in-line in t)))
 	      (when (and (characterp n)
 			 (not (char= #\Newline n)))
-		(setq symbol (parse-commodity-symbol in))
+		(setq symbol (read-commodity-symbol in))
 		(if symbol
 		    (setq prefixed-p nil))))))
 	(progn
-	  (setq symbol (parse-commodity-symbol in))
+	  (setq symbol (read-commodity-symbol in))
 	  (if (char= #\Space (peek-char nil in))
 	      (setq connected-p nil))
 	  (let ((n (peek-char-in-line in t)))
 	    (if (and (characterp n)
 		     (not (char= #\Newline n)))
-		(setq quantity (parse-amount-quantity in))
-		(error "No quantity specified for amount")))))
+		(setq quantity (read-amount-quantity in))
+		(error 'amount-error :msg
+		       "No quantity specified for amount")))))
 
     (let ((c (peek-char-in-line in t)))
       (if (and (characterp c)
 	       (or (char= #\{)
 		   (char= #\[)
 		   (char= #\()))
-	  (setq details (parse-commodity-annotation in))))
+	  (setq details (read-commodity-annotation in))))
 
     ;; Now that we have the full commodity symbol, create the commodity object
     ;; it refers to
@@ -1463,7 +1503,7 @@
 	    thousand-marks-p)
 
       (if (> (slot-value amount 'internal-precision)
-	     (commodity-display-precision commodity))
+	     (display-precision commodity))
 	  (setf (slot-value (commodity-base commodity) 'display-precision)
 		(slot-value amount 'internal-precision))))
 
@@ -1477,6 +1517,13 @@
 	(smaller-units* amount))
 
     amount))
+
+(defun parse-amount (in &key (migrate-properties-p t)
+		     (reduce-to-smallest-units-p t)
+		     (pool *default-commodity-pool*))
+  (read-amount in :migrate-properties-p migrate-properties-p
+	       :reduce-to-smallest-units-p reduce-to-smallest-units-p
+	       :pool pool))
 
 (defun parse-amount-conversion (larger-string smaller-string)
   ;; amount_t larger, smaller;
@@ -1497,180 +1544,75 @@
   (assert smaller-string))
 
 ;; jww (2007-10-15): use keywords here
-(defun print-amount (amount &optional out omit-commodity full-precision)
-  ;; if (! quantity)
-  ;;   throw_(amount_error, "Cannot write out an uninitialized amount");
-  ;;
-  ;; amount_t base(*this);
-  ;; if (! amount_t::keep_base)
-  ;;   base.in_place_unreduce();
-  ;;
-  ;; std::ostringstream out;
-  ;;
-  ;; mpz_t quotient;
-  ;; mpz_t rquotient;
-  ;; mpz_t remainder;
-  ;;
-  ;; mpz_init(quotient);
-  ;; mpz_init(rquotient);
-  ;; mpz_init(remainder);
-  ;;
-  ;; bool negative = false;
-  ;;
-  ;; // Ensure the value is rounded to the commodity's precision before
-  ;; // outputting it.  NOTE: `rquotient' is used here as a temp variable!
-  ;;
-  ;; commodity_t& comm(base.commodity());
-  ;; precision_t  precision = 0;
-  ;;
-  ;; if (quantity) {
-  ;;   if (! comm || full_precision || base.quantity->has_flags(BIGINT_KEEP_PREC)) {
-  ;;     mpz_ui_pow_ui(divisor, 10, base.quantity->prec);
-  ;;     mpz_tdiv_qr(quotient, remainder, MPZ(base.quantity), divisor);
-  ;;     precision = base.quantity->prec;
-  ;;   }
-  ;;   else if (comm.precision() < base.quantity->prec) {
-  ;;     mpz_round(rquotient, MPZ(base.quantity), base.quantity->prec,
-  ;;               comm.precision());
-  ;;     mpz_ui_pow_ui(divisor, 10, comm.precision());
-  ;;     mpz_tdiv_qr(quotient, remainder, rquotient, divisor);
-  ;;     precision = comm.precision();
-  ;;   }
-  ;;   else if (comm.precision() > base.quantity->prec) {
-  ;;     mpz_ui_pow_ui(divisor, 10, comm.precision() - base.quantity->prec);
-  ;;     mpz_mul(rquotient, MPZ(base.quantity), divisor);
-  ;;     mpz_ui_pow_ui(divisor, 10, comm.precision());
-  ;;     mpz_tdiv_qr(quotient, remainder, rquotient, divisor);
-  ;;     precision = comm.precision();
-  ;;   }
-  ;;   else if (base.quantity->prec) {
-  ;;     mpz_ui_pow_ui(divisor, 10, base.quantity->prec);
-  ;;     mpz_tdiv_qr(quotient, remainder, MPZ(base.quantity), divisor);
-  ;;     precision = base.quantity->prec;
-  ;;   }
-  ;;   else {
-  ;;     mpz_set(quotient, MPZ(base.quantity));
-  ;;     mpz_set_ui(remainder, 0);
-  ;;     precision = 0;
-  ;;   }
-  ;;
-  ;;   if (mpz_sgn(quotient) < 0 || mpz_sgn(remainder) < 0) {
-  ;;     negative = true;
-  ;;
-  ;;     mpz_abs(quotient, quotient);
-  ;;     mpz_abs(remainder, remainder);
-  ;;   }
-  ;;   mpz_set(rquotient, remainder);
-  ;; }
-  ;;
-  ;; if (! omit_commodity && ! comm.has_flags(COMMODITY_STYLE_SUFFIXED)) {
-  ;;   comm.print(out);
-  ;;   if (comm.has_flags(COMMODITY_STYLE_SEPARATED))
-  ;;     out << " ";
-  ;; }
-  ;;
-  ;; if (negative)
-  ;;   out << "-";
-  ;;
-  ;; if (! quantity || mpz_sgn(quotient) == 0) {
-  ;;   out << '0';
-  ;; }
-  ;; else if (omit_commodity || ! comm.has_flags(COMMODITY_STYLE_THOUSANDS)) {
-  ;;   char * p = mpz_get_str(NULL, 10, quotient);
-  ;;   out << p;
-  ;;   std::free(p);
-  ;; }
-  ;; else {
-  ;;   std::list<string> strs;
-  ;;   char buf[4];
-  ;;
-  ;;   for (int powers = 0; true; powers += 3) {
-  ;;     if (powers > 0) {
-  ;;       mpz_ui_pow_ui(divisor, 10, powers);
-  ;;       mpz_tdiv_q(temp, quotient, divisor);
-  ;;       if (mpz_sgn(temp) == 0)
-  ;;         break;
-  ;;       mpz_tdiv_r_ui(temp, temp, 1000);
-  ;;     } else {
-  ;;       mpz_tdiv_r_ui(temp, quotient, 1000);
-  ;;     }
-  ;;     mpz_get_str(buf, 10, temp);
-  ;;     strs.push_back(buf);
-  ;;   }
-  ;;
-  ;;   bool printed = false;
-  ;;
-  ;;   for (std::list<string>::reverse_iterator i = strs.rbegin();
-  ;;        i != strs.rend();
-  ;;        i++) {
-  ;;     if (printed) {
-  ;;       out << (comm.has_flags(COMMODITY_STYLE_EUROPEAN) ? '.' : ',');
-  ;;       out.width(3);
-  ;;       out.fill('0');
-  ;;     }
-  ;;     out << *i;
-  ;;
-  ;;     printed = true;
-  ;;   }
-  ;; }
-  ;;
-  ;; if (quantity && precision) {
-  ;;   std::ostringstream final;
-  ;;   final.width(precision);
-  ;;   final.fill('0');
-  ;;   char * p = mpz_get_str(NULL, 10, rquotient);
-  ;;   final << p;
-  ;;   std::free(p);
-  ;;
-  ;;   const string& str(final.str());
-  ;;   int i, len = str.length();
-  ;;   const char * q = str.c_str();
-  ;;   for (i = len; i > 0; i--)
-  ;;     if (q[i - 1] != '0')
-  ;;       break;
-  ;;
-  ;;   string ender;
-  ;;   if (i == len)
-  ;;     ender = str;
-  ;;   else if (i < comm.precision())
-  ;;     ender = string(str, 0, comm.precision());
-  ;;   else
-  ;;     ender = string(str, 0, i);
-  ;;
-  ;;   if (! ender.empty()) {
-  ;;     if (omit_commodity)
-  ;;       out << '.';
-  ;;     else
-  ;;       out << (comm.has_flags(COMMODITY_STYLE_EUROPEAN) ? ',' : '.');
-  ;;     out << ender;
-  ;;   }
-  ;; }
-  ;;
-  ;; if (! omit_commodity && comm.has_flags(COMMODITY_STYLE_SUFFIXED)) {
-  ;;   if (comm.has_flags(COMMODITY_STYLE_SEPARATED))
-  ;;     out << " ";
-  ;;   comm.print(out);
-  ;; }
-  ;;
-  ;; mpz_clear(quotient);
-  ;; mpz_clear(rquotient);
-  ;; mpz_clear(remainder);
-  ;;
-  ;; // If there are any annotations associated with this commodity,
-  ;; // output them now.
-  ;;
-  ;; if (! omit_commodity && comm.annotated) {
-  ;;   annotated_commodity_t& ann(static_cast<annotated_commodity_t&>(comm));
-  ;;   assert(&*ann.details.price != this);
-  ;;   ann.write_annotations(out);
-  ;; }
-  ;;
-  ;; // Things are output to a string first, so that if anyone has
-  ;; // specified a width or fill for _out, it will be applied to the
-  ;; // entire amount string, and not just the first part.
-  ;;
-  ;; _out << out.str();
-  (assert (or amount out omit-commodity full-precision)))
+(defmethod print-value ((amount amount) &key
+			(output-stream *standard-output*)
+			(omit-commodity-p nil)
+			(full-precision-p nil))
+  (unless (slot-boundp amount 'quantity)
+    (error 'amount-error :msg "Cannot write out an uninitialized amount"))
+
+  ;; jww (2007-10-17): This should change from a simple boolean to registered
+  ;; commodity to which values should be converted (possibly in both
+  ;; directions)
+  (unless (slot-value amount 'keep-base)
+    ;; amount_t base(*this);
+    ;; if (! amount_t::keep_base)
+    ;;   base.in_place_unreduce();
+    )
+
+
+  (let* ((commodity (amount-commodity amount))
+	 (commodity-symbol (commodity-symbol commodity))
+	 (precision (slot-value amount 'internal-precision))
+	 (display-precision
+	  (if (or (null commodity)
+		  full-precision-p
+		  (slot-value amount 'keep-precision))
+	      (slot-value amount 'internal-precision)
+	      (display-precision amount))))
+
+    (multiple-value-bind (quotient remainder)
+	(truncate (slot-value amount 'quantity)
+		  (expt 10 precision))
+      (cond ((< display-precision precision)
+	     (setq remainder
+		   (nth-value 0 (truncate remainder
+					  (expt 10 (- precision
+						      display-precision))))))
+	    ((> display-precision precision)
+	     (setq remainder (* remainder
+				(expt 10 (- display-precision
+					    precision))))))
+      (format output-stream
+	      (concatenate 'string
+			   "~A"
+			   (if (commodity-thousand-marks-p commodity)
+			       "~,,v:D" "~,,vD")
+			   "~C~v,'0D~A")
+	      (if (and (not omit-commodity-p)
+		       (commodity-symbol-prefixed-p commodity-symbol))
+		  (concatenate 'string
+			       (amount-commodity-name amount)
+			       (if (commodity-symbol-connected-p
+				    commodity-symbol)
+				   "" " "))
+		  "")
+	      (if *european-style* #\. #\,)
+	      quotient
+	      (if *european-style* #\, #\.)
+	      display-precision remainder
+	      (if (and (not omit-commodity-p)
+		       (not (commodity-symbol-prefixed-p commodity-symbol)))
+		  (concatenate 'string
+			       (if (commodity-symbol-connected-p
+				    commodity-symbol)
+				   "" " ")
+			       (amount-commodity-name amount))
+		  ""))
+      (if (and (not omit-commodity-p)
+	       (commodity-annotated-p commodity))
+	  (format-commodity-annotation commodity
+				       :output-stream output-stream)))))
 
 ;; jww (2007-10-15): Add back this builtin commodity
 ;;  commodity->add_flags(COMMODITY_STYLE_NOMARKET | COMMODITY_STYLE_BUILTIN);
