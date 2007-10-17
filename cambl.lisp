@@ -598,9 +598,11 @@
   The argument :pool specifies the commodity pool which will maintain
   this commodity, and by which other code may access it again.
   The resulting COMMODITY object is returned."
-  (declare (type (or string stream null) name))
+  (declare (type (or string commodity-symbol) name))
   (declare (type commodity-pool pool))
-  (let* ((symbol (parse-commodity-symbol name))
+  (let* ((symbol (if (stringp name)
+		     (parse-commodity-symbol name)
+		     name))
 	 (base (make-instance 'basic-commodity :symbol symbol))
 	 (commodity (make-instance 'commodity :base base :pool pool))
 	 (symbol-name (commodity-symbol-name symbol)))
@@ -630,11 +632,13 @@
   The resulting COMMODITY object is returned.
   The argument :CREATE-IF-NOT-EXISTS-P indicates whether a new commodity
   should be created if one cannot already be found."
-  (declare (type (or string stream null) name))
+  (declare (type (or string commodity-symbol) name))
   (declare (type commodity-pool pool))
   (let ((by-name-map (commodity-pool-commodities-by-name-map pool)))
     (multiple-value-bind (entry present-p)
-	(gethash name by-name-map)
+	(gethash (if (stringp name)
+		     name
+		     (commodity-symbol-name name)) by-name-map)
       (if present-p
 	  entry
 	  (and create-if-not-exists-p
@@ -659,6 +663,8 @@
   ;;   return find_or_create(*new_comm, details);
   ;; else
   ;;   return new_comm;
+  (declare (type (or string commodity-symbol) name))
+  (declare (type commodity-pool pool))
   (assert pool)
   (assert name)
   (assert details))
@@ -698,6 +704,8 @@
   ;; } else {
   ;;   return comm;
   ;; }
+  (declare (type (or string commodity-symbol) name))
+  (declare (type commodity-pool pool))
   (assert pool)
   (assert name)
   (assert details))
@@ -712,6 +720,8 @@
   ;;   return find_or_create(*comm, details);
   ;; else
   ;;   return comm;
+  (declare (type (or string commodity-symbol) name))
+  (declare (type commodity-pool pool))
   (assert pool)
   (assert name)
   (assert details))
@@ -1371,17 +1381,21 @@
 	(unread-char last-special in))
     (get-output-stream-string buf)))
 
-(defun peek-char-in-line (in)
+(defun peek-char-in-line (in &optional skip-whitespace)
   (declare (type stream in))
-  (do ((c (peek-char nil in) (peek-char nil in nil 'the-end)))
+  (do ((c (peek-char nil in nil 'the-end)
+	  (peek-char nil in nil 'the-end)))
       ((or (not (characterp c))
 	   (char= #\Newline c)))
-    (if (or (char= #\Space c)
-	    (char= #\Tab c))
+    (if (and skip-whitespace
+	     (or (char= #\Space c)
+		 (char= #\Tab c)))
 	(read-char in)
 	(return c))))
 
-(defun parse-amount (in &key (migrate-properties t) (reduce-to-smallest-units t))
+(defun parse-amount (in &key (migrate-properties t)
+		     (reduce-to-smallest-units t)
+		     (pool *default-commodity-pool*))
   ;; The possible syntax for an amount is:
   ;; 
   ;;   [-]NUM[ ]SYM [@ PRICE]
@@ -1548,33 +1562,36 @@
 	(connected-p t)
 	(prefixed-p t))
 
-    (when (char= #\- (peek-char t in))
+    (when (char= #\- (peek-char-in-line in t))
       (setq negative t)
       (read-char in))
 
-    (if (digit-char-p (peek-char t in))
+    (if (digit-char-p (peek-char-in-line in t))
 	(progn
 	  (setq quantity (parse-amount-quantity in))
 	  (assert quantity)
 
-	  (let ((c (peek-char nil in nil 'the-end)))
+	  (let ((c (peek-char-in-line in)))
 	    (if (and (characterp c)
 		     (char= #\Space c))
 		(setq connected-p nil))
-	    (peek-char-in-line in)	; skip leading whitespace
-	    (setq symbol (parse-commodity-symbol in))
-	    (if symbol
-		(setq prefixed-p nil))))
+	    (let ((n (peek-char-in-line in t)))
+	      (when (and (characterp n)
+			 (not (char= #\Newline n)))
+		(setq symbol (parse-commodity-symbol in))
+		(if symbol
+		    (setq prefixed-p nil))))))
 	(progn
 	  (setq symbol (parse-commodity-symbol in))
 	  (if (char= #\Space (peek-char nil in))
 	      (setq connected-p nil))
-	  (peek-char-in-line in)	; skip leading whitespace
-	  (setq quantity (parse-amount-quantity in))
-	  (unless (= 0 (length quantity))
-	    (error "No quantity specified for amount"))))
+	  (let ((n (peek-char-in-line in t)))
+	    (if (and (characterp n)
+		     (not (char= #\Newline n)))
+		(setq quantity (parse-amount-quantity in))
+		(error "No quantity specified for amount")))))
 
-    (let ((c (peek-char nil in nil 'the-end)))
+    (let ((c (peek-char-in-line in t)))
       (if (and (characterp c)
 	       (or (char= #\{)
 		   (char= #\[)
@@ -1583,8 +1600,20 @@
 
     (setf (commodity-symbol-prefixed-p symbol) prefixed-p)
     (setf (commodity-symbol-connected-p symbol) connected-p)
-    
-    (values symbol quantity)))
+
+    (let (commodity commodity-newly-created)
+      (unless (= 0 (length (commodity-symbol-name symbol)))
+	(setq commodity (find-commodity symbol :pool pool))
+	(unless commodity
+	  (setq commodity (create-commodity symbol :pool pool)
+		commodity-newly-created t))
+	(assert commodity)
+	(if details
+	    (setq commodity
+		  (find-or-create-annotated-commodity-internal
+		   commodity details :pool pool))))
+
+      (values symbol quantity commodity))))
 
 (defun parse-amount-conversion (larger-string smaller-string)
   ;; amount_t larger, smaller;
@@ -1903,7 +1932,7 @@
 ;; Binary arithmetic operators.  Balances support addition and
 ;; subtraction of other balances or amounts, but multiplication and
 ;; division are restricted to uncommoditized amounts only.
-(defmethod balance-add ((balance balance) (other balance))
+(defmethod add ((balance balance) (other balance))
   ;; for (amounts_map::const_iterator i = bal.amounts.begin();
   ;;      i != bal.amounts.end();
   ;;      i++)
@@ -1911,7 +1940,7 @@
   ;; return *this;
   (assert (or balance other)))
 
-(defmethod balance-add ((balance balance) (other amount))
+(defmethod add ((balance balance) (other amount))
   ;; if (amt.is_null())
   ;;   throw_(balance_error,
   ;;          "Cannot add an uninitialized amount to a balance");
@@ -1928,7 +1957,7 @@
   ;; return *this;
   (assert (or balance other)))
 
-(defmethod balance-sub ((balance balance) (other balance))
+(defmethod subtract ((balance balance) (other balance))
   ;; for (amounts_map::const_iterator i = bal.amounts.begin();
   ;;      i != bal.amounts.end();
   ;;      i++)
@@ -1936,7 +1965,7 @@
   ;; return *this;
   (assert (or balance other)))
 
-(defmethod balance-sub ((balance balance) (other amount))
+(defmethod subtract ((balance balance) (other amount))
   ;; if (amt.is_null())
   ;;   throw_(balance_error,
   ;;          "Cannot subtract an uninitialized amount from a balance");
@@ -1955,7 +1984,7 @@
   ;; return *this;
   (assert (or balance other)))
 
-(defmethod balance-multiply ((balance balance) (other amount))
+(defmethod multiply ((balance balance) (other amount))
   ;; if (amt.is_null())
   ;;   throw_(balance_error,
   ;;          "Cannot multiply a balance by an uninitialized amount");
@@ -1992,7 +2021,7 @@
   ;; return *this;
   (assert (or balance other)))
 
-(defmethod balance-divide ((balance balance) (other amount))
+(defmethod divide ((balance balance) (other amount))
   ;; if (amt.is_null())
   ;;   throw_(balance_error,
   ;;          "Cannot divide a balance by an uninitialized amount");
@@ -2040,13 +2069,13 @@
   ;; return *this;
   (assert balance))
 
-(defmethod balance-negate ((balance balance))
+(defmethod negate ((balance balance))
   (let ((tmp (copy-balance balance)))
     ;; (negate-in-place tmp)
     (assert tmp)
     ))
 
-(defmethod balance-abs ((balance balance))
+(defmethod absolute ((balance balance))
   ;; balance_t temp;
   ;; for (amounts_map::const_iterator i = amounts.begin();
   ;;      i != amounts.end();
@@ -2055,13 +2084,13 @@
   ;; return temp;
   (assert balance))
 
-(defmethod balance-reduce ((balance balance))
+(defmethod smaller-units ((balance balance))
   ;; balance_t temp(*this);
   ;; temp.in_place_reduce();
   ;; return temp;
   (assert balance))
 
-(defmethod reduce-in-place ((balance balance))
+(defmethod smaller-units* ((balance balance))
   ;; // A temporary must be used here because reduction may cause
   ;; // multiple component amounts to collapse to the same commodity.
   ;; balance_t temp;
@@ -2117,7 +2146,7 @@
   ;; return true;
   (assert balance))
 
-(defmethod to-amount ((balance balance))
+(defmethod convert-to-amount ((balance balance))
   ;; if (is_empty())
   ;;   throw_(balance_error, "Cannot convert an empty balance to an amount");
   ;; else if (amounts.size() == 1)
