@@ -108,14 +108,10 @@
    (note :accessor commodity-note)
    (smaller-unit-equivalence :accessor smaller-unit-equivalence)
    (larger-unit-equivalence :accessor larger-unit-equivalence)
-   (use-thousand-marks-p :initarg :thousand-marks-p
-			 :accessor use-thousand-marks-p :type boolean)
-   (no-market-price-p :initarg :no-market-price-p
-		      :accessor no-market-price-p :type boolean)
-   (builtin-commodity-p :initarg :builtin-commodity-p
-			:accessor builtin-commodity-p :type boolean)
-   (default-display-precision :initform 0
-     :accessor default-display-precision :type fixnum)
+   (thousand-marks-p :initarg :thousand-marks-p :type boolean)
+   (no-market-price-p :initarg :no-market-price-p :type boolean)
+   (builtin-p :initarg :builtin-p :type boolean)
+   (display-precision :initform 0 :type fixnum)
    (price-history :accessor commodity-price-history
 		  :type commodity-price-history)))
 
@@ -127,9 +123,8 @@
 (defparameter *default-commodity-pool* (make-commodity-pool))
 
 (defclass commodity ()
-  ((basic-commodity :accessor basic-commodity :initarg :base
-		    :type basic-commodity)
-   (commodity-pool :accessor commodity-pool :initarg :pool
+  ((basic-commodity :initarg :base :type basic-commodity)
+   (commodity-pool :accessor parent-pool :initarg :pool
 		   :type commodity-pool)
    (serial-number :accessor commodity-serial-number :type fixnum)
    qualified-symbol
@@ -138,14 +133,15 @@
    (annotated-p :initform nil :type boolean)))
 
 (defclass amount ()
-  ((commodity :accessor amount-commodity :initarg commodity
+  ((commodity :accessor amount-commodity :initarg :commodity
 	      :type commodity)
    (quantity :type integer)
    (display-precision :type fixnum)
    (internal-precision :type fixnum)
+   (keep-precision :initform nil :type boolean)
    ;;value-origins-list
-   (commodity-pool :accessor amount-commodity-pool :initarg pool
-		   :type commodity-pool)
+   ;; (commodity-pool :accessor amount-commodity-pool :initarg :pool
+   ;;   :type commodity-pool)
    (keep-base :allocation :class :initform nil :type boolean)
    (keep-price :allocation :class :initform nil :type boolean)
    (keep-date :allocation :class :initform nil :type boolean)
@@ -156,7 +152,7 @@
   (amounts-map))
 
 (defclass annotated-commodity (commodity)
-  ((referent :type commodity)
+  ((referent-commodity :type commodity)
    (annotation :type commodity-annotation)))
 
 (defstruct commodity-annotation
@@ -165,17 +161,19 @@
   (tag nil :type (or string null)))
 
 (defgeneric commodity-symbol (commodity))
+(defgeneric commodity-base (commodity))
 (defgeneric commodity-equal (commodity commodity))
 (defgeneric commodity-equalp (commodity commodity))
+(defgeneric commodity-thousand-marks-p (commodity))
+(defgeneric commodity-no-market-price-p (commodity))
+(defgeneric commodity-builtin-p (commodity))
+(defgeneric commodity-display-precision (commodity))
 (defgeneric strip-annotations (commodity &optional keep-price keep-date keep-tag))
 (defgeneric market-value (commodity &optional datetime))
 (defgeneric commodity-annotated-p (item))
 (defgeneric commodity-annotation-empty-p (annotation))
-(defgeneric negate-in-place (value))
+(defgeneric negate* (value))
 (defgeneric negate (value))
-(defgeneric reduce-in-place (value))
-(defgeneric unreduce-in-place (value))
-(defgeneric unreduce (value))
 (defgeneric zero-p (amount))
 (defgeneric real-zero-p (amount))
 (defgeneric annotate-commodity (commodity annotation))
@@ -186,7 +184,6 @@
 (defgeneric subtract (value value))
 (defgeneric multiply (value value))
 (defgeneric divide (value value))
-(defgeneric negate (value))
 (defgeneric absolute (value))
 (defgeneric round-to-precision (value &optional precision))
 (defgeneric unround (value))
@@ -262,16 +259,34 @@
 (defmethod commodity-symbol ((basic-commodity basic-commodity))
   (slot-value basic-commodity 'symbol))
 
+(defmethod commodity-base ((basic-commodity basic-commodity))
+  basic-commodity)
+
+(defmethod commodity-base ((commodity commodity))
+  (slot-value commodity 'basic-commodity))
+
+(defmethod commodity-thousand-marks-p ((basic-commodity basic-commodity))
+  (slot-value basic-commodity 'thousand-marks-p))
+
+(defmethod commodity-thousand-marks-p ((commodity commodity))
+  (commodity-thousand-marks-p (slot-value commodity 'basic-commodity)))
+
+(defmethod commodity-display-precision ((basic-commodity basic-commodity))
+  (slot-value basic-commodity 'display-precision))
+
+(defmethod commodity-display-precision ((commodity commodity))
+  (commodity-display-precision (slot-value commodity 'basic-commodity)))
+
 (defmethod commodity-symbol ((commodity commodity))
   (if (slot-value commodity 'has-qualified-symbol-p)
       (slot-value commodity 'qualified-symbol)
-      (commodity-symbol (basic-commodity commodity))))
+      (commodity-symbol (slot-value commodity 'basic-commodity))))
 
 (defmethod commodity-equalp ((a commodity) (b commodity))
   "Two commodities are considered EQUALP if they refer to the same base."
   (assert (nth-value 0 (subtypep (type-of a) 'commodity)))
   (assert (nth-value 0 (subtypep (type-of b) 'commodity)))
-  (eq (basic-commodity a) (basic-commodity b)))
+  (eq (slot-value a 'basic-commodity) (slot-value b 'basic-commodity)))
 
 ;; jww (2007-10-15): use keywords here
 (defmethod strip-annotations ((commodity commodity)
@@ -445,14 +460,26 @@
 
 (defmethod initialize-instance :after
     ((annotated-commodity annotated-commodity) &key)
-  (setf (slot-value (slot-value annotated-commodity 'referent)
+  (setf (slot-value (slot-value annotated-commodity 'referent-commodity)
 		    'annotated-p) t))
 
+(defmethod commodity-base ((annotated-commodity annotated-commodity))
+  (slot-value (slot-value annotated-commodity 'referent-commodity)
+	      'basic-commodity))
+
 (defmethod commodity-symbol ((annotated-commodity annotated-commodity))
-  (commodity-symbol (slot-value annotated-commodity 'referent)))
+  (commodity-symbol (slot-value annotated-commodity 'referent-commodity)))
+
+(defmethod commodity-thousand-marks-p ((annotated-commodity annotated-commodity))
+  (commodity-thousand-marks-p
+   (slot-value annotated-commodity 'referent-commodity)))
+
+(defmethod commodity-display-precision ((annotated-commodity annotated-commodity))
+  (commodity-display-precision
+   (slot-value annotated-commodity 'referent-commodity)))
 
 (defmethod market-value ((annotated-commodity annotated-commodity) &optional datetime)
-  ;; (market-value (slot-value annotated-commodity 'referent) datetime)
+  ;; (market-value (slot-value annotated-commodity 'referent-commodity) datetime)
   (assert (or annotated-commodity datetime)))
 
 (defmethod commodity-annotation-empty-p ((annotation commodity-annotation))
@@ -1060,19 +1087,13 @@
   ;; return *this;
   (assert (and left right)))
 
-(defmethod negate-in-place ((amount amount))
-  ;; if (quantity) {
-  ;;   _dup();
-  ;;   mpz_neg(MPZ(quantity), MPZ(quantity));
-  ;; } else {
-  ;;   throw_(amount_error, "Cannot negate an uninitialized amount");
-  ;; }
-  ;; return *this;
-  (assert amount))
+(defmethod negate* ((amount amount))
+  (setf (slot-value amount 'quantity)
+	(- (slot-value amount 'quantity))))
 
 (defmethod negate ((amount amount))
   (let ((tmp (copy-amount amount)))
-    ;; (negate-in-place tmp)
+    ;; (negate* tmp)
     (assert tmp)
     ))
 
@@ -1393,8 +1414,8 @@
 	(read-char in)
 	(return c))))
 
-(defun parse-amount (in &key (migrate-properties t)
-		     (reduce-to-smallest-units t)
+(defun parse-amount (in &key (migrate-properties-p t)
+		     (reduce-to-smallest-units-p t)
 		     (pool *default-commodity-pool*))
   ;; The possible syntax for an amount is:
   ;; 
@@ -1558,12 +1579,13 @@
   (declare (type (or stream string null) in))
 
   (let ((in (get-input-stream in))
-	symbol quantity details negative
-	(connected-p t)
-	(prefixed-p t))
+	symbol quantity details negative-p
+	(connected-p t) (prefixed-p t) thousand-marks-p
+	commodity commodity-newly-created-p
+	amount)
 
     (when (char= #\- (peek-char-in-line in t))
-      (setq negative t)
+      (setq negative-p t)
       (read-char in))
 
     (if (digit-char-p (peek-char-in-line in t))
@@ -1598,22 +1620,72 @@
 		   (char= #\()))
 	  (setq details (parse-commodity-annotation in))))
 
-    (setf (commodity-symbol-prefixed-p symbol) prefixed-p)
-    (setf (commodity-symbol-connected-p symbol) connected-p)
+    ;; Now that we have the full commodity symbol, create the commodity object
+    ;; it refers to
 
-    (let (commodity commodity-newly-created)
-      (unless (= 0 (length (commodity-symbol-name symbol)))
-	(setq commodity (find-commodity symbol :pool pool))
-	(unless commodity
-	  (setq commodity (create-commodity symbol :pool pool)
-		commodity-newly-created t))
-	(assert commodity)
-	(if details
-	    (setq commodity
-		  (find-or-create-annotated-commodity-internal
-		   commodity details :pool pool))))
+    (unless (= 0 (length (commodity-symbol-name symbol)))
+      (setq commodity (find-commodity symbol :pool pool))
+      (unless commodity
+	(setq commodity (create-commodity symbol :pool pool)
+	      commodity-newly-created-p t))
+      (assert commodity)
+      (if details
+	  (setq commodity
+		(find-or-create-annotated-commodity-internal
+		 commodity details :pool pool))))
 
-      (values symbol quantity commodity))))
+    ;; Determine the precision of the amount, based on the usage of
+    ;; comma or period.
+
+    (setq amount (make-instance 'amount :commodity commodity))
+
+    (let ((last-comma (position #\, quantity :from-end t))
+	  (last-period (position #\. quantity :from-end t)))
+      (cond ((and last-comma last-period)
+	     (setq thousand-marks-p t)
+	     (setf (slot-value amount 'internal-precision)
+		   (- (length quantity) (if (> last-comma last-period)
+					    last-comma last-period) 1)))
+	    ((and last-comma *european-style*)
+	     (setf (slot-value amount 'internal-precision)
+		   (- (length quantity) last-comma 1)))
+	    ((and last-period (not *european-style*))
+	     (setf (slot-value amount 'internal-precision)
+		   (- (length quantity) last-period 1)))
+	    (t
+	     (setf (slot-value amount 'internal-precision) 0))))
+
+    (setf (slot-value amount 'quantity)
+	  (parse-integer (delete-if #'(lambda (c)
+					(or (char= #\. c)
+					    (char= #\, c))) quantity)))
+
+    (when (and commodity
+	       (or commodity-newly-created-p
+		   migrate-properties-p))
+      ;; Migrate the commodity usage details we noticed while parsing
+      (setf (commodity-symbol-prefixed-p
+	     (commodity-symbol commodity)) prefixed-p)
+      (setf (commodity-symbol-connected-p
+	     (commodity-symbol commodity)) connected-p)
+      (setf (slot-value (commodity-base commodity) 'thousand-marks-p)
+	    thousand-marks-p)
+
+      (if (> (slot-value amount 'internal-precision)
+	     (commodity-display-precision commodity))
+	  (setf (slot-value (commodity-base commodity) 'display-precision)
+		(slot-value amount 'internal-precision))))
+
+    (unless migrate-properties-p
+      (setf (slot-value amount 'keep-precision) t))
+
+    (if negative-p
+	(negate* amount))
+
+    (if reduce-to-smallest-units-p
+	(smaller-units* amount))
+
+    amount))
 
 (defun parse-amount-conversion (larger-string smaller-string)
   ;; amount_t larger, smaller;
@@ -2061,7 +2133,7 @@
 (defun copy-balance (balance)
   (assert balance))
 
-(defmethod negate-in-place ((balance balance))
+(defmethod negate* ((balance balance))
   ;; for (amounts_map::iterator i = amounts.begin();
   ;;      i != amounts.end();
   ;;      i++)
@@ -2071,7 +2143,7 @@
 
 (defmethod negate ((balance balance))
   (let ((tmp (copy-balance balance)))
-    ;; (negate-in-place tmp)
+    ;; (negate* tmp)
     (assert tmp)
     ))
 
@@ -2101,13 +2173,13 @@
   ;; return *this = temp;
   (assert balance))
 
-(defmethod unreduce ((balance balance))
+(defmethod larger-units ((balance balance))
   ;; balance_t temp(*this);
   ;; temp.in_place_unreduce();
   ;; return temp;
   (assert balance))
 
-(defmethod unreduce-in-place ((balance balance))
+(defmethod larger-units* ((balance balance))
   ;; // A temporary must be used here because unreduction may cause
   ;; // multiple component amounts to collapse to the same commodity.
   ;; balance_t temp;
