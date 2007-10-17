@@ -50,7 +50,7 @@
 ;; commodity calculations -- the time of conversion from one type to another,
 ;; the rated value at the time of conversion.
 
-(declaim (optimize debug))
+(declaim (optimize (debug 3)))
 
 (defpackage :cambl
   (:use :common-lisp)
@@ -1483,7 +1483,8 @@
     ;; Now that we have the full commodity symbol, create the commodity object
     ;; it refers to
 
-    (unless (= 0 (length (commodity-symbol-name symbol)))
+    (when (and symbol
+	       (not (zerop (length (commodity-symbol-name symbol)))))
       (setq commodity (find-commodity symbol :pool pool))
       (unless commodity
 	(setq commodity (create-commodity symbol :pool pool)
@@ -1589,7 +1590,7 @@
 			(omit-commodity-p nil)
 			(full-precision-p nil))
   (unless (slot-boundp amount 'quantity)
-    (error 'amount-error :msg "Cannot write out an uninitialized amount"))
+    (error 'amount-error :msg "Cannot print an uninitialized amount"))
 
   ;; jww (2007-10-17): This should change from a simple boolean to registered
   ;; commodity to which values should be converted (possibly in both
@@ -1602,7 +1603,9 @@
 
 
   (let* ((commodity (amount-commodity amount))
-	 (commodity-symbol (commodity-symbol commodity))
+	 (omit-commodity-p (or omit-commodity-p (null commodity)))
+	 (commodity-symbol (and (not omit-commodity-p) commodity
+				(commodity-symbol commodity)))
 	 (precision (slot-value amount 'internal-precision))
 	 (display-precision
 	  (if (or (null commodity)
@@ -1632,9 +1635,10 @@
 	  (maybe-gap))
 
 	(format output-stream "~:[~,,vD~;~,,v:D~]" ;
-  (commodity-thousand-marks-p commodity)
-  (if *european-style* #\. #\,)
-  quotient)
+		(and commodity
+		     (commodity-thousand-marks-p commodity))
+		(if *european-style* #\. #\,)
+		quotient)
 	(unless (zerop display-precision)
 	  (format output-stream "~C~v,'0D"
 		  (if *european-style* #\, #\.)
