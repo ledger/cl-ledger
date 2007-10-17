@@ -54,7 +54,9 @@
 
 (defpackage :cambl
   (:use :common-lisp)
-  (:export :create-commodity
+  (:export :make-commodity-pool
+	   :*default-commodity-pool*
+	   :create-commodity
 	   :commodity-error
 	   :amount
 	   :amount-error
@@ -196,6 +198,7 @@
 (defgeneric divide* (left right))
 (defgeneric absolute (value))
 (defgeneric round-to-precision (value &optional precision))
+(defgeneric round-to-precision* (value &optional precision))
 (defgeneric unround (value))
 (defgeneric smaller-units* (value))
 (defgeneric smaller-units (value))
@@ -984,7 +987,7 @@
 (defmethod value-equal ((left amount) (right amount))
   (value= left right))
 
-(defmethod value-equal-p ((left amount) (right amount))
+(defmethod value-equalp ((left amount) (right amount))
   (assert (and left right)))
 
 (defmethod add ((left amount) (right amount))
@@ -1135,6 +1138,10 @@
 		    (expt 10 (- precision internal-precision))))
 	   (setf (slot-value amount 'internal-precision) precision))))
   amount)
+
+(defmethod round-to-precision ((amount amount) &optional precision)
+  (let ((tmp (copy-amount amount)))
+    (round-to-precision* tmp precision)))
 
 (defmethod unround ((amount amount))
   (assert amount)

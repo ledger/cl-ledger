@@ -74,7 +74,8 @@
 
 (defmethod set-up ((test amount-test-case))
   ;; Cause the display precision for dollars to be initialized to 2.
-  (setq cambl:*european-style* nil)
+  (setq cambl:*european-style* nil
+	*default-commodity-pool* (make-commodity-pool))
   (cambl:parse-amount "$1,000.00")
   (setq cambl:*amount-stream-fullstrings* t))
 
@@ -82,17 +83,19 @@
   (setq cambl:*amount-stream-fullstrings* nil))
 
 (def-test-method test-parser ((test amount-test-case) :run nil)
-  (let* (
-	 ;;(x4 (cambl:float-to-amount 123.456))
-	 ;;(x5 (cambl:copy-amount x4))
-	 ;;(x6(cambl:copy-amount x4))
-	 ;;(x7(cambl:copy-amount x4))
-	 ;;(x8 (cambl:parse-amount-lightly "$123.45"))
-	 ;;(x9 (cambl:copy-amount x8))
-	 ;;(x10 (cambl:copy-amount x8))
-	 ;;(x11 (cambl:copy-amount x8))
-	 (x12 (cambl:parse-amount-lightly "$100"))
-	 )
+  (let* (x0
+	 x1
+	 x2
+	 x3
+	 x4 ;;(x4 (cambl:float-to-amount 123.456))
+	 x5 ;;(x5 (cambl:copy-amount x4))
+	 x6 ;;(x6(cambl:copy-amount x4))
+	 x7 ;;(x7(cambl:copy-amount x4))
+	 x8 ;;(x8 (cambl:parse-amount-lightly "$123.45"))
+	 x9 ;;(x9 (cambl:copy-amount x8))
+	 x10 ;;(x10 (cambl:copy-amount x8))
+	 x11 ;;(x11 (cambl:copy-amount x8))
+	 (x12 (cambl:parse-amount-lightly "$100")))
   
     (assert-equal 2 (cambl:display-precision (amount-commodity x12)))
 
@@ -103,74 +106,69 @@
     (assert-condition 'end-of-file (cambl:parse-amount "DM"))
 
     (let ((cambl:*european-style* t))
-
       (assert-equal "$2.000,00"
 		    (cambl:format-value (cambl:parse-amount-lightly "$2000")))
-      ;; amount_t x16();
-      ;; assert-value-equal(string(), x16.to_string());
-      ;; x16.parse("$2000,00");
-      ;; assert-value-equal(string("$2.000,00"), x16.to_string());
-      ))
+      (assert-equal "0"
+		    (cambl:format-value (cambl:parse-amount "0")))
+      (assert-equal "$2.000,00"
+		    (cambl:format-value (cambl:parse-amount-lightly "$2.000,00"))))
 
-  ;; amount_t x18("$2000");
-  ;; assert-value-equal(string("$2,000.00"), x18.to_string());
-  ;; x18.parse("$2,000");
-  ;; assert-value-equal(string("$2,000.00"), x18.to_string());
+    (let ((x15 (cambl:parse-amount-lightly "$2000"))
+	  (x16 (cambl:parse-amount-lightly "$2,000")))
+      (assert-equal "$2,000.00" (cambl:format-value x15))
+      (assert-equal "$2,000.00" (cambl:format-value x16))
+      (assert-value-equal x15 x16))
 
-  ;; assert-value-equal(x15, x17);
+    (assert-equal "EUR 100" (cambl:format-value (cambl:parse-amount "EUR 100")))
 
-  ;; amount_t x19("EUR 1000");
-  ;; amount_t x20("EUR 1000");
+    (setq x1 (cambl:parse-amount "$100.0000" :migrate-properties-p nil))
+    (assert-eql 2 (display-precision x12))
+    (assert-eql (amount-commodity x1) (amount-commodity x12))
+    (assert-value-equal x1 x12)
 
-  ;; assert-value-equal(string("EUR 1000"), x19.to_string());
-  ;; assert-value-equal(string("EUR 1000"), x20.to_string());
+    (setq x0 (cambl:parse-amount "$100.0000"))
+    (assert-eql 4 (display-precision x12)) ; should have changed now
+    (assert-eql (amount-commodity x0) (amount-commodity x12))
+    (assert-value-equal x0 x12)
 
-  ;; x1.parse("$100.0000", AMOUNT_PARSE_NO_MIGRATE);
-  ;; assert-value-equal(amount_t::precision_t(2), x12.commodity().precision());
-  ;; assert-value-equal(x1.commodity(), x12.commodity());
-  ;; assert-value-equal(x1, x12);
+    (setq x2 (cambl:parse-amount "$100.00" :reduce-to-smallest-units-p nil))
+    (assert-value-equal x2 x12)
+    (setq x3 (cambl:parse-amount "$100.00" :migrate-properties-p nil
+				 :reduce-to-smallest-units-p nil))
+    (assert-value-equal x3 x12)
 
-  ;; x0.parse("$100.0000");
-  ;; assert-value-equal(amount_t::precision_t(4), x12.commodity().precision());
-  ;; assert-value-equal(x0.commodity(), x12.commodity());
-  ;; assert-value-equal(x0, x12);
+    (setq x4 (cambl:parse-amount "$100.00"))
+    (assert-value-equal x4 x12)
+    (setq x5 (cambl:parse-amount "$100.00" :migrate-properties-p nil))
+    (assert-value-equal x5 x12)
+    (setq x6 (cambl:parse-amount "$100.00" :reduce-to-smallest-units-p nil))
+    (assert-value-equal x6 x12)
+    (setq x7 (cambl:parse-amount "$100.00" :migrate-properties-p nil
+				 :reduce-to-smallest-units-p nil))
+    (assert-value-equal x7 x12)
 
-  ;; x2.parse("$100.00", AMOUNT_PARSE_NO_REDUCE);
-  ;; assert-value-equal(x2, x12);
-  ;; x3.parse("$100.00", AMOUNT_PARSE_NO_MIGRATE | AMOUNT_PARSE_NO_REDUCE);
-  ;; assert-value-equal(x3, x12);
+    (setq x8 (cambl:parse-amount "$100.00"))
+    (assert-value-equal x8 x12)
+    (setq x9 (cambl:parse-amount "$100.00" :migrate-properties-p nil))
+    (assert-value-equal x9 x12)
+    (setq x10 (cambl:parse-amount "$100.00" :reduce-to-smallest-units-p nil))
+    (assert-value-equal x10 x12)
+    (setq x11 (cambl:parse-amount "$100.00" :migrate-properties-p nil
+				  :reduce-to-smallest-units-p nil))
+    (assert-value-equal x11 x12)
 
-  ;; x4.parse("$100.00");
-  ;; assert-value-equal(x4, x12);
-  ;; x5.parse("$100.00", AMOUNT_PARSE_NO_MIGRATE);
-  ;; assert-value-equal(x5, x12);
-  ;; x6.parse("$100.00", AMOUNT_PARSE_NO_REDUCE);
-  ;; assert-value-equal(x6, x12);
-  ;; x7.parse("$100.00", AMOUNT_PARSE_NO_MIGRATE | AMOUNT_PARSE_NO_REDUCE);
-  ;; assert-value-equal(x7, x12);
-
-  ;; x8.parse("$100.00");
-  ;; assert-value-equal(x8, x12);
-  ;; x9.parse("$100.00", AMOUNT_PARSE_NO_MIGRATE);
-  ;; assert-value-equal(x9, x12);
-  ;; x10.parse("$100.00", AMOUNT_PARSE_NO_REDUCE);
-  ;; assert-value-equal(x10, x12);
-  ;; x11.parse("$100.00", AMOUNT_PARSE_NO_MIGRATE | AMOUNT_PARSE_NO_REDUCE);
-  ;; assert-value-equal(x11, x12);
-
-  ;; assert-valid(x0);
-  ;; assert-valid(x1);
-  ;; assert-valid(x2);
-  ;; assert-valid(x3);
-  ;; assert-valid(x5);
-  ;; assert-valid(x6);
-  ;; assert-valid(x7);
-  ;; assert-valid(x8);
-  ;; assert-valid(x9);
-  ;; assert-valid(x10);
-  ;; assert-valid(x11);
-  ;; assert-valid(x12);
-  )
+    (assert-valid x0)
+    (assert-valid x1)
+    (assert-valid x2)
+    (assert-valid x3)
+    (assert-valid x5)
+    (assert-valid x6)
+    (assert-valid x7)
+    (assert-valid x8)
+    (assert-valid x9)
+    (assert-valid x10)
+    (assert-valid x11)
+    (assert-valid x12)))
   
 
 (def-test-method test-constructors ((test amount-test-case) :run nil)
