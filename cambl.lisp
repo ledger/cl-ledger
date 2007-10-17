@@ -232,25 +232,23 @@
     (if (char= #\" (peek-char nil in))
 	(progn
 	  (read-char in)
-	  (loop
-	     (let ((c (read-char in nil)))
-	       (if c
-		   (if (char= #\" c)
-		       (return)
-		       (progn
-			 (if (aref +invalid-symbol-chars+ (char-code c))
-			     (setf needs-quoting-p t))
-			 (write-char c buf)))
-		   (error "Quoted commodity symbol lacks closing quote")))))
-	(loop
-	   (let ((c (read-char in nil)))
-	     (if c
-		 (if (aref +invalid-symbol-chars+ (char-code c))
-		     (progn
-		       (unread-char c in)
-		       (return))
-		     (write-char c buf))
-		 (return)))))
+	  (do ((c (read-char in) (read-char in nil)))
+	      ((nil))
+	    (if c
+		(if (char= #\" c)
+		    (return)
+		    (progn
+		      (if (aref +invalid-symbol-chars+ (char-code c))
+			  (setf needs-quoting-p t))
+		      (write-char c buf)))
+		(error "Quoted commodity symbol lacks closing quote"))))
+	(do ((c (read-char in) (read-char in nil 'the-end)))
+	    ((not (characterp c)))
+	  (if (aref +invalid-symbol-chars+ (char-code c))
+	      (progn
+		(unread-char c in)
+		(return))
+	      (write-char c buf))))
     (make-commodity-symbol :name (get-output-stream-string buf)
 			   :needs-quoting-p needs-quoting-p)))
 
@@ -1344,24 +1342,31 @@
   (assert amount)
   (assert (or keep-price keep-date keep-tag)))
 
+(defun parse-amount-quantity (in)
+  (let ((in (or in *standard-input*))
+	(buf (make-string-output-stream))
+	last-special)
+    (peek-char t in)			; skip leading whitespace
+    (do ((c (read-char in) (read-char in nil 'the-end)))
+	((not (characterp c)))
+      (if (digit-char-p c)
+	  (progn
+	    (when last-special
+	      (write-char last-special buf)
+	      (setq last-special nil))
+	    (write-char c buf))
+	  (if (and (null last-special)
+		   (or (char= c #\-)
+		       (char= c #\.)
+		       (char= c #\,)))
+	      (setq last-special c)
+	      (return))))
+    (if last-special
+	(unread-char last-special in))
+    (get-output-stream-string buf)))
+
 ;; jww (2007-10-15): use keywords here
 (defun parse-amount (in &key (migrate-properties t) (reduce-to-smallest-units t))
-  ;; void parse_quantity(std::istream& in, string& value)
-  ;; {
-  ;;   char buf[256];
-  ;;   char c = peek_next_nonws(in);
-  ;;   READ_INTO(in, buf, 255, c,
-  ;;             std::isdigit(c) || c == '-' || c == '.' || c == ',');
-  ;;
-  ;;   int len = std::strlen(buf);
-  ;;   while (len > 0 && ! std::isdigit(buf[len - 1])) {
-  ;;     buf[--len] = '\0';
-  ;;     in.unget();
-  ;;   }
-  ;;
-  ;;   value = buf;
-  ;; }
-  ;;
   ;; // The possible syntax for an amount is:
   ;; //
   ;; //   [-]NUM[ ]SYM [@ AMOUNT]
