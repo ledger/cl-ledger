@@ -201,8 +201,8 @@
   "Parse a commodity symbol from the input stream IN.
   This is the correct entry point for creating a new commodity symbol.
 
-  A commodity contain any character not found in `+invalid-symbol-chars+'.  To
-  include such characters in a symbol name -- except for #\\\", which may
+  A commodity contain any character not found in `+invalid-symbol-chars+'.
+  To include such characters in a symbol name -- except for #\\\", which may
   never appear in a symbol name -- surround the commodity name with double
   quotes.  It is an error if EOF is reached without reading the ending double
   quote.  If the symbol name is not quoted, and an invalid character is
