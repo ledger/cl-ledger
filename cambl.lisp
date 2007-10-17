@@ -138,17 +138,19 @@
    (annotated-p :initform nil :type boolean)))
 
 (defclass amount ()
-  (commodity
-   quantity
-   value-origins-list
-   display-precision
-   internal-precision
-   commodity-pool
-   keep-base
-   keep-price
-   keep-date
-   keep-tag
-   stream-fullstrings))
+  ((commodity :accessor amount-commodity :initarg commodity
+	      :type commodity)
+   (quantity :type integer)
+   (display-precision :type fixnum)
+   (internal-precision :type fixnum)
+   ;;value-origins-list
+   (commodity-pool :accessor amount-commodity-pool :initarg pool
+		   :type commodity-pool)
+   (keep-base :allocation :class :initform nil :type boolean)
+   (keep-price :allocation :class :initform nil :type boolean)
+   (keep-date :allocation :class :initform nil :type boolean)
+   (keep-tag :allocation :class :initform nil :type boolean)
+   (stream-fullstrings :allocation :class :initform nil :type boolean)))
 
 (defclass balance ()
   (amounts-map))
@@ -163,6 +165,7 @@
   (tag nil :type (or string null)))
 
 (defgeneric commodity-symbol (commodity))
+(defgeneric commodity-equal (commodity commodity))
 (defgeneric commodity-equalp (commodity commodity))
 (defgeneric strip-annotations (commodity &optional keep-price keep-date keep-tag))
 (defgeneric market-value (commodity &optional datetime))
@@ -174,17 +177,26 @@
 (defgeneric unreduce-in-place (value))
 (defgeneric unreduce (value))
 (defgeneric zero-p (amount))
+(defgeneric real-zero-p (amount))
 (defgeneric annotate-commodity (commodity annotation))
 (defgeneric commodity-annotation (item))
+(defgeneric value= (value value))
 (defgeneric add-to-balance (balance value))
-(defgeneric balance-add (balance value))
-(defgeneric balance-sub (balance value))
-(defgeneric balance-multiply (balance value))
-(defgeneric balance-divide (balance value))
-(defgeneric balance-negate (balance))
-(defgeneric balance-abs (balance))
-(defgeneric balance-reduce (balance))
-(defgeneric to-amount (balance))
+(defgeneric add (value value))
+(defgeneric subtract (value value))
+(defgeneric multiply (value value))
+(defgeneric divide (value value))
+(defgeneric negate (value))
+(defgeneric absolute (value))
+(defgeneric round-to-precision (value &optional precision))
+(defgeneric unround (value))
+(defgeneric smaller-units* (value))
+(defgeneric smaller-units (value))
+(defgeneric larger-units* (value))
+(defgeneric larger-units (value))
+(defgeneric convert-to-amount (value))
+(defgeneric convert-to-string (value))
+(defgeneric convert-to-fullstring (value))
 
 (defgeneric amount-in-balance (balance commodity))
 
@@ -826,12 +838,10 @@
   ;; }
   (assert (and amount other)))
 
-(defun amounts-equal (amount other)
-  (assert (and amount other)))
-(defun amounts-equalp (amount other)
-  (assert (and amount other)))
+(defmethod value= ((left amount) (right amount))
+  (assert (and left right)))
 
-(defun amount-add (amount other)
+(defmethod add ((left amount) (right amount))
   ;; if (! quantity || ! amt.quantity) {
   ;;   if (quantity)
   ;;     throw_(amount_error, "Cannot add an amount to an uninitialized amount");
@@ -864,9 +874,9 @@
   ;; }
   ;;
   ;; return *this;
-  (assert (and amount other)))
+  (assert (and left right)))
 
-(defun sub (amount other)
+(defmethod subtract ((left amount) (right amount))
   ;; if (! quantity || ! amt.quantity) {
   ;;   if (quantity)
   ;;     throw_(amount_error, "Cannot subtract an amount from an uninitialized amount");
@@ -899,9 +909,9 @@
   ;; }
   ;;
   ;; return *this;
-  (assert (and amount other)))
+  (assert (and left right)))
 
-(defun mul (amount other)
+(defmethod multiply ((left amount) (right amount))
   ;; void mpz_round(mpz_t out, mpz_t value, int value_prec, int round_prec)
   ;; {
   ;;   // Round `value', with an encoding precision of `value_prec', to a
@@ -982,9 +992,9 @@
   ;; }
   ;;
   ;; return *this;
-  (assert (and amount other)))
+  (assert (and left right)))
 
-(defun div (amount other)
+(defmethod divide ((left amount) (right amount))
   ;; if (! quantity || ! amt.quantity) {
   ;;   if (quantity)
   ;;     throw_(amount_error, "Cannot divide an amount by an uninitialized amount");
@@ -1035,7 +1045,7 @@
   ;; }
   ;;
   ;; return *this;
-  (assert (and amount other)))
+  (assert (and left right)))
 
 (defmethod negate-in-place ((amount amount))
   ;; if (quantity) {
@@ -1053,13 +1063,13 @@
     (assert tmp)
     ))
 
-(defun amount-abs (amount)
+(defmethod absolute ((amount amount))
   ;; if (sign() < 0)
   ;;   return negate();
   ;; return *this;
   (assert amount))
 
-(defun amount-round (amount &optional precision)
+(defmethod round-to-precision ((amount amount) &optional precision)
   ;; if (! quantity)
   ;;   throw_(amount_error, "Cannot round an uninitialized amount");
   ;;
@@ -1094,7 +1104,7 @@
   (assert amount)
   (assert precision))
 
-(defun unround (amount)
+(defmethod unround ((amount amount))
   ;; if (! quantity)
   ;;   throw_(amount_error, "Cannot unround an uninitialized amount");
   ;; else if (quantity->has_flags(BIGINT_KEEP_PREC))
@@ -1107,7 +1117,7 @@
   ;; return t;
   (assert amount))
 
-(defmethod reduce-in-place ((amount amount))
+(defmethod smaller-units* ((amount amount))
   ;; if (! quantity)
   ;;   throw_(amount_error, "Cannot reduce an uninitialized amount");
   ;;
@@ -1118,13 +1128,13 @@
   ;; return *this;
   (assert amount))
 
-(defun amount-reduce (amount)
+(defmethod smaller-units ((amount amount))
   (let ((tmp (copy-amount amount)))
     ;; (reduce-in-place tmp)
     (assert tmp)
     ))
 
-(defmethod unreduce-in-place ((amount amount))
+(defmethod larger-units* ((amount amount))
   ;; if (! quantity)
   ;;   throw_(amount_error, "Cannot unreduce an uninitialized amount");
   ;;
@@ -1137,7 +1147,7 @@
   ;; return *this;
   (assert amount))
 
-(defmethod unreduce ((amount amount))
+(defmethod larger-units ((amount amount))
   (let ((tmp (copy-amount amount)))
     ;; (unreduce-in-place tmp)
     (assert tmp)
@@ -1156,8 +1166,13 @@
   (assert datetime))
 
 (defun sign (amount)
-  ;; jww (2007-10-15): How do I find the sign of an integer?
-  (assert amount))
+  "Return -1, 0 or 1 depending on the sign of AMOUNT."
+  (let ((quantity (slot-value amount 'quantity)))
+    (if (< quantity 0)
+	-1
+	(if (> quantity 0)
+	    1
+	    0))))
 
 (defmethod zero-p ((amount amount))
   ;; if (! quantity)
@@ -1172,10 +1187,10 @@
   ;; return is_realzero();
   (assert amount))
 
-(defun real-zero-p (amount)
+(defmethod real-zero-p ((amount amount))
   (assert amount))
 
-(defun to-double (amount &optional no-check)
+(defun convert-to-double (amount &optional no-check)
   ;; if (! quantity)
   ;;   throw_(amount_error, "Cannot convert an uninitialized amount to a double");
   ;;
@@ -1206,7 +1221,7 @@
   (assert amount)
   (assert no-check))
 
-(defun to-long (amount &optional no-check)
+(defun convert-to-integer (amount &optional no-check)
   ;; if (! quantity)
   ;;   throw_(amount_error, "Cannot convert an uninitialized amount to a long");
   ;;
@@ -1223,13 +1238,13 @@
   (assert amount)
   (assert no-check))
 
-(defun to-string (amount)
+(defmethod convert-to-string ((amount amount))
   ;; std::ostringstream bufstream;
   ;; print(bufstream);
   ;; return bufstream.str();
   (assert amount))
 
-(defun to-fullstring (amount)
+(defmethod convert-to-fullstring ((amount amount))
   ;; std::ostringstream bufstream;
   ;; print(bufstream, false, true);
   ;; return bufstream.str();
@@ -1330,7 +1345,7 @@
   (assert (or keep-price keep-date keep-tag)))
 
 ;; jww (2007-10-15): use keywords here
-(defun parse-amount (in &optional no-migrate no-reduce)
+(defun parse-amount (in &key (migrate-properties t) (reduce-to-smallest-units t))
   ;; void parse_quantity(std::istream& in, string& value)
   ;; {
   ;;   char buf[256];
@@ -1507,8 +1522,8 @@
   ;;
   ;; safe_holder.release();        // `this->quantity' owns the pointer
   (assert in)
-  (assert no-migrate)
-  (assert no-reduce))
+  (assert migrate-properties)
+  (assert reduce-to-smallest-units))
 
 (defun parse-amount-conversion (larger-string smaller-string)
   ;; amount_t larger, smaller;
