@@ -1,4 +1,4 @@
-SUBDIRS	      = ecl
+SUBDIRS	      = #ecl
 BUILT_SOURCES =
 CLEANFILES    =
 EXTRA_DIST    = LICENSE \ # doc test contrib scripts

@@ -9,7 +9,7 @@ AM_INIT_AUTOMAKE([dist-bzip2])
 
 AC_CONFIG_SRCDIR([cambl.lisp])
 AC_CONFIG_HEADER([acconf.h])
-AC_CONFIG_SUBDIRS([ecl])
+#AC_CONFIG_SUBDIRS([ecl])
 
 # Checks for programs.
 AC_PROG_MAKE_SET
