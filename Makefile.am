@@ -23,7 +23,7 @@ nodist_info_TEXINFOS = doc/ledger.texi
 ECL = ecl
 
 .lisp.o:
-	$(ECL) -s -o $(abs_builddir)/$@ -compile $< 
+	$(ECL) -s -o $@ -compile $< 
 
 ledger$(EXEEXT): $(ledger_OBJECTS) $(ledger_DEPENDENCIES)
 	$(ECL) -eval "(require 'cmp)" \

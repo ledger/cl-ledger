@@ -18,3 +18,4 @@
 ^install-sh$
 ^elisp-comp$
 ^ecl$
+\.xfasl$

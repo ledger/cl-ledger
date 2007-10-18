@@ -684,7 +684,6 @@
 
     <VALUE> SYMBOL {PRICE}"
   (declare (type commodity-annotation annotation))
-  (assert annotation)
   (format output-stream "~:[~; {~:*~A}~]~:[~; [~:*~A]~]~:[~; (~:*~A)~]"
 	  (commodity-annotation-price annotation)
 	  (commodity-annotation-date annotation)
