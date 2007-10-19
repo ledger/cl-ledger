@@ -15,7 +15,7 @@ dist-hook:
 
 bin_PROGRAMS = ledger
 
-ledger_SOURCES  = hello.lisp
+ledger_SOURCES  = src/hello.lisp
 
 nodist_info_TEXINFOS = doc/ledger.texi
 

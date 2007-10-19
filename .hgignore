@@ -20,3 +20,11 @@
 ^ecl$
 \.xfasl$
 ^sbcl\.core$
+^src/\.dirstamp$
+^src/\.deps/\.dirstamp$
+^ledger$
+^config\.status$
+^config\.log$
+^acconf\.h$
+\.o$
+^stamp-h1$

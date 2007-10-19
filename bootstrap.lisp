@@ -34,4 +34,10 @@
 (push  :hunchentoot-no-ssl *features*)
 (asdf:operate 'asdf:load-op :hunchentoot)
 
+(push "src/" asdf:*central-registry*)
+(asdf:operate 'asdf:load-op :cambl)
+
+;(push "test/" asdf:*central-registry*)
+;(asdf:operate 'asdf:load-op :cambl-test)
+
 (sb-ext:save-lisp-and-die "sbcl.core")

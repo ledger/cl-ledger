@@ -7,7 +7,7 @@ AC_INIT([ledger],[4.0],[johnw@newartisans.com])
 AC_CONFIG_SRCDIR(ledger)
 AM_INIT_AUTOMAKE([dist-bzip2])
 
-AC_CONFIG_SRCDIR([cambl.lisp])
+AC_CONFIG_SRCDIR([src])
 AC_CONFIG_HEADER([acconf.h])
 #AC_CONFIG_SUBDIRS([ecl])
 
