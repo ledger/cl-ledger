@@ -1,8 +1,7 @@
 (mapc 'require '(sb-bsd-sockets sb-posix sb-introspect sb-cltl2 asdf))
 
-(load "lib/red-black/rbt-trees-package.lisp")
-(load "lib/red-black/rbt-types.lisp")
-(load "lib/red-black/red-black-trees-struct.lisp")
+(push "lib/red-black/" asdf:*central-registry*)
+(asdf:operate 'asdf:load-op :rbt-trees-struct)
 
 (push "lib/xlunit-0.6.2/" asdf:*central-registry*)
 (asdf:operate 'asdf:load-op :xlunit)

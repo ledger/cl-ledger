@@ -45,6 +45,7 @@ for diagnostic output.")
 (asdf:defsystem :cambl
   :serial t
   :version #.*cambl-version*
+  :depends-on (:rbt-trees-struct)
   :components ((:file "lib/red-black/rbt-trees-package")
 	       (:file "lib/red-black/rbt-types")
 	       (:file "lib/red-black/red-black-trees-struct")

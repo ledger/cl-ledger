@@ -148,8 +148,8 @@
 (defclass amount ()
   ((commodity :accessor amount-commodity :initarg :commodity
 	      :initform nil :type (or commodity null))
-   (quantity :type integer)
-   (internal-precision :type fixnum)
+   (quantity :initarg :quantity :type integer)
+   (internal-precision :initarg :precision :type fixnum)
    (keep-precision :initform nil :type boolean)
    ;;value-origins-list
    ;; (commodity-pool :accessor amount-commodity-pool :initarg :pool
@@ -534,51 +534,53 @@
   (slot-value (slot-value annotated-commodity 'referent-commodity)
 	      'basic-commodity))
 
-;; jww (2007-10-15): use keywords here
+(defmethod strip-annotations ((amount amount)
+			      &key keep-price keep-date keep-tag)
+  (unless (slot-boundp amount 'quantity)
+    (error 'amount-error
+	   :msg "Cannot strip commodity annotations from an uninitialized amount"))
+
+  (let ((commodity (amount-commodity amount)))
+    (if (or (not (commodity-annotated-p commodity))
+	    (and keep-price keep-date keep-tag))
+	amount
+	(let ((tmp (copy-amount amount)))
+	  (setf (slot-value tmp 'commodity)
+		(strip-annotations commodity :keep-price keep-price
+				   :keep-date keep-date :keep-tag keep-tag))
+	  tmp))))
+
 (defmethod strip-annotations ((commodity commodity)
 			      &key keep-price keep-date keep-tag)
-  ;; if (! quantity)
-  ;;   throw_(amount_error,
-  ;;          "Cannot strip commodity annotations from an uninitialized amount");
-  ;;
-  ;; if (! commodity().annotated ||
-  ;;     (_keep_price && _keep_date && _keep_tag))
-  ;;   return *this;
-  ;;
-  ;; amount_t t(*this);
-  ;; t.set_commodity(as_annotated_commodity(commodity()).
-  ;;                 strip_annotations(_keep_price, _keep_date, _keep_tag));
-  ;; return t;
-  (assert commodity)
-  (assert (or keep-price keep-date keep-tag)))
+  (declare (ignore keep-price))
+  (declare (ignore keep-date))
+  (declare (ignore keep-tag))
+  (assert (not (commodity-annotated-p commodity)))
+  commodity)
 
 (defmethod strip-annotations ((annotated-commodity annotated-commodity)
 			      &key keep-price keep-date keep-tag)
-  ;; DEBUG("commodity.annotated.strip",
-  ;;       "Reducing commodity " << *this << std::endl
-  ;;        << "  keep price " << _keep_price << " "
-  ;;        << "  keep date "  << _keep_date << " "
-  ;;        << "  keep tag "   << _keep_tag);
-  ;;
-  ;; commodity_t * new_comm;
-  ;;
-  ;; if ((_keep_price && details.price) ||
-  ;;     (_keep_date  && details.date) ||
-  ;;     (_keep_tag   && details.tag))
-  ;; {
-  ;;   new_comm = parent().find_or_create
-  ;;     (referent(),
-  ;;      annotation_t(_keep_price ? details.price : none,
-  ;;                   _keep_date  ? details.date  : none,
-  ;;                   _keep_tag   ? details.tag   : none));
-  ;; } else {
-  ;;   new_comm = parent().find_or_create(base_symbol());
-  ;; }
-  ;;
-  ;; assert(new_comm);
-  ;; return *new_comm;
-  (assert annotated-commodity)
-  (assert (or keep-price keep-date keep-tag)))
+  (assert (commodity-annotated-p annotated-commodity))
+  (let* ((annotation (commodity-annotation annotated-commodity))
+	 (price (commodity-annotation-price annotation))
+	 (date (commodity-annotation-date annotation))
+	 (tag (commodity-annotation-tag annotation)))
+    (if (and (or keep-price (null price))
+	     (or keep-date (null date))
+	     (or keep-tag (null tag)))
+	annotated-commodity
+	(let ((tmp (make-instance 'annotated-commodity)))
+	  (setf (slot-value tmp 'referent-commodity)
+		(slot-value annotated-commodity 'referent-commodity))
+	  (let ((new-ann (make-commodity-annotation)))
+	    (setf (slot-value tmp 'annotation) new-ann)
+	    (if keep-price
+		(setf (commodity-annotation-price new-ann) price))
+	    (if keep-date
+		(setf (commodity-annotation-price new-ann) date))
+	    (if keep-tag
+		(setf (commodity-annotation-price new-ann) tag)))
+	  tmp))))
 
 (defmethod commodity-symbol ((annotated-commodity annotated-commodity))
   (commodity-symbol (slot-value annotated-commodity 'referent-commodity)))
@@ -591,8 +593,7 @@
   (display-precision (slot-value annotated-commodity 'referent-commodity)))
 
 (defmethod market-value ((annotated-commodity annotated-commodity) &optional datetime)
-  ;; (market-value (slot-value annotated-commodity 'referent-commodity) datetime)
-  (assert (or annotated-commodity datetime)))
+  (market-value (slot-value annotated-commodity 'referent-commodity) datetime))
 
 (defmethod commodity-annotation-empty-p ((annotation commodity-annotation))
   (not (or (commodity-annotation-price annotation)
@@ -918,12 +919,10 @@
 ;; @see to_fullstring
 
 (defun float-to-amount (value)
-  (assert value))
+  (parse-amount* (format nil "~F" value)))
 
 (defun integer-to-amount (value)
-  (let ((tmp (make-instance 'amount)))
-    (setf (slot-value tmp 'quantity) value)
-    tmp))
+  (make-instance 'amount :quantity value :precision 0))
 
 (defun exact-amount (in &key (reduce-to-smallest-units-p t)
 		     (pool *default-commodity-pool*))
@@ -1263,53 +1262,16 @@
 	   "Cannot determine whether an uninitialized amount is zero"))
   (= 0 (slot-value amount 'quantity)))
 
-(defun convert-to-double (amount &optional no-check)
-  ;; if (! quantity)
-  ;;   throw_(amount_error, "Cannot convert an uninitialized amount to a double");
-  ;;
-  ;; mpz_t remainder;
-  ;; mpz_init(remainder);
-  ;;
-  ;; mpz_set(temp, MPZ(quantity));
-  ;; mpz_ui_pow_ui(divisor, 10, quantity->prec);
-  ;; mpz_tdiv_qr(temp, remainder, temp, divisor);
-  ;;
-  ;; char * quotient_s  = mpz_get_str(NULL, 10, temp);
-  ;; char * remainder_s = mpz_get_str(NULL, 10, remainder);
-  ;;
-  ;; std::ostringstream num;
-  ;; num << quotient_s << '.' << remainder_s;
-  ;;
-  ;; std::free(quotient_s);
-  ;; std::free(remainder_s);
-  ;;
-  ;; mpz_clear(remainder);
-  ;;
-  ;; double value = lexical_cast<double>(num.str());
-  ;;
-  ;; if (! no_check && *this != value)
-  ;;   throw_(amount_error, "Conversion of amount to_double loses precision");
-  ;;
-  ;; return value;
-  (assert amount)
-  (assert no-check))
-
-(defun convert-to-integer (amount &optional no-check)
-  ;; if (! quantity)
-  ;;   throw_(amount_error, "Cannot convert an uninitialized amount to a long");
-  ;;
-  ;; mpz_set(temp, MPZ(quantity));
-  ;; mpz_ui_pow_ui(divisor, 10, quantity->prec);
-  ;; mpz_tdiv_q(temp, temp, divisor);
-  ;;
-  ;; long value = mpz_get_si(temp);
-  ;;
-  ;; if (! no_check && *this != value)
-  ;;   throw_(amount_error, "Conversion of amount to_long loses precision");
-  ;;
-  ;; return value;
-  (assert amount)
-  (assert no-check))
+(defun amount-to-integer (amount &key (dont-check-p t))
+  (declare (type amount amount))
+  (declare (type dont-check-p boolean))
+  (multiple-value-bind (quotient remainder)
+      (truncate (slot-value amount 'quantity)
+		(expt 10 (slot-value amount 'internal-precision)))
+    (if (and (not dont-check-p) remainder)
+	(error 'amount-error :msg
+	       "Conversion of amount to_long loses precision"))
+    quotient))
 
 (defmethod format-value ((amount amount))
   (assert amount)
@@ -1329,16 +1291,6 @@
     (print-value amount :output-stream out :omit-commodity-p t)
     out))
 
-(defun fits-in-double-p (amount)
-  ;; double value = to_double(true);
-  ;; return *this == amount_t(value);
-  (assert amount))
-
-(defun fits-in-long-p (amount)
-  ;; long value = to_long(true);
-  ;; return *this == amount_t(value);
-  (assert amount))
-
 (defun amount-lessp (left right)
   (minusp (amount-compare left right)))
 
@@ -1346,13 +1298,13 @@
   (plusp (amount-compare left right)))
 
 (defun amount-quantity (amount)
-  ;; if (! has_commodity())
-  ;;   return *this;
-  ;;
-  ;; amount_t temp(*this);
-  ;; temp.clear_commodity();
-  ;; return temp;
-  (assert amount))
+  (declare (type amount amount))
+  (let ((commodity (amount-commodity amount)))
+    (if commodity
+	(let ((tmp (copy-amount amount)))
+	  (setf (slot-value tmp 'commodity) nil)
+	  tmp)
+	amount)))
 
 (defmethod annotate-commodity ((commodity commodity)
 			       (commodity-annotation commodity-annotation))
@@ -1417,12 +1369,6 @@
   ;; }
   ;; return annotation_t();
   (assert amount))
-
-(defmethod strip-annotations ((amount amount)
-			      &key keep-price keep-date keep-tag)
-  ;; jww (2007-10-17): NYI
-  (assert amount)
-  (assert (or keep-price keep-date keep-tag)))
 
 (defun read-amount-quantity (in)
   (declare (type stream in))
@@ -1730,49 +1676,6 @@
 	     (expt 10 (- precision
 			 (slot-value amount 'internal-precision)))))
     (setf (slot-value amount 'internal-precision) precision)))
-
-;; jww (2007-10-15): This requires FFI binding to gdtoa
-(defun parse-double (string)
-  ;; int    decpt, sign;
-  ;; char * buf = dtoa(val, 0, 0, &decpt, &sign, NULL);
-  ;; char * result;
-  ;; int    len = std::strlen(buf);
-  ;;
-  ;; if (decpt <= len) {
-  ;;   decpt  = len - decpt;
-  ;;   result = NULL;
-  ;; } else {
-  ;;   // There were trailing zeros, which we have to put back on in
-  ;;   // order to convert this buffer into an integer.
-  ;;
-  ;;   int zeroes = decpt - len;
-  ;;   result = new char[len + zeroes + 1];
-  ;;
-  ;;   std::strcpy(result, buf);
-  ;;   int i;
-  ;;   for (i = 0; i < zeroes; i++)
-  ;;     result[len + i] = '0';
-  ;;   result[len + i] = '\0';
-  ;;
-  ;;   decpt = (len - decpt) + zeroes;
-  ;; }
-  ;;
-  ;; if (sign) {
-  ;;   char * newbuf = new char[std::strlen(result ? result : buf) + 2];
-  ;;   newbuf[0] = '-';
-  ;;   std::strcpy(&newbuf[1], result ? result : buf);
-  ;;   mpz_set_str(dest, newbuf, 10);
-  ;;   checked_array_delete(newbuf);
-  ;; } else {
-  ;;   mpz_set_str(dest, result ? result : buf, 10);
-  ;; }
-  ;;
-  ;; if (result)
-  ;;   checked_array_delete(result);
-  ;; freedtoa(buf);
-  ;;
-  ;; return decpt;
-  (assert string))
 
 (defmethod add-to-balance ((balance balance) (amount amount))
   ;; TRACE_CTOR(balance_t, "const amount_t&");
