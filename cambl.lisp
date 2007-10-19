@@ -50,42 +50,42 @@
 ;; commodity calculations -- the time of conversion from one type to another,
 ;; the rated value at the time of conversion.
 
-(declaim (optimize (safety 3) (debug 3)))
+(declaim (optimize (debug 3)))
 
 (defpackage :cambl
-  (:use :common-lisp)
-  (:export :make-commodity-pool
-	   :*default-commodity-pool*
-	   :create-commodity
-	   :commodity-error
-	   :amount
-	   :amount-error
-	   :amount-commodity
-	   :copy-amount
-	   :copy-value
-	   :float-to-amount
-	   :integer-to-amount
-	   :exact-amount
-	   :parse-amount
-	   :parse-amount-lightly
-	   :read-amount
-	   :read-amount-lightly
-	   :print-value
-	   :format-value
-	   :display-precision
-	   :value=
-	   :value-equal
-	   :value-equalp
-	   :add
-	   :add*
-	   :subtract
-	   :subtract*
-	   :multiply
-	   :multiply*
-	   :divide
-	   :divide*
-	   :*european-style*
-	   :*amount-stream-fullstrings*))
+  (:use :common-lisp :rbt)
+  (:export make-commodity-pool
+	   *default-commodity-pool*
+	   create-commodity
+	   commodity-error
+	   amount
+	   amount-error
+	   amount-commodity
+	   copy-amount
+	   copy-value
+	   float-to-amount
+	   integer-to-amount
+	   exact-amount
+	   parse-amount
+	   parse-amount*
+	   read-amount
+	   read-amount*
+	   print-value
+	   format-value
+	   display-precision
+	   value=
+	   value-equal
+	   value-equalp
+	   add
+	   add*
+	   subtract
+	   subtract*
+	   multiply
+	   multiply*
+	   divide
+	   divide*
+	   *european-style*
+	   *amount-stream-fullstrings*))
 
 (in-package :CAMBL)
 
@@ -105,24 +105,20 @@
   (prefixed-p nil :type boolean)
   (connected-p nil :type boolean))
 
-(defstruct commodity-price-history
-  (prices nil :type list)
-  (last-lookup nil :type (or datetime null)))
-
 (defclass basic-commodity ()
   ((symbol :initarg :symbol :type commodity-symbol)
-   (name :accessor commodity-name)
-   (note :accessor commodity-note)
-   (smaller-unit-equivalence :accessor smaller-unit-equivalence)
-   (larger-unit-equivalence :accessor larger-unit-equivalence)
+   name
+   note
+   smaller-unit-equivalence
+   larger-unit-equivalence
    (thousand-marks-p :initarg :thousand-marks-p :initform nil
 		     :type boolean)
    (no-market-price-p :initarg :no-market-price-p :initform nil
 		      :type boolean)
    (builtin-p :initarg :builtin-p :initform nil :type boolean)
    (display-precision :initform 0 :type fixnum)
-   (price-history :accessor commodity-price-history
-		  :type commodity-price-history)))
+   price-history
+   (last-lookup :type datetime)))
 
 (defstruct commodity-pool
   (commodities-by-name-map (make-hash-table :test 'equal) :type hash-table)
@@ -145,6 +141,10 @@
    mapping-key
    (annotated-p :initform nil :type boolean)))
 
+(defmethod print-object ((commodity commodity) stream)
+  (print-unreadable-object (commodity stream :type t)
+    (princ (commodity-symbol commodity) stream)))
+
 (defclass amount ()
   ((commodity :accessor amount-commodity :initarg :commodity
 	      :initform nil :type (or commodity null))
@@ -158,6 +158,14 @@
    (keep-price :allocation :class :initform nil :type boolean)
    (keep-date :allocation :class :initform nil :type boolean)
    (keep-tag :allocation :class :initform nil :type boolean)))
+
+(defmethod print-object ((amount amount) stream)
+  (print-unreadable-object (amount stream :type t)
+    (princ (concatenate 'string "\"" (format-value amount) "\"") stream)))
+
+(defstruct pricing-entry
+  (moment nil :type datetime)
+  (price nil :type amount))
 
 (defvar *amount-stream-fullstrings* nil)
 
@@ -316,33 +324,19 @@
 ;; The commodity and annotated-commodity classes are the main interface class
 ;; for dealing with commodities themselves (which most people will never do).
 
-(defmethod commodity-base ((basic-commodity basic-commodity))
-  basic-commodity)
-
 (defmethod commodity-base ((commodity commodity))
   (slot-value commodity 'basic-commodity))
-
-(defmethod commodity-symbol ((basic-commodity basic-commodity))
-  (let ((symbol (slot-value basic-commodity 'symbol)))
-    (assert (not (zerop (length (commodity-symbol-name symbol)))))
-    symbol))
 
 (defmethod commodity-symbol ((commodity commodity))
   (if (slot-value commodity 'has-qualified-symbol-p)
       (slot-value commodity 'qualified-symbol)
-      (commodity-symbol (slot-value commodity 'basic-commodity))))
-
-(defmethod commodity-thousand-marks-p ((basic-commodity basic-commodity))
-  (slot-value basic-commodity 'thousand-marks-p))
+      (slot-value (slot-value commodity 'basic-commodity) 'symbol)))
 
 (defmethod commodity-thousand-marks-p ((commodity commodity))
-  (commodity-thousand-marks-p (slot-value commodity 'basic-commodity)))
-
-(defmethod display-precision ((basic-commodity basic-commodity))
-  (slot-value basic-commodity 'display-precision))
+  (slot-value (slot-value commodity 'basic-commodity) 'thousand-marks-p))
 
 (defmethod display-precision ((commodity commodity))
-  (display-precision (slot-value commodity 'basic-commodity)))
+  (slot-value (slot-value commodity 'basic-commodity) 'display-precision))
 
 (defmethod display-precision ((amount amount))
   (display-precision (amount-commodity amount)))
@@ -448,69 +442,70 @@
 
 ;; Routines for accessing the historical prices of a commodity
 
-(defun add-price-point (commodity price datetime)
-  ;; if (! base->history)
-  ;;   base->history = history_t();
-  ;;
-  ;; history_map::iterator i = base->history->prices.find(date);
-  ;; if (i != base->history->prices.end()) {
-  ;;   (*i).second = price;
-  ;; } else {
-  ;;   std::pair<history_map::iterator, bool> result
-  ;;     = base->history->prices.insert(history_map::value_type(date, price));
-  ;;   assert(result.second);
-  ;; }
-  (assert commodity)
-  (assert price)
-  (assert datetime))
+(defun add-price (commodity price datetime)
+  (declare (type (or commodity annotated-commodity) commodity))
+  (declare (type amount price))
+  (declare (type datetime datetime))
+  (let ((base (commodity-base commodity))
+	(pricing-entry (make-pricing-entry :moment datetime :price price)))
+    (if (not (slot-boundp base 'price-history))
+	(setf (slot-value base 'price-history) (rbt:nil-tree)))
+    (let ((history (slot-value base 'price-history)))
+      (multiple-value-bind (new-root node-inserted-or-found item-already-in-p)
+	  (rbt:insert-item pricing-entry history :key 'pricing-entry-moment)
+	(if item-already-in-p
+	    (setf (pricing-entry-price node-inserted-or-found) price))
+	(setf (slot-value base 'price-history) new-root)))
+    price))
 
-(defun remove-price-point (commodity datetime)
-  ;; if (base->history) {
-  ;;   history_map::size_type n = base->history->prices.erase(date);
-  ;;   if (n > 0) {
-  ;;     if (base->history->prices.empty())
-  ;;    base->history.reset();
-  ;;     return true;
-  ;;   }
-  ;; }
-  ;; return false;
-  (assert commodity)
-  (assert datetime))
+(defun remove-price (commodity datetime)
+  (declare (type (or commodity annotated-commodity) commodity))
+  (declare (type datetime datetime))
+  (let ((base (commodity-base commodity)))
+    (when (slot-boundp base 'price-history)
+      (multiple-value-bind (new-root node-deleted-p)
+	  (rbt:delete-item datetime (slot-value base 'price-history)
+			   :key 'pricing-entry-moment)
+	(setf (slot-value base 'price-history) new-root)
+	node-deleted-p))))
+
+(defun find-nearest (it root &key (test #'<=) (key #'identity))
+  "Find an item in the tree which is closest to IT according to TEST.
+  For the default, <=, this means no other item will be more less than
+  IT in the tree than the one found."
+  (loop with p = root
+     with last-found = nil
+     named find-loop
+     finally (return-from find-loop
+	       (and last-found (rbt:node-item last-found)))
+     while (not (rbt:rbt-null p))
+     do
+     (if (funcall test (funcall key (rbt:node-item p)) it)
+	 (progn
+	   ;; If the current item meets the test, it may be the one we're
+	   ;; looking for.  However, there might be something closer to the
+	   ;; right -- though definitely not to the left.
+	   (setq last-found p
+		 p (rbt:right p)))
+	 ;; If the current item does not meet the test, there might be a
+	 ;; candidate to the left -- but definitely not the right.
+	 (setq p (rbt:left p)))))
 
 (defmethod market-value ((commodity commodity) &optional datetime)
-  ;; optional<moment_t> age;
-  ;; optional<amount_t> price;
-  ;;
-  ;; if (base->history) {
-  ;;   assert(base->history->prices.size() > 0);
-  ;;
-  ;;   if (! moment) {
-  ;;     history_map::reverse_iterator r = base->history->prices.rbegin();
-  ;;     age   = (*r).first;
-  ;;     price = (*r).second;
-  ;;   } else {
-  ;;     history_map::iterator i = base->history->prices.lower_bound(*moment);
-  ;;     if (i == base->history->prices.end()) {
-  ;;       history_map::reverse_iterator r = base->history->prices.rbegin();
-  ;;       age   = (*r).first;
-  ;;       price = (*r).second;
-  ;;     } else {
-  ;;       age = (*i).first;
-  ;;       if (*moment != *age) {
-  ;;         if (i != base->history->prices.begin()) {
-  ;;           --i;
-  ;;           age   = (*i).first;
-  ;;           price = (*i).second;
-  ;;         } else {
-  ;;           age   = none;
-  ;;         }
-  ;;       } else {
-  ;;         price = (*i).second;
-  ;;       }
-  ;;     }
-  ;;   }
-  ;; }
-  ;;
+  (declare (type (or commodity annotated-commodity) commodity))
+  (declare (type (or datetime null) datetime))
+  (let ((base (commodity-base commodity)))
+    (when (slot-boundp base 'price-history)
+      (let ((history (slot-value base 'price-history)))
+	(when history
+	  (if (null datetime)
+	      (progn
+		(loop while (not (rbt:rbt-null (rbt:right history)))
+		     do (setq history (rbt:right history)))
+		(assert history)
+		(rbt:node-item history))
+	      (find-nearest datetime history :key 'pricing-entry-moment))))))
+
   ;; if (! has_flags(COMMODITY_STYLE_NOMARKET) && parent().get_quote) {
   ;;   if (optional<amount_t> quote = parent().get_quote
   ;;       (*this, age, moment,
@@ -519,8 +514,7 @@
   ;;     return *quote;
   ;; }
   ;; return price;
-  (assert commodity)
-  (assert datetime))
+  )
 
 (defun get-price-quote (symbol &optional datetime)
   (assert symbol)
@@ -622,7 +616,7 @@
   ;;       throw_(amount_error, "Commodity price lacks closing brace");
   ;;
   ;;     amount_t temp;
-  ;;     temp.parse(buf, AMOUNT_PARSE_NO_MIGRATE);
+  ;;     temp.parse(buf, AMOUNT_PARSE_NO_OBSERVE);
   ;;     temp.in_place_reduce();
   ;;
   ;;     // Since this price will maintain its own precision, make sure
@@ -934,7 +928,7 @@
 (defun exact-amount (in &key (reduce-to-smallest-units-p t)
 		     (pool *default-commodity-pool*))
   (let ((amount
-	 (read-amount in :migrate-properties-p nil
+	 (read-amount in :observe-properties-p nil
 			 :reduce-to-smallest-units-p reduce-to-smallest-units-p
 			 :pool pool)))
     (setf (slot-value amount 'keep-precision) t)
@@ -1466,12 +1460,12 @@
 	(read-char in)
 	(return c))))
 
-(defun read-amount (in &key (migrate-properties-p t)
+(defun read-amount (in &key (observe-properties-p t)
 		    (reduce-to-smallest-units-p t)
 		    (pool *default-commodity-pool*))
   "Parse an AMOUNT from the input IN, which may be a stream or string.
 
-  If :MIGRATE-PROPERTIES-P is T (the default), any display details noticed in
+  If :OBSERVE-PROPERTIES-P is T (the default), any display details noticed in
   this amount will be set as defaults for displaying this kind of commodity in
   the future.
 
@@ -1576,8 +1570,8 @@
 
     (when (and commodity
 	       (or commodity-newly-created-p
-		   migrate-properties-p))
-      ;; Migrate the commodity usage details we noticed while parsing
+		   observe-properties-p))
+      ;; Observe the commodity usage details we noticed while parsing
       (setf (commodity-symbol-prefixed-p
 	     (commodity-symbol commodity)) prefixed-p)
       (setf (commodity-symbol-connected-p
@@ -1599,22 +1593,33 @@
 
     amount))
 
-(defun read-amount-lightly (in &key (reduce-to-smallest-units-p t)
-			    (pool *default-commodity-pool*))
-  (read-amount in :migrate-properties-p nil
-	       :reduce-to-smallest-units-p reduce-to-smallest-units-p
-	       :pool pool))
-
-(defun parse-amount (in &key (migrate-properties-p t)
-		     (reduce-to-smallest-units-p t)
+(defun read-amount* (in &key (reduce-to-smallest-units-p t)
 		     (pool *default-commodity-pool*))
-  (read-amount in :migrate-properties-p migrate-properties-p
+  (read-amount in :observe-properties-p nil
 	       :reduce-to-smallest-units-p reduce-to-smallest-units-p
 	       :pool pool))
 
-(defun parse-amount-lightly (in &key (reduce-to-smallest-units-p t)
-			     (pool *default-commodity-pool*))
-  (read-amount in :migrate-properties-p nil
+(defun amount (in &key (reduce-to-smallest-units-p t)
+	       (pool *default-commodity-pool*))
+  (read-amount in :observe-properties-p t
+	       :reduce-to-smallest-units-p reduce-to-smallest-units-p
+	       :pool pool))
+
+(defun amount* (in &key (reduce-to-smallest-units-p t)
+	       (pool *default-commodity-pool*))
+  (read-amount in :observe-properties-p nil
+	       :reduce-to-smallest-units-p reduce-to-smallest-units-p
+	       :pool pool))
+
+(defun parse-amount (in &key (reduce-to-smallest-units-p t)
+		     (pool *default-commodity-pool*))
+  (read-amount in :observe-properties-p t
+	       :reduce-to-smallest-units-p reduce-to-smallest-units-p
+	       :pool pool))
+
+(defun parse-amount* (in &key (reduce-to-smallest-units-p t)
+		      (pool *default-commodity-pool*))
+  (read-amount in :observe-properties-p nil
 	       :reduce-to-smallest-units-p reduce-to-smallest-units-p
 	       :pool pool))
 
