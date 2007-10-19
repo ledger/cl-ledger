@@ -46,4 +46,4 @@ for diagnostic output.")
   :serial t
   :version #.*cambl-test-version*
   :depends-on (:cambl :xlunit)
-  :components ((:file "cambl-test")))
+  :components ((:file "test/cambl-test")))

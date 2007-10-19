@@ -1,0 +1,190 @@
+Version 0.13.1
+2007-10-11
+Small fix for AllegroCL's "modern" mode
+	
+Version 0.13.0
+2007-09-13
+Better optimizations for STREAM-WRITE-SEQUENCE (thanks to Anton Vodonosov)
+Bugfix for STREAM-WRITE-BYTE	
+
+Version 0.12.0
+2007-09-07
+Added "bound" for flexi input streams
+
+Version 0.11.2
+2007-04-06
+Fixed bug in STREAM-WRITE-STRING implementation (reported by quasi)
+
+Version 0.11.1
+2007-03-22
+More ugliness for a bit of output performance in special cases
+
+Version 0.11.0
+2007-03-09
+Re-factoring of how encoding errors are handled (patch by Anton Vodonosov)
+
+Version 0.10.3
+2007-02-19
+Fixed bug in UTF-16 output (patch by Stelian Ionescu)
+Fixed *SUBSTITUTION-CHAR* example in docs
+
+Version 0.10.2
+2007-01-12
+Another fix - sigh...
+
+Version 0.10.1
+2007-01-11
+Fixed the last change (thanks to Red Daly)	
+
+Version 0.10.0
+2007-01-10
+Added transformers to in-memory streams (thanks to Chris Dean)	
+Documentation fixes
+
+Version 0.9.1
+2006-12-27
+More performance improvements (thanks to Robert J. Macomber for SBCL hints)	
+
+Version 0.9.0
+2006-12-27
+Complete re-factoring to improve performance and reduce consing (at least for LispWorks)
+Added some tests	
+Added *PROVIDE-USE-VALUE-RESTART*	
+Added FLEXI-STREAM-POSITION-SPEC-ERROR condition
+	
+Version 0.8.0
+2006-11-14
+Added USE-VALUE restart for STREAM-READ-CHAR (thanks to Anton Vodonosov)
+Added *SUBSTITUTION-CHAR*	
+
+Version 0.7.2
+2006-11-06
+Removed unnecessary CHECK-EOF-NO-HANG also for in-memory streams (see 0.5.8)
+
+Version 0.7.1
+2006-10-31
+Argh, missed the most important part...
+
+Version 0.7.0
+2006-10-31
+Added KOI8-R (thanks to Igor Plekhov)
+
+Version 0.6.6
+2006-10-06
+Made sure not to apply Gray stream generic function to underlying stream
+
+Version 0.6.5
+2006-10-06
+Optimized STREAM-WRITE-SEQUENCE and STREAM-READ-SEQUENCE for arrays of octets
+	
+Version 0.6.4
+2006-10-05
+Made READ-BYTE/WRITE-BYTE the default behaviour, i.e. we only use the sequence functions for LW if necessary	
+
+Version 0.6.3
+2006-10-02
+Fixed problems with CMUCL Gray streams implementation (reported by Ivan Toshkov)
+
+Version 0.6.2
+2006-09-23
+Added method for MAKE-LOAD-FORM which is needed for OpenMCL (reported by Robert Synnott, see Drakma mailing list)
+
+Version 0.6.1
+2006-09-15
+Switched FILE-POSITION implementation to TRIVIAL-GRAY-STREAMS (thanks to David Lichteblau)
+
+Version 0.6.0
+2006-09-13
+Implemented file positions for LispWorks
+
+Version 0.5.10
+2006-09-04
+Flexi streams can have binary element types now
+
+Version 0.5.9
+2006-09-01
+Added string functions
+
+Version 0.5.8
+2006-09-01
+CHECK-EOF-NO-HANG is not necessary
+Updated LW links in documentation
+Changed package handling in system definition (thanks to Christophe Rhodes)
+	
+Version 0.5.7
+2006-06-29
+Removed incompatibility with AllegroCL, see mailing list archive for details
+
+Version 0.5.6
+2006-06-13
+Fixed Emacs mode lines (reported by Robert Goldman)
+
+Version 0.5.5
+2006-05-24
+Some small fixes for LW
+
+Version 0.5.4
+2006-05-18
+Workaround for CMUCL (thanks to Satyaki Das)
+
+Version 0.5.3
+2006-03-06
+Fixed more typos in stream.lisp
+Added missing exports in packages.lisp
+
+Version 0.5.2
+2006-01-26
+Fixed typos in stream.lisp (thanks to James Bielman)
+
+Version 0.5.1
+2005-12-14
+Some bugfixes in output.lisp (thanks to Jan Idzikowski)
+
+Version 0.5.0
+2005-12-11
+Added in-memory streams	
+Exported types
+Added specific conditions	
+	
+Version 0.4.1
+2005-12-05
+Updated docs	
+	
+Version 0.4.0
+2005-12-05
+Added US-ASCII encoding
+Added *USE-REPLACEMENT-CHAR*
+	
+Version 0.3.0
+2005-11-26
+Added UNREAD-BYTE and PEEK-BYTE
+	
+Version 0.2.4
+2005-11-26
+WIN32:CODE-PAGE only for LispWorks
+
+Version 0.2.3
+2005-11-26
+Added STREAM-TERPRI to appease AllegroCL
+Fixed typo in docs
+
+Version 0.2.2
+2005-11-26
+Patch to make class precendence list work in AllegroCL (David Lichteblau) 
+
+Version 0.2.1
+2005-11-25
+Adapted to new TRIVIAL-GRAY-STREAMS API (David Lichteblau)
+More changes for portability, specifically for SBCL (David Lichteblau)
+
+Version 0.2.0
+2005-11-25
+Portable version thanks to TRIVIAL-GRAY-STREAMS (David Lichteblau)
+
+Version 0.1.1
+2005-11-25
+Documentation enhancements
+
+Version 0.1.0
+2005-11-25
+Initial public release

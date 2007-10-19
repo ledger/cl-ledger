@@ -1,0 +1,37 @@
+trivial-gray-streams
+====================
+
+This system provides an extremely thin compatibility layer for gray
+streams.  It is nearly *too* trivial for a complete package, except that
+I have copy&pasted this code into enough projects now that I decided to
+factor it out once again now, and then *never* have to touch it again.
+
+
+How to use it
+=============
+
+1. Use the package TRIVIAL-GRAY-STREAMS instead of whatever
+   implementation-specific package you would have to use otherwise to
+   get at gray stream symbols.
+2. For STREAM-READ-SEQUENCE and STREAM-WRITE-SEQUENCE, notice that we
+   use two required arguments and allow additional keyword arguments.
+   So the lambda list when defining a method on either function should look
+   like this:
+     (stream sequence start end &key)
+3. In order for (2) to work on all Lisps, make sure to subclass all your
+   stream classes from TRIVIAL-GRAY-STREAM-MIXIN if you intend to define
+   methods on those two generic functions.
+
+
+Extensions
+==========
+
+Generic function STREAM-READ-SEQUENCE (stream sequence start end &key)
+Generic function STREAM-WRITE-SEQUENCE (stream sequence start end &key)
+
+	See above.
+
+Generic function STREAM-FILE-POSITION (stream) => file position
+Generic function (SETF STREAM-FILE-POSITION) (position-spec stream) => successp
+
+	Will only be called by LispWorks and CLISP.

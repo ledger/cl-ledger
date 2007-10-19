@@ -1,0 +1,10 @@
+XLUnit provides a unit testing package for Common Lisp.  It it based
+on the 3 similar packages:
+   JUnit by Kent Beck
+   XPTest package by OnShore development
+   CLOS-unit by Sandro Pedrazzini
+
+XLUnit comes with its own test suite (tests.lisp) along with an
+example file (example.lisp).
+
+
