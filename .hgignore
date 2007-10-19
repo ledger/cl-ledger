@@ -19,3 +19,4 @@
 ^elisp-comp$
 ^ecl$
 \.xfasl$
+^sbcl\.core$

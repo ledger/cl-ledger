@@ -10,6 +10,9 @@
 (push "lib/cl-ppcre-1.3.2/" asdf:*central-registry*)
 (asdf:operate 'asdf:load-op :cl-ppcre)
 
+(push "lib/md5-1.8.5/" asdf:*central-registry*)
+(asdf:operate 'asdf:load-op :md5)
+
 (push "lib/cffi-0.9.2/" asdf:*central-registry*)
 (asdf:operate 'asdf:load-op :cffi)
 (push "/usr/local/lib" cffi:*foreign-library-directories*)
@@ -21,8 +24,6 @@
 (asdf:operate 'asdf:load-op :url-rewrite)
 (push "lib/rfc2388/" asdf:*central-registry*)
 (asdf:operate 'asdf:load-op :rfc2388)
-(push "lib/cl+ssl/" asdf:*central-registry*)
-(asdf:operate 'asdf:load-op :cl+ssl)
 (push "lib/cl-base64-3.3.2/" asdf:*central-registry*)
 (asdf:operate 'asdf:load-op :cl-base64)
 (push "lib/chunga-0.4.1/" asdf:*central-registry*)
@@ -30,6 +31,7 @@
 (push "lib/cl-who-0.11.0/" asdf:*central-registry*)
 (asdf:operate 'asdf:load-op :cl-who)
 (push "lib/hunchentoot-0.14.3/" asdf:*central-registry*)
+(push  :hunchentoot-no-ssl *features*)
 (asdf:operate 'asdf:load-op :hunchentoot)
 
 (sb-ext:save-lisp-and-die "sbcl.core")
