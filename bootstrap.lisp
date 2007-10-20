@@ -1,37 +1,47 @@
-(mapc 'require '(sb-bsd-sockets sb-posix sb-introspect sb-cltl2 asdf))
+(mapc 'require
+      '(sb-bsd-sockets
+	sb-posix
+	sb-introspect
+	sb-cltl2
+	asdf
+	asdf-install))
+
+(defvar *lisp-packages-directory*
+  (merge-pathnames "Library/Lisp/" (user-homedir-pathname)))
+
+(push (list (merge-pathnames "site/" *lisp-packages-directory*)
+	    (merge-pathnames "systems/" *lisp-packages-directory*)
+	    "Local installation")
+      asdf-install:*locations*)
+
+(push (merge-pathnames "systems/" *lisp-packages-directory*)
+      asdf:*central-registry*)
 
 (push "lib/red-black/" asdf:*central-registry*)
 (asdf:operate 'asdf:load-op :rbt-trees-struct)
 
-(push "lib/xlunit-0.6.2/" asdf:*central-registry*)
-(asdf:operate 'asdf:load-op :xlunit)
+(defmacro load-or-install (package)
+  `(handler-case
+       (progn
+	 (asdf:operate 'asdf:load-op ,package))
+     (asdf:missing-component ()
+       (asdf-install:install ,package))))
 
-(push "lib/cl-ppcre-1.3.2/" asdf:*central-registry*)
-(asdf:operate 'asdf:load-op :cl-ppcre)
+(load-or-install :xlunit)
+(load-or-install :cl-ppcre)
+(load-or-install :md5)
 
-(push "lib/md5-1.8.5/" asdf:*central-registry*)
-(asdf:operate 'asdf:load-op :md5)
-
-(push "lib/cffi-0.9.2/" asdf:*central-registry*)
-(asdf:operate 'asdf:load-op :cffi)
+(load-or-install :cffi)
 (push "/usr/local/lib" cffi:*foreign-library-directories*)
-(push "lib/trivial-gray-streams-2006-09-16/" asdf:*central-registry*)
-(asdf:operate 'asdf:load-op :trivial-gray-streams)
-(push "lib/flexi-streams-0.13.1/" asdf:*central-registry*)
-(asdf:operate 'asdf:load-op :flexi-streams)
-(push "lib/url-rewrite-0.1.1/" asdf:*central-registry*)
-(asdf:operate 'asdf:load-op :url-rewrite)
-(push "lib/rfc2388/" asdf:*central-registry*)
-(asdf:operate 'asdf:load-op :rfc2388)
-(push "lib/cl-base64-3.3.2/" asdf:*central-registry*)
-(asdf:operate 'asdf:load-op :cl-base64)
-(push "lib/chunga-0.4.1/" asdf:*central-registry*)
-(asdf:operate 'asdf:load-op :chunga)
-(push "lib/cl-who-0.11.0/" asdf:*central-registry*)
-(asdf:operate 'asdf:load-op :cl-who)
-(push "lib/hunchentoot-0.14.3/" asdf:*central-registry*)
+(load-or-install :trivial-gray-streams)
+(load-or-install :flexi-streams)
+(load-or-install :url-rewrite)
+(load-or-install :rfc2388)
+(load-or-install :cl-base64)
+(load-or-install :chunga)
 (push  :hunchentoot-no-ssl *features*)
-(asdf:operate 'asdf:load-op :hunchentoot)
+(load-or-install :hunchentoot)
+(load-or-install :cl-who)
 
 (push "src/" asdf:*central-registry*)
 (asdf:operate 'asdf:load-op :cambl)
