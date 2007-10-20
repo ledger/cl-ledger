@@ -864,7 +864,7 @@
       (assert (not (gethash qualified-name names-map)))
       (setf (gethash qualified-name names-map) annotated-commodity))))
 
-(defun find-annotated-commodity (name details
+(defun find-annotated-commodity (name-or-commodity details
 				 &key (create-if-not-exists-p nil)
 				 (pool *default-commodity-pool*))
   "Find an annotated commodity matching the commodity symbol NAME
@@ -872,15 +872,20 @@
   commodity DETAILS, of type COMMODITY-ANNOTATION.
 
   Returns two values: COMMODITY or NIL, NEWLY-CREATED-P"
-  (declare (type (or string commodity-symbol) name))
+  (declare (type (or string commodity-symbol commodity)
+		 name-or-commodity))
   (declare (type commodity-annotation details))
   (declare (type commodity-pool pool))
   (assert details)
   (assert (not (commodity-annotation-empty-p details)))
   (let ((commodity
-	 (find-commodity name
-			 :create-if-not-exists-p create-if-not-exists-p
-			 :pool pool)))
+	 (if (typep name-or-commodity 'commodity)
+	     (progn
+	       (assert (not (commodity-annotated-p name-or-commodity)))
+	       name-or-commodity)
+	     (find-commodity name-or-commodity
+			     :create-if-not-exists-p create-if-not-exists-p
+			     :pool pool))))
     (if commodity
 	(let* ((annotated-name (make-qualified-name commodity details))
 	       (annotated-commodity
@@ -1192,6 +1197,12 @@
   If PRECISION is less than the current internal precision, data will
   be lost.  If it is greater, the integer value of the amount is
   increased until the target precision is reached."
+  (unless precision
+    (let ((commodity (amount-commodity amount)))
+      (if commodity
+	  (setq precision (display-precision commodity))
+	  (setq precision 0))))
+
   (let ((internal-precision (slot-value amount 'internal-precision)))
     (cond ((< precision internal-precision)
 	   (setf (slot-value amount 'quantity)
@@ -1256,15 +1267,16 @@
 
 (defmethod market-value ((amount amount) &optional datetime)
   ;; if (quantity) {
-  ;;   optional<amount_t> amt(commodity().value(moment));
-  ;;   if (amt)
-  ;;     return (*amt * number()).round();
-  ;; } else {
-  ;;   throw_(amount_error, "Cannot determine value of an uninitialized amount");
-  ;; }
-  ;; return none;
   (assert amount)
-  (assert datetime))
+  (unless (slot-boundp amount 'quantity)
+    (error 'amount-error :msg
+	   "Cannot determine the market value of an uninitialized amount"))
+
+  (let ((commodity (amount-commodity amount)))
+    (when commodity
+      (let ((value (market-value commodity datetime)))
+	(if value
+	    (round-to-precision* (multiply* value amount)))))))
 
 (defun amount-sign (amount)
   "Return -1, 0 or 1 depending on the sign of AMOUNT."
@@ -1341,43 +1353,26 @@
 	  tmp)
 	amount)))
 
-(defmethod annotate-commodity ((commodity commodity)
-			       (commodity-annotation commodity-annotation))
-  (assert commodity)
-  (assert commodity-annotation))
-
 (defmethod annotate-commodity ((amount amount)
-			       (commodity-annotation commodity-annotation))
-  ;; commodity_t *           this_base;
-  ;; annotated_commodity_t * this_ann = NULL;
-  ;;
-  ;; if (! quantity)
-  ;;   throw_(amount_error, "Cannot annotate the commodity of an uninitialized amount");
-  ;; else if (! has_commodity())
-  ;;   throw_(amount_error, "Cannot annotate an amount with no commodity");
-  ;;
-  ;; if (commodity().annotated) {
-  ;;   this_ann  = &as_annotated_commodity(commodity());
-  ;;   this_base = &this_ann->referent();
-  ;; } else {
-  ;;   this_base = &commodity();
-  ;; }
-  ;; assert(this_base);
-  ;;
-  ;; DEBUG("amounts.commodities", "Annotating commodity for amount "
-  ;;       << *this << std::endl << details);
-  ;;
-  ;; if (commodity_t * ann_comm =
-  ;;     this_base->parent().find_or_create(*this_base, details))
-  ;;   set_commodity(*ann_comm);
-  ;; #ifdef ASSERTS_ON
-  ;; else
-  ;;   assert(false);
-  ;; #endif
-  ;;
-  ;; DEBUG("amounts.commodities", "  Annotated amount is " << *this);
-  (assert amount)
-  (assert commodity-annotation))
+			       (details commodity-annotation))
+  (unless (slot-boundp amount 'quantity)
+    (error 'amount-error :msg
+	   "Cannot annotate the commodity of an uninitialized amount"))
+
+  (let ((commodity (amount-commodity amount)))
+    (unless commodity
+      (error 'amount-error :msg
+	     "Cannot annotate an amount which has no commodity"))
+    (let ((referent commodity))
+      (if (commodity-annotated-p referent)
+	  (setq referent (slot-value referent 'referent-commodity)))
+
+      (let ((annotated-commodity
+	     (find-annotated-commodity referent details
+				       :create-if-not-exists-p t)))
+	(let ((tmp (copy-amount amount)))
+	  (setf (amount-commodity tmp) annotated-commodity)
+	  tmp)))))
 
 (defmethod commodity-annotated-p ((commodity commodity))
   (slot-value commodity 'annotated-p))
@@ -1392,18 +1387,11 @@
   (slot-value annotated-commodity 'annotation))
 
 (defmethod commodity-annotation ((amount amount))
-  ;; if (! quantity)
-  ;;   throw_(amount_error,
-  ;;          "Cannot return commodity annotation details of an uninitialized amount");
-  ;;
-  ;; assert(! commodity().annotated || as_annotated_commodity(commodity()).details);
-  ;;
-  ;; if (commodity().annotated) {
-  ;;   annotated_commodity_t& ann_comm(as_annotated_commodity(commodity()));
-  ;;   return ann_comm.details;
-  ;; }
-  ;; return annotation_t();
-  (assert amount))
+  (unless (slot-boundp amount 'quantity)
+    (error 'amount-error :msg
+	   "Cannot return annotation details for an uninitialized amount"))
+  ;; This calls the appropriate generic function
+  (commodity-annotation (amount-commodity amount)))
 
 (defun read-amount-quantity (in)
   (declare (type stream in))
