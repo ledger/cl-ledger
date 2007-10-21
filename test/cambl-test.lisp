@@ -99,19 +99,19 @@
 
     (let ((cambl:*european-style* t))
       (assert-equal "$2.000,00"
-		    (cambl:format-value (cambl:parse-amount* "$2000")))
+		    (cambl:value-to-string (cambl:parse-amount* "$2000")))
       (assert-equal "0"
-		    (cambl:format-value (cambl:parse-amount "0")))
+		    (cambl:value-to-string (cambl:parse-amount "0")))
       (assert-equal "$2.000,00"
-		    (cambl:format-value (cambl:parse-amount* "$2.000,00"))))
+		    (cambl:value-to-string (cambl:parse-amount* "$2.000,00"))))
 
     (let ((x15 (cambl:parse-amount* "$2000"))
 	  (x16 (cambl:parse-amount* "$2,000")))
-      (assert-equal "$2,000.00" (cambl:format-value x15))
-      (assert-equal "$2,000.00" (cambl:format-value x16))
+      (assert-equal "$2,000.00" (cambl:value-to-string x15))
+      (assert-equal "$2,000.00" (cambl:value-to-string x16))
       (assert-value-equal x15 x16))
 
-    (assert-equal "EUR 100" (cambl:format-value (cambl:parse-amount "EUR 100")))
+    (assert-equal "EUR 100" (cambl:value-to-string (cambl:parse-amount "EUR 100")))
 
     (let ((x1 (cambl:parse-amount* "$100.0000")))
       (assert-eql 2 (display-precision x12))
