@@ -10,6 +10,8 @@
 
    nil-tree
 
+   rbt-node
+
    rbt-null
 
    node-item

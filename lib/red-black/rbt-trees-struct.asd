@@ -1,9 +1,9 @@
 (in-package :cl-user)
 
-(defpackage :rbt-trees-struct
+(defpackage :rbt-trees-struct-asd
   (:use :cl :asdf))
 
-(in-package :rbt-trees-struct)
+(in-package :rbt-trees-struct-asd)
 
 (defvar *rbt-trees-struct-version* "1.0"
   "A string denoting the current version of this red-black tree library.  Used
