@@ -865,6 +865,7 @@
   (zerop (amount-quantity amount)))
 
 (defmethod value-zerop ((balance balance))
+  ;; jww (2007-10-22): NYI
   ;; if (is_empty())
   ;;   return true;
   ;;
@@ -902,6 +903,7 @@
   (zerop (amount-compare left right)))
 
 (defmethod value= ((left balance) (right balance))
+  ;; jww (2007-10-22): NYI
   ;; amounts_map::const_iterator i, j;
   ;; for (i = amounts.begin(), j = bal.amounts.begin();
   ;;      i != amounts.end() && j != bal.amounts.end();
@@ -913,6 +915,7 @@
   )
 
 (defmethod value= ((balance balance) (amount amount))
+  ;; jww (2007-10-22): NYI
   ;; if (amt.is_null())
   ;;   throw_(balance_error,
   ;;          "Cannot compare a balance to an uninitialized amount");
@@ -1026,6 +1029,7 @@
     ))
 
 (defmethod value-neg* ((balance balance))
+  ;; jww (2007-10-22): NYI
   ;; for (amounts_map::iterator i = amounts.begin();
   ;;      i != amounts.end();
   ;;      i++)
@@ -1042,6 +1046,7 @@
       amount))
 
 (defmethod value-abs ((balance balance))
+  ;; jww (2007-10-22): NYI
   ;; balance_t temp;
   ;; for (amounts_map::const_iterator i = amounts.begin();
   ;;      i != amounts.end();
@@ -1120,6 +1125,7 @@
   (error "Cannot be done"))
 
 (defmethod value-add* ((balance balance) (amount amount))
+  ;; jww (2007-10-22): NYI
   ;; if (amt.is_null())
   ;;   throw_(balance_error,
   ;;          "Cannot add an uninitialized amount to a balance");
@@ -1137,6 +1143,7 @@
   )
 
 (defmethod value-add* ((balance-a balance) (balance-b balance))
+  ;; jww (2007-10-22): NYI
   ;; for (amounts_map::const_iterator i = bal.amounts.begin();
   ;;      i != bal.amounts.end();
   ;;      i++)
@@ -1172,6 +1179,7 @@
 		   (- left-quantity right-quantity)))))))
 
 (defmethod value-sub* ((balance balance) (other balance))
+  ;; jww (2007-10-22): NYI
   ;; for (amounts_map::const_iterator i = bal.amounts.begin();
   ;;      i != bal.amounts.end();
   ;;      i++)
@@ -1180,6 +1188,7 @@
   )
 
 (defmethod value-sub* ((balance balance) (other amount))
+  ;; jww (2007-10-22): NYI
   ;; if (amt.is_null())
   ;;   throw_(balance_error,
   ;;          "Cannot value-sub an uninitialized amount from a balance");
@@ -1242,6 +1251,7 @@
   (set-amount-commodity-and-round* left right))
 
 (defmethod value-mul* ((balance balance) (other amount))
+  ;; jww (2007-10-22): NYI
   ;; if (amt.is_null())
   ;;   throw_(balance_error,
   ;;          "Cannot value-mul a balance by an uninitialized amount");
@@ -1321,6 +1331,7 @@
   (set-amount-commodity-and-round* left right))
 
 (defmethod value-div* ((balance balance) (other amount))
+  ;; jww (2007-10-22): NYI
   ;; if (amt.is_null())
   ;;   throw_(balance_error,
   ;;          "Cannot value-div a balance by an uninitialized amount");
@@ -1367,6 +1378,7 @@
   amount)
 
 (defmethod optimize-value ((balance balance))
+  ;; jww (2007-10-22): NYI
   ;; if (is_empty())
   ;;   throw_(balance_error, "Cannot convert an empty balance to an amount");
   ;; else if (amounts.size() == 1)
@@ -1387,11 +1399,11 @@
   ;; jww (2007-10-17): This should change from a simple boolean to registered
   ;; commodity to which values should be converted (possibly in both
   ;; directions)
-					;(unless (slot-value amount 'keep-base)
-					;  ;; amount_t base(*this);
-					;  ;; if (! amount_t::keep_base)
-					;  ;;   base.in_place_unreduce();
-					;  )
+  ;;(unless (slot-value amount 'keep-base)
+  ;;  ;; amount_t base(*this);
+  ;;  ;; if (! amount_t::keep_base)
+  ;;  ;;   base.in_place_unreduce();
+  ;;  )
 
   (let* ((commodity (amount-commodity amount))
 	 (omit-commodity-p (or omit-commodity-p (null commodity)))
@@ -1482,6 +1494,7 @@
    In addition to the width constraints, balances will also print with
    commodities in alphabetized order, regardless of the relative amounts of
    those commodities.  There is no option to change this behavior."
+  ;; jww (2007-10-22): NYI
   ;; bool first  = true;
   ;; int  lwidth = latter_width;
   ;;
@@ -1531,7 +1544,7 @@
 ;;;_  + Find AMOUNT of COMMODITY in a BALANCE
 
 (defmethod amount-in-balance ((balance balance) (commodity commodity))
-  ;; // jww (2007-05-20): Needs work
+  ;; jww (2007-10-22): NYI
   ;; if (! commodity) {
   ;;   if (amounts.size() == 1) {
   ;;     amounts_map::const_iterator i = amounts.begin();
@@ -1896,6 +1909,7 @@
 	    (value-round* (value-mul* value amount)))))))
 
 (defmethod market-value ((balance balance) &optional datetime)
+  ;; jww (2007-10-22): NYI
   ;; optional<balance_t> temp;
   ;;
   ;; for (amounts_map::const_iterator i = amounts.begin();
@@ -1921,6 +1935,7 @@
     tmp))
 
 (defmethod smaller-units* ((amount amount))
+  ;; jww (2007-10-22): NYI
   ;; if (! quantity)
   ;;   throw_(amount_error, "Cannot reduce an uninitialized amount");
   ;;
@@ -1937,6 +1952,7 @@
     tmp))
 
 (defmethod smallest-units* ((amount amount))
+  ;; jww (2007-10-22): NYI
   ;; if (! quantity)
   ;;   throw_(amount_error, "Cannot reduce an uninitialized amount");
   ;;
@@ -1948,12 +1964,14 @@
   (assert amount))
 
 (defmethod smallest-units ((balance balance))
+  ;; jww (2007-10-22): NYI
   ;; balance_t temp(*this);
   ;; temp.in_place_reduce();
   ;; return temp;
   (assert balance))
 
 (defmethod smallest-units* ((balance balance))
+  ;; jww (2007-10-22): NYI
   ;; // A temporary must be used here because reduction may cause
   ;; // multiple component amounts to collapse to the same commodity.
   ;; balance_t temp;
@@ -1970,6 +1988,7 @@
     tmp))
 
 (defmethod larger-units* ((amount amount))
+  ;; jww (2007-10-22): NYI
   ;; if (! quantity)
   ;;   throw_(amount_error, "Cannot unreduce an uninitialized amount");
   ;;
@@ -1983,12 +2002,14 @@
   (assert amount))
 
 (defmethod larger-units ((balance balance))
+  ;; jww (2007-10-22): NYI
   ;; balance_t temp(*this);
   ;; temp.in_place_unreduce();
   ;; return temp;
   (assert balance))
 
 (defmethod larger-units* ((balance balance))
+  ;; jww (2007-10-22): NYI
   ;; // A temporary must be used here because unreduction may cause
   ;; // multiple component amounts to collapse to the same commodity.
   ;; balance_t temp;
@@ -2002,6 +2023,7 @@
 (declaim (inline smaller-units smallest-units larger-units))
 
 (defun parse-amount-conversion (larger-string smaller-string)
+  ;; jww (2007-10-22): NYI
   ;; amount_t larger, smaller;
   ;;
   ;; larger.parse(larger_str, AMOUNT_PARSE_NO_REDUCE);
@@ -2028,6 +2050,7 @@
 ;;;_  + Exchange a commodity
 
 (defmethod exchange-commodity ((amount amount) price)
+  ;; jww (2007-10-22): NYI
   )
 
 ;;;_ * COMMODITY-POOL
@@ -2313,7 +2336,9 @@
 ;;;_  + Annotate the commodity of a COMMODITY or AMOUNT
 
 (defmethod annotate-commodity ((commodity commodity)
-			       (details commodity-annotation)))
+			       (details commodity-annotation))
+  ;; jww (2007-10-22): NYI
+  )
 
 (defmethod annotate-commodity ((amount amount)
 			       (details commodity-annotation))
@@ -2433,6 +2458,7 @@
 
 (defmethod strip-annotations ((balance balance)
 			      &key keep-price keep-date keep-tag)
+  ;; jww (2007-10-22): NYI
   ;; balance_t temp;
   ;;
   ;; for (amounts_map::const_iterator i = amounts.begin();
