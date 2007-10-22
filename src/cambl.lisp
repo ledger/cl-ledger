@@ -1,4 +1,4 @@
-;; -*- mode: lisp; allout-init: t -*-
+;; -*- mode: lisp -*-
 
 ;; cambl.lisp - This is the Commoditized AMounts and BaLances library.
 
@@ -205,7 +205,7 @@
 
 ;;;_* Package
 
-(declaim (optimize (debug 3) (safety 3)))
+(declaim (optimize (debug 3) (safety 3) (speed 0) (space 0)))
 
 (defpackage :cambl
   (:use :cl :rbt)
@@ -339,7 +339,7 @@
 
 (defstruct pricing-entry
   (moment nil :type datetime)
-  (price nil :type amount))
+  (price nil))   ; (:type amount)
 
 ;;;_ - COMMODITY-POOL
 
@@ -371,8 +371,8 @@
 
 (defmethod print-object ((commodity commodity) stream)
   (print-unreadable-object (commodity stream :type t)
-    (princ (commodity-symbol commodity) stream)
     (let ((base (get-basic-commodity commodity)))
+      (princ (get-symbol base) stream)
       (format stream "~%    :THOUSAND-MARKS-P ~S :DISPLAY-PRECISION ~D"
 	      (get-thousand-marks-p base) (get-display-precision base)))))
 
@@ -380,7 +380,7 @@
 
 (defstruct (commodity-annotation
 	     (:conc-name annotation-))
-  (price nil :type (or amount null))
+  (price nil) ;; (:type (or amount null))
   (date nil :type (or datetime null))
   (tag nil :type (or string null)))
 
@@ -390,7 +390,8 @@
   ((referent-commodity :accessor get-referent-commodity
 		       :initarg :referent-commodity :type commodity)
    (annotation :accessor get-annotation :initarg :annotation
-	       :type commodity-annotation)))
+	       ;; :type commodity-annotation
+	       )))
 
 (defmethod initialize-instance :after
     ((annotated-commodity annotated-commodity) &key)
@@ -444,13 +445,6 @@
   ;;(keep-date :allocation :class :initform nil :type boolean)
   ;;(keep-tag :allocation :class :initform nil :type boolean)
   )
-
-(defun print-amount (amount stream depth)
-  (declare (ignore depth))
-  (print-unreadable-object (amount stream :type t)
-    (format stream "~S :KEEP-PRECISION-P ~S"
-	    (format-value amount :full-precision-p t)
-	    (amount-keep-precision-p amount))))
 
 ;;;_ + BALANCE
 
@@ -545,6 +539,15 @@
 (defgeneric commodity-builtin-p (commodity))
 
 (defgeneric commodity-annotation-empty-p (item))
+
+;;;_* Object printing functions
+
+(defun print-amount (amount stream depth)
+  (declare (ignore depth))
+  (print-unreadable-object (amount stream :type t)
+    (format stream "~S :KEEP-PRECISION-P ~S"
+	    (format-value amount :full-precision-p t)
+	    (amount-keep-precision-p amount))))
 
 ;;;_* Constants
 
@@ -808,19 +811,19 @@
 
 ;;;_  + Convert other values to and from AMOUNT
 
+(declaim (inline float-to-amount))
+
 (defun float-to-amount (value)
   (declare (type float value))
   (the amount
     (parse-amount* (format nil "~F" value))))
 
-(declaim (inline float-to-amount))
+(declaim (inline integer-to-amount))
 
 (defun integer-to-amount (value)
   (declare (type (or integer fixnum) value))
   (the amount
     (make-amount :quantity value :precision 0)))
-
-(declaim (inline integer-to-amount))
 
 (defun amount-to-integer (amount &key (dont-check-p t))
   (declare (type amount amount))
@@ -843,10 +846,9 @@
 
 (defmethod copy-value ((balance balance))
   (copy-balance balance))
+
 (defmethod copy-value ((cost-balance cost-balance))
   (copy-balance cost-balance))
-
-(declaim (inline copy-value))
 
 ;;;_  + Unary truth tests
 
@@ -881,21 +883,15 @@
 
 (unary-truth-test value-zerop value-zerop* zerop)
 
-(declaim (inline value-zerop value-zerop*))
-
 (defmethod value-minusp* ((amount amount))
   (minusp (amount-quantity amount)))
 
 (unary-truth-test value-minusp value-minusp* minusp)
 
-(declaim (inline value-minusp value-minusp*))
-
 (defmethod value-plusp* ((amount amount))
   (plusp (amount-quantity amount)))
 
 (unary-truth-test value-plusp value-plusp* plusp)
-
-(declaim (inline value-plusp value-plusp*))
 
 ;;;_  + Binary truth tests
 
@@ -931,8 +927,6 @@
 
 (defmethod value-equal ((left amount) (right amount))
   (value= left right))
-
-(declaim (inline value= value/= value-equal))
 
 (defun verify-amounts (left right capitalized-gerund)
   (declare (type amount left))
@@ -985,6 +979,8 @@
 	    1
 	    0))))
 
+(declaim (inline amount< amount<= amount> amount>=))
+
 (defun amount< (left right)
   (declare (type amount left))
   (declare (type amount right))
@@ -1007,8 +1003,6 @@
   (let ((result (amount-compare left right)))
     (or (plusp result) (zerop result))))
 
-(declaim (inline amount< amount<= amount> amount>=))
-
 ;;;_  + Unary math operators
 
 (defmethod value-neg ((amount amount))
@@ -1016,17 +1010,17 @@
   (let ((tmp (copy-amount amount)))
     (value-neg* tmp)))
 
-(defmethod value-neg* ((amount amount))
-  (assert amount)
-  (setf (amount-quantity amount)
-	(- (amount-quantity amount)))
-  amount)
-
 (defmethod value-neg ((balance balance))
   (let ((tmp (copy-balance balance)))
     ;; (value-neg* tmp)
     (assert tmp)
     ))
+
+(defmethod value-neg* ((amount amount))
+  (assert amount)
+  (setf (amount-quantity amount)
+	(- (amount-quantity amount)))
+  amount)
 
 (defmethod value-neg* ((balance balance))
   ;; jww (2007-10-22): NYI
@@ -1036,8 +1030,6 @@
   ;;   i->second.in_place_value-neg();
   ;; return *this;
   (assert balance))
-
-(declaim (inline value-neg value-neg*))
 
 (defmethod value-abs ((amount amount))
   (assert amount)
@@ -1055,11 +1047,14 @@
   ;; return temp;
   (assert balance))
 
-(declaim (inline value-abs))
-
 (defmethod value-round ((amount amount) &optional precision)
   (let ((tmp (copy-amount amount)))
     (value-round* tmp precision)))
+
+(defmethod value-unround ((amount amount))
+  (let ((tmp (copy-amount amount)))
+    (setf (amount-keep-precision-p tmp) t)
+    tmp))
 
 (defmethod value-round* ((amount amount) &optional precision)
   "Round the given AMOUNT to the stated internal PRECISION.
@@ -1085,13 +1080,6 @@
 		    (expt 10 (- precision internal-precision))))
 	   (setf (amount-precision amount) precision))))
   amount)
-
-(defmethod value-unround ((amount amount))
-  (let ((tmp (copy-amount amount)))
-    (setf (amount-keep-precision-p tmp) t)
-    tmp))
-
-(declaim (inline value-round value-unround))
 
 ;;;_  + Binary math operators
 
@@ -1151,8 +1139,6 @@
   ;; return *this;
   )
 
-(declaim (inline value-add))
-
 ;;;_   : Value-Subion
 
 (defmethod value-sub ((left amount) (right amount))
@@ -1206,8 +1192,6 @@
   ;; }
   ;; return *this;
   )
-
-(declaim (inline value-sub))
 
 ;;;_   : Multiplication
 
@@ -1288,8 +1272,6 @@
   ;; return *this;
   )
 
-(declaim (inline value-mul))
-
 ;;;_   : Division
 
 (defmethod value-div ((left amount) (right amount))
@@ -1368,8 +1350,6 @@
   ;; return *this;
   )
 
-(declaim (inline value-div))
-
 ;;;_ * BALANCE specific
 
 ;;;_  + Optimize BALANCE to an AMOUNT if possible
@@ -1395,7 +1375,12 @@
 			(omit-commodity-p nil)
 			(full-precision-p nil)
 			(width nil)
-			(latter-width nil))
+			latter-width)
+  (declare (type stream output-stream))
+  (declare (type boolean omit-commodity-p))
+  (declare (type boolean full-precision-p))
+  (declare (type (or fixnum null) width))
+  (declare (ignore latter-width))
   ;; jww (2007-10-17): This should change from a simple boolean to registered
   ;; commodity to which values should be converted (possibly in both
   ;; directions)
@@ -1494,6 +1479,14 @@
    In addition to the width constraints, balances will also print with
    commodities in alphabetized order, regardless of the relative amounts of
    those commodities.  There is no option to change this behavior."
+  (declare (type boolean omit-commodity-p))
+  (declare (type boolean full-precision-p))
+  (declare (type (or fixnum null) latter-width))
+  (assert output-stream)
+  (assert omit-commodity-p)
+  (assert full-precision-p)
+  (assert width)
+  (assert latter-width)
   ;; jww (2007-10-22): NYI
   ;; bool first  = true;
   ;; int  lwidth = latter_width;
@@ -1586,13 +1579,15 @@
 
 ;;;_  - Parse commodity symbols
 
+(declaim (inline symbol-char-invalid-p))
+
 (defun symbol-char-invalid-p (c)
   (declare (type character c))
   (let ((code (char-code c)))
     (and (< code 256)
 	 (aref +invalid-symbol-chars+ code))))
 
-(declaim (inline symbol-char-invalid-p))
+(declaim (inline symbol-name-needs-quoting-p))
 
 (defun symbol-name-needs-quoting-p (name)
   "Return T if the given symbol NAME requires quoting."
@@ -1601,8 +1596,6 @@
     (loop for c across name do
 	 (if (symbol-char-invalid-p c)
 	     (return t)))))
-
-(declaim (inline symbol-name-needs-quoting-p))
 
 (define-condition commodity-error (error) 
   ((description :reader error-description :initarg :msg))
@@ -1659,8 +1652,6 @@
 (defmethod commodity-base ((annotated-commodity annotated-commodity))
   (get-basic-commodity (get-referent-commodity annotated-commodity)))
 
-(declaim (inline commodity-base))
-
 (defmacro commodity-indirection (name accessor &key type)
   `(progn
      (defmethod ,name ((commodity commodity))
@@ -1676,11 +1667,6 @@
 (commodity-indirection commodity-thousand-marks-p get-thousand-marks-p
 		       :type boolean)
 (commodity-indirection commodity-precision get-display-precision :type fixnum)
-
-(declaim (inline commodity-symbol))
-(declaim (inline commodity-precision))
-(declaim (inline commodity-thousand-marks-p))
-(declaim (inline commodity-description))
 
 (defmethod commodity-name ((amount amount))
   (let ((commodity (amount-commodity amount)))
@@ -1706,8 +1692,6 @@
 
 ;;;_  + Commodity equality
 
-(declaim (inline display-precision))
-
 (defmethod commodity-equal ((a null) (b null)) t)
 (defmethod commodity-equal ((a commodity) (b null)) nil)
 (defmethod commodity-equal ((a null) (b commodity)) nil)
@@ -1720,8 +1704,6 @@
 (defmethod commodity-equal ((a annotated-commodity) (b commodity)) nil)
 (defmethod commodity-equal ((a annotated-commodity) (b annotated-commodity))
   (eq a b))
-
-(declaim (inline commodity-equal))
 
 (defmethod commodity-equalp ((a null) (b null)) t)
 (defmethod commodity-equalp ((a commodity) (b null)) nil)
@@ -1736,8 +1718,6 @@
 (defmethod commodity-equalp ((a annotated-commodity) (b annotated-commodity))
   (commodity-equalp (get-referent-commodity a)
 		    (get-referent-commodity b)))
-
-(declaim (inline commodity-equalp))
 
 ;;;_  + Function to sort commodities
 
@@ -2020,8 +2000,6 @@
   ;; return *this = temp;
   (assert balance))
 
-(declaim (inline smaller-units smallest-units larger-units))
-
 (defun parse-amount-conversion (larger-string smaller-string)
   ;; jww (2007-10-22): NYI
   ;; amount_t larger, smaller;
@@ -2159,8 +2137,8 @@
   (the annotated-commodity
     (let ((annotated-commodity
 	   (make-instance 'annotated-commodity
-			  :referent commodity
-			  :details details
+			  :referent-commodity commodity
+			  :annotation details
 			  :qualified-name qualified-name))
 	  (pool (get-commodity-pool commodity)))
 
@@ -2371,8 +2349,6 @@
   (not (or (annotation-price annotation)
 	   (annotation-date annotation)
 	   (annotation-tag annotation))))
-
-(declaim (inline commodity-annotation-empty-p))
 
 (defmethod commodity-annotation-equal ((a commodity-annotation)
 				       (b commodity-annotation))
