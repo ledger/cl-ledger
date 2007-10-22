@@ -1,16 +1,9 @@
-;; cambl.lisp
+;; -*- mode: lisp; allout-init: t -*-
 
-;; This is the Commoditized AMounts and BaLances library.
+;; cambl.lisp - This is the Commoditized AMounts and BaLances library.
 
-;; TODO:
-;; - Create a function for calculating a conversion, which will
-;;   automatically preserve annotation details based on context:
-;;     (amount-exchange "100 DM" "$100.00" &optional datetime "Note")
-;;   This will "exchange" 100 DM for $100.00, at the given datetime with
-;;   the given note.
+;;;_* Copyright (c) 2003-2007, John Wiegley.  All rights reserved.
 
-;; Copyright (c) 2003-2007, John Wiegley.  All rights reserved.
-;;
 ;; Redistribution and use in source and binary forms, with or without
 ;; modification, are permitted provided that the following conditions are
 ;; met:
@@ -38,7 +31,7 @@
 ;; (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 ;; OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-;;; Commentary:
+;;;_* Commentary
 
 ;; This library aims to provide convenient access to commoditized math.  That
 ;; is, math involving numbers with units.  However, unlike scientific units,
@@ -50,7 +43,7 @@
 ;; commodity calculations -- the time of conversion from one type to another,
 ;; the rated value at the time of conversion.
 
-;;; Usage: Amounts
+;;;_ * Usage: Amounts
 
 ;; There are just a few main entry points to the CAMBL library for dealing
 ;; with amounts (which is mainly how you'll use it).  Here is a quick list,
@@ -191,7 +184,7 @@
 ;; If you find this is not enough slack for your calculations, you can set
 ;; CAMBL:*EXTRA-PRECISION* to a higher or lower value.
 
-;;; Usage: Commodities
+;;;_ * Usage: Commodities
 
 ;; CAMBL offers several methods for accessing the commodity information
 ;; relating to amounts:
@@ -202,6 +195,15 @@
 ;;   commodity-qualified-name  ; the name used print a COMMODITY
 ;;   commodity-annotated-p     ; does the commodity have an annotation?
 
+;;;_* Todo
+;;
+;; - Create a function for calculating a conversion, which will
+;;   automatically preserve annotation details based on context:
+;;     (amount-exchange "100 DM" "$100.00" &optional datetime "Note")
+;;   This will "exchange" 100 DM for $100.00, at the given datetime with
+;;   the given note.
+
+;;;_* Package
 
 (declaim (optimize (debug 3) (safety 3)))
 
@@ -225,48 +227,94 @@
 	   copy-balance
 	   copy-value
 
+	   value-zerop
+	   value-zerop*
+	   value-minusp
+	   value-minusp*
+	   value-plusp
+	   value-plusp*
+
 	   value=
 	   value/=
 	   value-equal
+	   amount-compare
+	   amount-sign
 	   amount<
 	   amount<=
 	   amount>
 	   amount>=
 
-	   add
-	   add*
-	   subtract
-	   subtract*
-	   multiply
-	   multiply*
-	   divide
-	   divide*
+	   value-neg*
+	   value-neg
+	   value-abs
+	   value-round
+	   value-round*
+	   value-unround
+
+	   value-add
+	   value-add*
+	   value-sub
+	   value-sub*
+	   value-mul
+	   value-mul*
+	   value-div
+	   value-div*
 
 	   print-value
-	   print-value*
 	   format-value
-	   format-value*
+	   quantity-string
 
+	   smallest-units
+	   smallest-units*
+	   smaller-units
+	   smaller-units*
+	   larger-units
+	   larger-units*
+
+	   exchange-commodity
+
+	   amount-commodity
+	   commodity-name
 	   amount-precision
+	   display-precision
+
 	   amount-error
+
+	   commodity
+	   commodity-annotation
+	   annotated-commodity
+
+	   commodity-equal
+	   commodity-equalp
+
+	   market-value
+
+	   commodity-serial-number
+	   commodity-qualified-name
+	   commodity-thousand-marks-p
+	   commodity-lessp
+
+	   commodity-annotated-p
+	   commodity-annotation
+	   commodity-annotation-equal
+	   annotate-commodity
+	   strip-annotations
 
 	   *default-commodity-pool*
 	   make-commodity-pool
+	   find-commodity
+	   find-annotated-commodity
 
-	   amount-commodity
-	   display-precision
-	   commodity-serial-number
-	   commodity-qualified-name
-	   commodity-annotated-p
-	   commodity-error)
-  (:shadow round zerop minusp plusp))
+	   commodity-error))
 
 (in-package :cambl)
 
-;; Commodity symbols
+;;;_* Types
 
 (deftype datetime ()
   'integer)
+
+;;;_ - COMMODITY-SYMBOL
 
 (defstruct commodity-symbol
   (name "" :type string)
@@ -274,15 +322,12 @@
   (prefixed-p nil :type boolean)
   (connected-p nil :type boolean))
 
-(defvar *european-style* nil
-  "If set to T, amounts will be printed as 1.000,00.
-  The default is US style, which is 1,000.00.  Note that thousand markers are
-  only used if the commodity's own `thousand-marks-p' accessor returns T.")
+;;;_ - BASIC-COMMODITY
 
 (defstruct (basic-commodity (:conc-name get-))
   (symbol nil :type commodity-symbol)
-  (name nil :type (or string null))
-  (note nil :type (or string null))
+  (description nil :type (or string null))
+  (comment nil :type (or string null))
   (smaller-unit-equivalence nil)	; (:type amount)
   (larger-unit-equivalence nil)		; (:type amount)
   (thousand-marks-p nil :type boolean)
@@ -292,12 +337,20 @@
   (price-history nil)
   (last-lookup nil :type (or datetime null)))
 
+(defstruct pricing-entry
+  (moment nil :type datetime)
+  (price nil :type amount))
+
+;;;_ - COMMODITY-POOL
+
 (defstruct commodity-pool
   (by-name-map (make-hash-table :test 'equal) :type hash-table)
   (by-serial-list '((0 . nil)) :type list)
   (default-commodity nil))
 
 (defparameter *default-commodity-pool* (make-commodity-pool))
+
+;;;_ + COMMODITY
 
 ;; Commodities are references to basic commodities, which store the common
 ;; details.  This is so the commodities USD and $ can both refer to the same
@@ -323,46 +376,15 @@
       (format stream "~%    :THOUSAND-MARKS-P ~S :DISPLAY-PRECISION ~D"
 	      (get-thousand-marks-p base) (get-display-precision base)))))
 
-;; Commoditized amounts and balances
-
-(defvar *extra-precision* 6)
-
-(defstruct (amount (:print-function print-amount))
-  (commodity  nil :type (or commodity null))
-  (quantity 0 :type integer)
-  (precision 0 :type fixnum)
-  (keep-precision-p nil :type boolean)
-  ;;value-origins-list
-  ;;(keep-base :allocation :class :initform nil :type boolean)
-  ;;(keep-price :allocation :class :initform nil :type boolean)
-  ;;(keep-date :allocation :class :initform nil :type boolean)
-  ;;(keep-tag :allocation :class :initform nil :type boolean)
-  )
-
-(defun print-amount (amount stream depth)
-  (declare (ignore depth))
-  (print-unreadable-object (amount stream :type t)
-    (format stream "~S :KEEP-PRECISION-P ~S"
-	    (format-value amount :full-precision-p t)
-	    (amount-keep-precision-p amount))))
-
-(defstruct balance
-  (amounts-map nil))
-
-(defstruct (cost-balance (:include balance))
-  (costs nil))
-
-;; Annotated commodities
-
-(defstruct pricing-entry
-  (moment nil :type datetime)
-  (price nil :type amount))
+;;;_ + COMMODITY-ANNOTATION
 
 (defstruct (commodity-annotation
 	     (:conc-name annotation-))
   (price nil :type (or amount null))
   (date nil :type (or datetime null))
   (tag nil :type (or string null)))
+
+;;;_ + ANNOTATED-COMMODITY
 
 (defclass annotated-commodity (commodity)
   ((referent-commodity :accessor get-referent-commodity
@@ -374,776 +396,7 @@
     ((annotated-commodity annotated-commodity) &key)
   (setf (get-annotated-p annotated-commodity) t))
 
-;;; Interface generics and functions
-
-;; If the argument says item, this means:
-;;   amount, commodity, annotated-commodity, null
-;;
-;; If the argument says any-item, this means:
-;;   amount, balance, cost-balance, commodity, annotated-commodity, null
-;;
-;; If it says value, this means:
-;;   amount, balance, cost-balance
-
-;; (defun find-commodity (name &key (create-if-not-exists-p nil)
-;; (defun find-annotated-commodity (name-or-commodity details
-(defgeneric commodity-equal (item-a item-b))
-(defgeneric commodity-equalp (item-a item-b)) ; ignores annotation
-(defgeneric display-precision (item))
-
-;; (defun add-price (commodity price datetime)
-;; (defun remove-price (commodity datetime)
-;; (defun annotation-price-quote (symbol &optional datetime)
-(defgeneric market-value (any-item &optional datetime))
-
-(defgeneric commodity-annotated-p (item))
-(defgeneric commodity-annotation (item))
-(defgeneric commodity-annotation-equal (item item))
-(defgeneric annotate-commodity (commodity annotation))
-(defgeneric strip-annotations (any-item &key keep-price keep-date keep-tag))
-
-;; (defun commodity-lessp (commodity commodity)
-
-;; (defun amount)
-;; (defun amount*)
-;; (defun parse-amount)
-;; (defun parse-amount*)
-;; (defun read-amount)
-;; (defun read-amount*)
-;; (defun float-to-amount (value)
-;; (defun integer-to-amount (value)
-;; (defun exact-amount (in &key (reduce-to-smallest-units-p t)
-
-;; (defun amount-commodity-name (amount)
-;; (defun amount-to-integer (amount &key (dont-check-p t))
-;; (defun amount-quantity (amount)
-;; (defun quantity-string (amount)
-;; (defun amount< (amount amount)
-;; (defun amount> (amount amount)
-;; (defun set-amount-equivalence (larger-amount smaller-amount)
-
-(defgeneric copy-value (value))
-(defgeneric set-value (left right))
-(defgeneric print-value (value &key output-stream omit-commodity-p full-precision-p))
-(defgeneric convert-to-value (amount))	; many things!
-(defgeneric format-value (value &key omit-commodity-p full-precision-p))
-
-;; truth tests
-(defgeneric zerop (value))
-(defgeneric zerop* (value))		; is it *really* zero?
-;; (defun minusp (amount))
-;; (defun minusp* (amount))
-;; (defun plusp (amount))
-;; (defun plusp* (amount))
-
-;; comparisons
-;; (defun amount-compare (left right)
-;; (defun amount-sign (amount)
-(defgeneric value= (left right))
-(defgeneric value/= (left right))
-(defgeneric value-equal (left right))
-
-;; unary operators
-(defgeneric negate* (value))
-(defgeneric negate (value))
-(defgeneric absolute (value))
-(defgeneric round (value &optional precision))
-(defgeneric round* (value &optional precision))
-(defgeneric unround (value))
-
-(defgeneric smallest-units* (value))
-(defgeneric smallest-units (value))
-(defgeneric larger-units* (value))
-(defgeneric larger-units (value))
-
-(defgeneric add (value-a value-b))
-(defgeneric add* (value-a value-b))
-(defgeneric subtract (value-a value-b))
-(defgeneric subtract* (value-a value-b))
-(defgeneric multiply (value-a value-b))
-(defgeneric multiply* (value-a value-b))
-(defgeneric divide (value-a value-b))
-(defgeneric divide* (value-a value-b))
-
-;; balance-specific routines
-(defgeneric amount-for-commodity (balance commodity))
-
-;; Private generics (used to collate nil, commodity and annotated-commodity)
-
-(defgeneric commodity-base (commodity))
-(defgeneric commodity-symbol (commodity))
-(defgeneric commodity-thousand-marks-p (commodity))
-(defgeneric commodity-no-market-price-p (commodity))
-(defgeneric commodity-builtin-p (commodity))
-(defgeneric commodity-annotation-empty-p (item))
-
-;;; Constants:
-
-(defmacro define-array-constant (name value &optional doc)
-  `(defconstant ,name (if (boundp ',name) (symbol-value ',name) ,value)
-     ,@(when doc (list doc))))
-
-(define-array-constant +invalid-symbol-chars+
-  #(#|        0   1   2   3   4   5   6   7   8   9   a   b   c   d   e   f |#
-    #| 00 |# nil nil nil nil nil nil nil nil nil  t   t  nil nil  t  nil nil
-    #| 10 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-    #| 20 |#  t   t   t  nil nil nil  t  nil  t   t   t   t   t   t   t   t 
-    #| 30 |#  t   t   t   t   t   t   t   t   t   t   t   t   t   t   t   t 
-    #| 40 |#  t  nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-    #| 50 |# nil nil nil nil nil nil nil nil nil nil nil  t  nil  t   t  nil
-    #| 60 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-    #| 70 |# nil nil nil nil nil nil nil nil nil nil nil  t  nil  t   t  nil
-    #| 80 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-    #| 90 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-    #| a0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-    #| b0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-    #| c0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-    #| d0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-    #| e0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-    #| f0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil)
-  "The invalid commodity symbol characters are:
-     Space Tab Newline Return
-     0-9 . , ; - + * / ^ ? : & | ! = \"
-     < > { } [ ] ( ) @")
-
-;;; Functions:
-
-(defun symbol-char-invalid-p (c)
-  (declare (type character c))
-  (let ((code (char-code c)))
-    (and (< code 256)
-	 (aref +invalid-symbol-chars+ code))))
-
-(declaim (inline symbol-char-invalid-p))
-
-(defun symbol-name-needs-quoting-p (name)
-  "Return T if the given symbol NAME requires quoting."
-  (declare (type string name))
-  (the boolean
-   (loop for c across name do
-	(if (symbol-char-invalid-p c)
-	    (return t)))))
-
-(declaim (inline symbol-name-needs-quoting-p))
-
-(define-condition commodity-error (error) 
-  ((description :reader error-description :initarg :msg))
-  (:report
-   (lambda (condition stream)
-     (format stream "~S" (error-description condition)))))
-
-(defun read-commodity-symbol (in)
-  "Parse a commodity symbol from the input stream IN.
-  This is the correct entry point for creating a new commodity symbol.
-
-  A commodity contain any character not found in `+invalid-symbol-chars+'.
-  To include such characters in a symbol name -- except for #\\\", which may
-  never appear in a symbol name -- surround the commodity name with double
-  quotes.  It is an error if EOF is reached without reading the ending double
-  quote.  If the symbol name is not quoted, and an invalid character is
-  reading, reading from the stream stops and the invalid character is put
-  back."
-  (declare (type stream in))
-  (let ((buf (make-string-output-stream))
-	needs-quoting-p)
-    (if (char= #\" (peek-char nil in))
-	(progn
-	  (read-char in)
-	  (do ((c (read-char in) (read-char in nil 'the-end)))
-	      (nil)
-	    (if (characterp c)
-		(if (char= #\" c)
-		    (return)
-		    (progn
-		      (if (symbol-char-invalid-p c)
-			  (setf needs-quoting-p t))
-		      (write-char c buf)))
-		(error 'commodity-error
-		       :msg "Quoted commodity symbol lacks closing quote"))))
-	(do ((c (read-char in) (read-char in nil 'the-end)))
-	    ((not (characterp c)))
-	  (if (symbol-char-invalid-p c)
-	      (progn
-		(unread-char c in)
-		(return))
-	      (write-char c buf))))
-    (make-commodity-symbol :name (get-output-stream-string buf)
-			   :needs-quoting-p needs-quoting-p)))
-
-;; The commodity and annotated-commodity classes are the main interface class
-;; for dealing with commodities themselves (which most people will never do).
-
-(defmethod commodity-base ((null null)) nil)
-(defmethod commodity-base ((commodity commodity))
-  (get-basic-commodity commodity))
-(defmethod commodity-base ((annotated-commodity annotated-commodity))
-  (get-basic-commodity (get-referent-commodity annotated-commodity)))
-
-(declaim (inline commodity-base))
-
-(defmacro commodity-indirection (name accessor &key type)
-  `(progn
-     (defmethod ,name ((commodity commodity))
-       (the ,type
-	(,accessor (get-basic-commodity commodity))))
-     (defmethod ,name ((annotated-commodity annotated-commodity))
-       (the ,type
-	(,accessor (get-basic-commodity
-		    (get-referent-commodity annotated-commodity)))))))
-
-(commodity-indirection commodity-symbol get-symbol :type commodity-symbol)
-(commodity-indirection commodity-name get-name :type string)
-(commodity-indirection commodity-thousand-marks-p get-thousand-marks-p
-		       :type boolean)
-(commodity-indirection commodity-precision get-display-precision :type fixnum)
-
-(declaim (inline commodity-symbol))
-(declaim (inline commodity-name))
-(declaim (inline commodity-thousand-marks-p))
-(declaim (inline commodity-precision))
-
-(defmethod display-precision ((commodity commodity))
-  (get-display-precision (get-basic-commodity commodity)))
-(defmethod display-precision ((annotated-commodity annotated-commodity))
-  (display-precision (get-referent-commodity annotated-commodity)))
-(defmethod display-precision ((amount amount))
-  (declare (type amount amount))
-  (the fixnum
-    (commodity-precision (amount-commodity amount))))
-
-(declaim (inline display-precision))
-
-(defmethod commodity-equal ((a null) (b null)) t)
-(defmethod commodity-equal ((a commodity) (b null)) nil)
-(defmethod commodity-equal ((a null) (b commodity)) nil)
-(defmethod commodity-equal ((a commodity) (b commodity))
-  "Two commodities are EQUAL if they have the same BASIC-COMMODITY.
-  They may be of different COMMODITY types, but this is just nomenclature
-  (i.e., USD always equals $)."
-  (eq (get-basic-commodity a) (get-basic-commodity b)))
-(defmethod commodity-equal ((a commodity) (b annotated-commodity)) nil)
-(defmethod commodity-equal ((a annotated-commodity) (b commodity)) nil)
-(defmethod commodity-equal ((a annotated-commodity) (b annotated-commodity))
-  (eq a b))
-
-(declaim (inline commodity-equal))
-
-(defmethod commodity-equalp ((a null) (b null)) t)
-(defmethod commodity-equalp ((a commodity) (b null)) nil)
-(defmethod commodity-equalp ((a null) (b commodity)) nil)
-(defmethod commodity-equalp ((a commodity) (b commodity))
-  "Two commodities are considered EQUALP if they refer to the same base."
-  (eq (get-basic-commodity a) (get-basic-commodity b)))
-(defmethod commodity-equalp ((a commodity) (b annotated-commodity))
-  (commodity-equalp a (get-referent-commodity b)))
-(defmethod commodity-equalp ((a annotated-commodity) (b commodity))
-  (commodity-equalp (get-referent-commodity a) b))
-(defmethod commodity-equalp ((a annotated-commodity) (b annotated-commodity))
-  (commodity-equalp (get-referent-commodity a)
-		    (get-referent-commodity b)))
-
-(declaim (inline commodity-equalp))
-
-(defun commodity-lessp (left right)
-  "Return T if commodity LEFT should be sorted before RIGHT."
-  (declare (type (or commodity annotated-commodity null) left))
-  (declare (type (or commodity annotated-commodity null) right))
-  (the boolean
-    (block nil
-      (if (and (null left) right)
-	  (return t))
-      (if (and left (null right))
-	  (return t))
-
-      (unless (commodity-equal left right)
-	(return (string-lessp (commodity-name left)
-			      (commodity-name right))))
-
-      (if (and (not (commodity-annotated-p left))
-	       (commodity-annotated-p right))
-	  (return t))
-      (if (and (commodity-annotated-p left)
-	       (not (commodity-annotated-p right)))
-	  (return nil))
-
-      (let ((left-annotation (commodity-annotation left))
-	    (right-annotation (commodity-annotation right)))
-
-	(let ((left-price (annotation-price left-annotation))
-	      (right-price (annotation-price right-annotation)))
-	  (if (and (not left-price) right-price)
-	      (return t))
-	  (if (and left-price (not right-price))
-	      (return nil))
-
-	  (if (and left-price right-price)
-	    (setq left-price (smallest-units left-price)
-		  right-price (smallest-units right-price))
-
-	    (if (commodity-equal (amount-commodity left-price)
-				 (amount-commodity right-price))
-		(return (amount< left-price right-price))
-		;; Since we have two different amounts, there's really no way
-		;; to establish a true sorting order; we'll just do it based
-		;; on the numerical values.
-		(return (amount< (amount-quantity left-price)
-				 (amount-quantity right-price))))))
-
-	(let ((left-date (annotation-date left-annotation))
-	      (right-date (annotation-date right-annotation)))
-	  (if (and (not left-date) right-date)
-	      (return t))
-	  (if (and left-date (not right-date))
-	      (return nil))
-
-	  (when (and left-date right-date)
-	    (return (< left-date right-date))))
-
-	(let ((left-tag (annotation-tag left-annotation))
-	      (right-tag (annotation-tag right-annotation)))
-	  (if (and (not left-tag) right-tag)
-	      (return t))
-	  (if (and left-tag (not right-tag))
-	      (return nil))
-
-	  (when (and left-tag right-tag)
-	    (return (string-lessp left-tag right-tag)))))
-
-      (return t))))
-
-;; Routines for accessing the historical prices of a commodity
-
-(defun add-price (commodity price &optional datetime)
-  (declare (type (or commodity annotated-commodity null) commodity))
-  (declare (type amount price))
-  (declare (type (or datetime null) datetime))
-  (when commodity
-   (let ((base (commodity-base commodity))
-	 (pricing-entry
-	  (make-pricing-entry :moment (or datetime
-					  (get-universal-time)) :price price)))
-     (if (not (get-price-history base))
-	 (setf (get-price-history base) (rbt:nil-tree)))
-     (let ((history (get-price-history base)))
-       (multiple-value-bind (new-root node-inserted-or-found item-already-in-p)
-	   (rbt:insert-item pricing-entry history :key 'pricing-entry-moment)
-	 (if item-already-in-p
-	     (setf (pricing-entry-price node-inserted-or-found) price))
-	 (setf (get-price-history base) new-root)))
-     price)))
-
-(defun remove-price (commodity datetime)
-  (declare (type (or commodity annotated-commodity null) commodity))
-  (declare (type datetime datetime))
-  (when commodity
-   (let ((base (commodity-base commodity)))
-     (when (get-price-history base)
-       (multiple-value-bind (new-root node-deleted-p)
-	   (rbt:delete-item datetime (get-price-history base)
-			    :key 'pricing-entry-moment)
-	 (setf (get-price-history base) new-root)
-	 node-deleted-p)))))
-
-(defun find-nearest (it root &key (test #'<=) (key #'identity))
-  "Find an item in the tree which is closest to IT according to TEST.
-  For the default, <=, this means no other item will be more less than
-  IT in the tree than the one found."
-  (declare (type datetime it))
-  (declare (type rbt:rbt-node root))
-  (the (or pricing-entry null)
-   (loop with p = root
-      with last-found = nil
-      named find-loop
-      finally (return-from find-loop
-		(and last-found (rbt:node-item last-found)))
-      while (not (rbt:rbt-null p))
-      do
-      (if (funcall test (funcall key (rbt:node-item p)) it)
-	  (progn
-	    ;; If the current item meets the test, it may be the one we're
-	    ;; looking for.  However, there might be something closer to the
-	    ;; right -- though definitely not to the left.
-	    (setq last-found p p (rbt:right p)))
-	  ;; If the current item does not meet the test, there might be a
-	  ;; candidate to the left -- but definitely not the right.
-	  (setq p (rbt:left p))))))
-
-(defun get-price-quote (symbol &optional datetime)
-  (declare (type commodity-symbol symbol))
-  (declare (type (or datetime null) datetime))
-  (declare (ignore symbol))
-  (declare (ignore datetime))
-  (values))
-
-(defmethod market-value ((commodity commodity) &optional datetime)
-  (declare (type (or commodity annotated-commodity null) commodity))
-  (declare (type (or datetime null) datetime))
-  (the (or amount null)
-    (let* ((base (commodity-base commodity))
-	   (history (get-price-history base)))
-      (when history
-	(if (null datetime)
-	    (progn
-	      (loop while (not (rbt:rbt-null (rbt:right history)))
-		 do (setq history (rbt:right history)))
-	      (assert history)
-	      (rbt:node-item history))
-	    (find-nearest datetime history :key 'pricing-entry-moment)))))
-
-  ;; jww (2007-10-20): NYI
-  
-  ;; if (! has_flags(COMMODITY_STYLE_NOMARKET) && parent().get_quote) {
-  ;;   if (optional<amount_t> quote = parent().get_quote
-  ;;       (*this, age, moment,
-  ;;        (base->history && base->history->prices.size() > 0 ?
-  ;;         (*base->history->prices.rbegin()).first : optional<moment_t>())))
-  ;;     return *quote;
-  ;; }
-  ;; return price;
-  )
-(defmethod market-value ((annotated-commodity annotated-commodity) &optional datetime)
-  (market-value (get-referent-commodity annotated-commodity) datetime))
-
-;; annotated-commodity's are references to other commodities (which in turn
-;; reference a basic-commodity) which carry along additional contextual
-;; information relating to a point in time.
-
-(defmethod strip-annotations ((commodity commodity)
-			      &key keep-price keep-date keep-tag)
-  (declare (ignore keep-price))
-  (declare (ignore keep-date))
-  (declare (ignore keep-tag))
-  (assert (not (commodity-annotated-p commodity)))
-  commodity)
-
-(defmethod strip-annotations ((annotated-commodity annotated-commodity)
-			      &key keep-price keep-date keep-tag)
-  (declare (type boolean keep-price))
-  (declare (type boolean keep-date))
-  (declare (type boolean keep-tag))
-  (assert (commodity-annotated-p annotated-commodity))
-  (the (or annotated-commodity commodity)
-    (let* ((annotation (commodity-annotation annotated-commodity))
-	   (price (annotation-price annotation))
-	   (date (annotation-date annotation))
-	   (tag (annotation-tag annotation)))
-      (if (and (or keep-price (null price))
-	       (or keep-date (null date))
-	       (or keep-tag (null tag)))
-	  annotated-commodity
-	  (let ((tmp (make-instance 'annotated-commodity)))
-	    (setf (get-referent-commodity tmp)
-		  (get-referent-commodity annotated-commodity))
-	    (let ((new-ann (make-commodity-annotation)))
-	      (setf (get-annotation tmp) new-ann)
-	      (if keep-price
-		  (setf (annotation-price new-ann) price))
-	      (if keep-date
-		  (setf (annotation-date new-ann) date))
-	      (if keep-tag
-		  (setf (annotation-tag new-ann) tag)))
-	    (if (commodity-annotation-empty-p tmp)
-		(get-referent-commodity tmp)
-		tmp))))))
-
-(defmethod strip-annotations ((amount amount)
-			      &key keep-price keep-date keep-tag)
-  (declare (type boolean keep-price))
-  (declare (type boolean keep-date))
-  (declare (type boolean keep-tag))
-
-  (the amount
-   (let ((commodity (amount-commodity amount)))
-     (if (or (null commodity)
-	     (not (commodity-annotated-p commodity))
-	     (and keep-price keep-date keep-tag))
-	 amount
-	 (let ((tmp (copy-amount amount)))
-	   (setf (amount-commodity tmp)
-		 (strip-annotations commodity
-				    :keep-price keep-price
-				    :keep-date keep-date
-				    :keep-tag keep-tag))
-	   tmp)))))
-
-(defmethod commodity-annotation-empty-p ((annotation commodity-annotation))
-  (not (or (annotation-price annotation)
-	   (annotation-date annotation)
-	   (annotation-tag annotation))))
-
-(declaim (inline commodity-annotation-empty-p))
-
-(defmethod commodity-annotation-equal ((a commodity-annotation)
-				       (b commodity-annotation))
-  (let ((price-a (annotation-price a))
-	(price-b (annotation-price b))
-	(date-a (annotation-date a))
-	(date-b (annotation-date b))
-	(tag-a (annotation-tag a))
-	(tag-b (annotation-tag b)))
-    (and (or (and (null price-a) (null price-b))
-	     (and price-a price-b
-		  (value= price-a price-b)))
-	 (or (and (null date-a) (null date-b))
-	     (and date-a date-b
-		  (= date-a date-b)))
-	 (or (and (null tag-a) (null tag-b))
-	     (and tag-a tag-b
-		  (string= tag-a tag-b))))))
-
-(defun read-until (in char &optional error-message)
-  (declare (type stream in))
-  (declare (type character char))
-  (declare (type (or string null) error-message))
-  (let ((text (make-string-output-stream)))
-    (do ((c (read-char in nil 'the-end)
-	    (read-char in nil 'the-end)))
-	((if (characterp c)
-	     (char= char c)
-	     (prog1
-		 t
-	       (if error-message
-		   (error 'amount-error :msg error-message)))))
-      (write-char c text))
-    (get-output-stream-string text)))
-
-(defun read-commodity-annotation (in)
-  (declare (type stream in))
-  (let ((annotation (make-commodity-annotation)))
-    (do ((c (peek-char t in nil 'the-end)
-	    (peek-char t in nil 'the-end)))
-	((not (characterp c)))
-
-      (cond ((char= #\{ c)
-	     (if (annotation-price annotation)
-		 (error 'amount-error :msg
-			"Commodity annotation specifies more than one price"))
-
-	     (read-char in)
-	     (let* ((price-string
-		     (read-until in #\} "Commodity price lacks closing brace"))
-		    (tmp-amount (parse-amount* price-string)))
-
-	       ;; jww (2007-10-20): Reduce here, if need be
-	       ;; temp.in_place_reduce();
-
-	       ;; Since this price will maintain its own precision, make sure
-	       ;; it is at least as large as the base commodity, since the user
-	       ;; may have only specified {$1} or something similar.
-	       (let ((commodity (amount-commodity tmp-amount)))
-		 (if (and commodity
-			  (< (amount-precision tmp-amount)
-			     (display-precision commodity)))
-		     (setq tmp-amount
-			   (round* tmp-amount
-				   (display-precision commodity)))))
-
-	       (setf (annotation-price annotation) tmp-amount)))
-
-	    ((char= #\[ c)
-	     (if (annotation-date annotation)
-		 (error 'amount-error :msg
-			"Commodity annotation specifies more than one date"))
-
-	     ;; jww (2007-10-20): This code cannot work until I have a decent
-	     ;; Date/Time library for Common Lisp.
-
-	     (read-char in)
-	     ;;(let* ((date-string
-	     ;;	    (read-until in #\] "Commodity date lacks closing bracket"))
-	     ;;	   (tmp-date (parse-datetime date-string)))
-	     ;;  (setf (annotation-date annotation) tmp-date))
-	     )
-
-	    ((char= #\( c)
-	     (if (annotation-tag annotation)
-		 (error 'amount-error :msg
-			"Commodity annotation specifies more than one tag"))
-
-	     (read-char in)
-	     (setf (annotation-tag annotation)
-		   (read-until in #\) "Commodity tag lacks closing parenthesis")))
-
-	    (t
-	     (return))))
-    (the commodity-annotation
-      annotation)))
-
-(defun format-commodity-annotation (annotation &key
-				    (output-stream *standard-output*))
-  "Return the canonical annotation string for ANNOTATION.
-  A fully annotated commodity always follows the form:
-
-    [-]SYMBOL <VALUE> {PRICE} [DATE] (TAG)
-  or
-    <VALUE> SYMBOL {PRICE} [DATE] (TAG)
-
-  If a particular annotation is not present, those sections is simply dropped
-  from the string, for example:
-
-    <VALUE> SYMBOL {PRICE}"
-  (declare (type commodity-annotation annotation))
-  (declare (type stream output-stream))
-  (format output-stream "~:[~; {~:*~A}~]~:[~; [~:*~A]~]~:[~; (~:*~A)~]"
-	  (format-value (annotation-price annotation))
-	  (annotation-date annotation)
-	  (annotation-tag annotation)))
-
-;; All commodities are allocated within a pool, which can be used to look them
-;; up.
-
-(defun create-commodity (name &key (pool *default-commodity-pool*))
-  "Create a COMMODITY after the symbol name found by parsing NAME.
-  The NAME can be either a string or an input stream, or nil, in which
-  case the name is read from *standard-input*.
-  The argument :pool specifies the commodity pool which will maintain
-  this commodity, and by which other code may access it again.
-  The resulting COMMODITY object is returned."
-  (declare (type (or string commodity-symbol) name))
-  (declare (type commodity-pool pool))
-  (the commodity
-   (let* ((symbol (if (stringp name)
-		      (with-input-from-string (in name)
-			(read-commodity-symbol in))
-		      name))
-	  (base (make-basic-commodity :symbol symbol))
-	  (commodity (make-instance 'commodity :basic-commodity base
-					       :commodity-pool pool))
-	  (symbol-name (commodity-symbol-name symbol)))
-
-     (if (commodity-symbol-needs-quoting-p symbol)
-	 (setf (commodity-qualified-name commodity)
-	       (concatenate 'string "\"" symbol-name "\"")))
-
-     (let ((commodities-by-serial-list
-	    (commodity-pool-by-serial-list pool)))
-       (setf (commodity-serial-number commodity)
-	     (1+ (caar (last commodities-by-serial-list))))
-       (nconc commodities-by-serial-list
-	      (list (cons (commodity-serial-number commodity)
-			  commodity))))
-
-     (let ((names-map (commodity-pool-by-name-map pool)))
-       (assert (not (gethash symbol-name names-map)))
-       (setf (gethash symbol-name names-map) commodity)))))
-
-(defun find-commodity (name &key (create-if-not-exists-p nil)
-		       (pool *default-commodity-pool*))
-  "Find a COMMODITY identifier by the symbol name found by parsing NAME.
-  The NAME can be either a string or an input stream, or nil, in which
-  case the name is read from *standard-input*.
-
-  The argument :POOL specifies the commodity pool which will maintain
-  this commodity, and by which other code may access it again.
-
-  The argument :CREATE-IF-NOT-EXISTS-P indicates whether a new commodity
-  should be created if one cannot already be found.
-
-  The return values are: COMMODITY or NIL, NEWLY-CREATED-P"
-  (declare (type (or string commodity-symbol) name))
-  (declare (type boolean create-if-not-exists-p))
-  (declare (type commodity-pool pool))
-  (the (values (or commodity null) boolean)
-   (let ((by-name-map (commodity-pool-by-name-map pool)))
-     (multiple-value-bind (entry present-p)
-	 (gethash (if (stringp name)
-		      name
-		      (commodity-symbol-name name)) by-name-map)
-       (if present-p
-	   (values entry nil)
-	   (if create-if-not-exists-p
-	       (values
-		(create-commodity name :pool pool)
-		t)
-	       (values nil nil)))))))
-
-(defun find-commodity-by-serial (serial &key (pool *default-commodity-pool*))
-  "Find the commodity with the matching unique SERIAL number.
-  nil is returned if no such commodity exists."
-  (declare (type fixnum serial))
-  (declare (type commodity-pool pool))
-  (the (or commodity annotated-commodity)
-    (cdr (assoc serial (commodity-pool-by-serial-list pool)))))
-
-(defun make-qualified-name (commodity commodity-annotation)
-  (declare (type commodity commodity))
-  (declare (type commodity-annotation commodity-annotation))
-
-  (if (and (annotation-price commodity-annotation)
-	   (< (amount-sign (annotation-price commodity-annotation)) 0))
-      (error 'amount-error :msg "A commodity's price may not be negative"))
-
-  (with-output-to-string (out)
-    (princ (commodity-symbol-name
-	    (commodity-symbol commodity)) out)
-    (format-commodity-annotation commodity-annotation :output-stream out)))
-
-(defun create-annotated-commodity (commodity details qualified-name)
-  "Create an ANNOTATED-COMMODITY which annotates COMMODITY.
-  The NAME can be either a string or a COMMODITY-SYMBOL."
-  (declare (type commodity commodity))
-  (declare (type commodity-annotation details))
-  (declare (type string qualified-name))
-  (the annotated-commodity
-   (let ((annotated-commodity
-	  (make-instance 'annotated-commodity
-			 :referent commodity
-			 :details details
-			 :qualified-name qualified-name))
-	 (pool (get-commodity-pool commodity)))
-
-     (let ((commodities-by-serial-list
-	    (commodity-pool-by-serial-list pool)))
-       (setf (commodity-serial-number commodity)
-	     (1+ (caar (last commodities-by-serial-list))))
-       (nconc commodities-by-serial-list
-	      (list (cons (commodity-serial-number commodity)
-			  annotated-commodity))))
-
-     (let ((names-map (commodity-pool-by-name-map pool)))
-       (assert (not (gethash qualified-name names-map)))
-       (setf (gethash qualified-name names-map) annotated-commodity)))))
-
-(defun find-annotated-commodity (name-or-commodity details
-				 &key (create-if-not-exists-p nil)
-				 (pool *default-commodity-pool*))
-  "Find an annotated commodity matching the commodity symbol NAME
-  (which may be a STRING or a COMMODITY-SYMBOL) and given set of
-  commodity DETAILS, of type COMMODITY-ANNOTATION.
-
-  Returns two values: COMMODITY or NIL, NEWLY-CREATED-P"
-  (declare (type (or string commodity-symbol commodity)
-		 name-or-commodity))
-  (declare (type commodity-annotation details))
-  (declare (type boolean create-if-not-exists-p))
-  (declare (type commodity-pool pool))
-  (assert (not (commodity-annotation-empty-p details)))
-  (the (values (or annotated-commodity null) boolean)
-   (let ((commodity
-	  (if (typep name-or-commodity 'commodity)
-	      (progn
-		(assert (not (commodity-annotated-p name-or-commodity)))
-		name-or-commodity)
-	      (find-commodity name-or-commodity
-			      :create-if-not-exists-p create-if-not-exists-p
-			      :pool pool))))
-     (if commodity
-	 (let* ((annotated-name (make-qualified-name commodity details))
-		(annotated-commodity
-		 (find-commodity annotated-name :pool pool)))
-	   (if annotated-commodity
-	       (progn
-		 (assert (commodity-annotated-p annotated-commodity))
-		 (assert
-		  (commodity-annotation-equal
-		   details (commodity-annotation annotated-commodity)))
-		 (values annotated-commodity nil))
-	       (if create-if-not-exists-p
-		   (values
-		    (create-annotated-commodity commodity details
-						annotated-name)
-		    t))))
-	 (values nil nil)))))
+;;;_ + AMOUNT
 
 ;; Amounts are bignums with a specific attached commodity.  [TODO: Also, when
 ;; math is performed with them, they retain knowledge of the origins of their
@@ -1180,15 +433,193 @@
 ;; @see to_string
 ;; @see to_fullstring
 
-(defun float-to-amount (value)
-  (declare (type float value))
-  (the amount
-    (parse-amount* (format nil "~F" value))))
+(defstruct (amount (:print-function print-amount))
+  (commodity  nil :type (or commodity null))
+  (quantity 0 :type integer)
+  (precision 0 :type fixnum)
+  (keep-precision-p nil :type boolean)
+  ;;value-origins-list
+  ;;(keep-base :allocation :class :initform nil :type boolean)
+  ;;(keep-price :allocation :class :initform nil :type boolean)
+  ;;(keep-date :allocation :class :initform nil :type boolean)
+  ;;(keep-tag :allocation :class :initform nil :type boolean)
+  )
 
-(defun integer-to-amount (value)
-  (declare (type (or integer fixnum) value))
-  (the amount
-    (make-amount :quantity value :precision 0)))
+(defun print-amount (amount stream depth)
+  (declare (ignore depth))
+  (print-unreadable-object (amount stream :type t)
+    (format stream "~S :KEEP-PRECISION-P ~S"
+	    (format-value amount :full-precision-p t)
+	    (amount-keep-precision-p amount))))
+
+;;;_ + BALANCE
+
+(defclass balance ()
+  ((amounts-map :initform nil)))
+
+;;;_ + COST-BALANCE
+
+(defclass cost-balance (balance)
+  ((costs :initform nil)))
+
+;;;_* Generics
+
+;;;_ + Public generics
+
+;; - If the argument says item, this means:
+;;   amount, commodity, annotated-commodity, null
+;; - If the argument says any-item, this means:
+;;   amount, balance, cost-balance, commodity, annotated-commodity, null
+;; - If it says value, this means:
+;;   amount, balance, cost-balance
+
+(defgeneric copy-value (value))
+
+(defgeneric value-zerop (value))
+(defgeneric value-zerop* (value))		; is it *really* zerop?
+(defgeneric value-minusp (value))
+(defgeneric value-minusp* (value))		; is it *really* minusp?
+(defgeneric value-plusp (value))
+(defgeneric value-plusp* (value))		; is it *really* plusp?
+
+(defgeneric value= (left right))
+(defgeneric value/= (left right))
+(defgeneric value-equal (left right))
+
+(defgeneric value-neg* (value))
+(defgeneric value-neg (value))
+(defgeneric value-abs (value))
+(defgeneric value-round (value &optional precision))
+(defgeneric value-round* (value &optional precision))
+(defgeneric value-unround (value))
+
+(defgeneric value-add (value-a value-b))
+(defgeneric value-add* (value-a value-b))
+(defgeneric value-sub (value-a value-b))
+(defgeneric value-sub* (value-a value-b))
+(defgeneric value-mul (value-a value-b))
+(defgeneric value-mul* (value-a value-b))
+(defgeneric value-div (value-a value-b))
+(defgeneric value-div* (value-a value-b))
+
+(defgeneric optimize-value (value))
+
+(defgeneric print-value (value &key output-stream omit-commodity-p
+			       full-precision-p width latter-width))
+(defgeneric format-value (value &key omit-commodity-p full-precision-p
+				width latter-width))
+
+(defgeneric amount-in-balance (balance commodity))
+
+(defgeneric smallest-units (value))
+(defgeneric smallest-units* (value))
+(defgeneric smaller-units (value))
+(defgeneric smaller-units* (value))
+(defgeneric larger-units (value))
+(defgeneric larger-units* (value))
+
+(defgeneric exchange-commodity (value price))
+
+(defgeneric commodity-equal (item-a item-b))
+(defgeneric commodity-equalp (item-a item-b)) ; ignores annotation
+
+(defgeneric commodity-name (item))
+(defgeneric display-precision (item))
+
+(defgeneric market-value (any-item &optional datetime))
+
+(defgeneric commodity-annotated-p (item))
+(defgeneric commodity-annotation (item))
+(defgeneric commodity-annotation-equal (item item))
+(defgeneric annotate-commodity (item annotation))
+(defgeneric strip-annotations (any-item &key keep-price keep-date keep-tag))
+
+;;;_ - Private generics
+
+(defgeneric commodity-base (commodity))
+(defgeneric commodity-symbol (commodity))
+(defgeneric commodity-precision (commodity))
+(defgeneric commodity-thousand-marks-p (commodity))
+(defgeneric commodity-description (item))
+(defgeneric commodity-no-market-price-p (commodity))
+(defgeneric commodity-builtin-p (commodity))
+
+(defgeneric commodity-annotation-empty-p (item))
+
+;;;_* Constants
+
+(defmacro define-array-constant (name value &optional doc)
+  `(defconstant ,name (if (boundp ',name) (symbol-value ',name) ,value)
+     ,@(when doc (list doc))))
+
+(define-array-constant +invalid-symbol-chars+
+    #(#|        0   1   2   3   4   5   6   7   8   9   a   b   c   d   e   f |#
+      #| 00 |# nil nil nil nil nil nil nil nil nil  t   t  nil nil  t  nil nil
+      #| 10 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+      #| 20 |#  t   t   t  nil nil nil  t  nil  t   t   t   t   t   t   t   t 
+      #| 30 |#  t   t   t   t   t   t   t   t   t   t   t   t   t   t   t   t 
+      #| 40 |#  t  nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+      #| 50 |# nil nil nil nil nil nil nil nil nil nil nil  t  nil  t   t  nil
+      #| 60 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+      #| 70 |# nil nil nil nil nil nil nil nil nil nil nil  t  nil  t   t  nil
+      #| 80 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+      #| 90 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+      #| a0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+      #| b0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+      #| c0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+      #| d0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+      #| e0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+      #| f0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil)
+  "The invalid commodity symbol characters are:
+     Space Tab Newline Return
+     0-9 . , ; - + * / ^ ? : & | ! = \"
+     < > { } [ ] ( ) @")
+
+;;;_* Global Variables
+
+(defvar *european-style* nil
+  "If set to T, amounts will be printed as 1.000,00.
+  The default is US style, which is 1,000.00.  Note that thousand markers are
+  only used if the commodity's own `thousand-marks-p' accessor returns T.")
+
+(defvar *extra-precision* 6
+  "Specify the amount of \"extra\" to be added during amount division.")
+
+;;;_* Functions
+
+;;;_ * AMOUNT, BALANCE and COST-BALANCE
+
+;;;_  + Error class
+
+(define-condition amount-error (error) 
+  ((description :reader error-description :initarg :msg))
+  (:report (lambda (condition stream)
+	     (format stream "~S" (error-description condition)))))
+
+;;;_  + Create AMOUNT objects from strings
+
+(defun amount (text &key (reduce-to-smallest-units-p t)
+	       (pool *default-commodity-pool*))
+  (declare (type string text))
+  (with-input-from-string (in text)
+    (read-amount in :observe-properties-p t
+		 :reduce-to-smallest-units-p reduce-to-smallest-units-p
+		 :pool pool)))
+
+(defun amount* (text &key (reduce-to-smallest-units-p t)
+		(pool *default-commodity-pool*))
+  (declare (type string text))
+  (with-input-from-string (in text)
+    (the amount
+      (read-amount in :observe-properties-p nil
+		   :reduce-to-smallest-units-p reduce-to-smallest-units-p
+		   :pool pool))))
+
+(declaim (ftype function parse-amount))
+(setf (fdefinition 'parse-amount) (fdefinition 'amount))
+
+(declaim (ftype function parse-amount*))
+(setf (fdefinition 'parse-amount*) (fdefinition 'amount*))
 
 (defun exact-amount (text &key (reduce-to-smallest-units-p t)
 		     (pool *default-commodity-pool*))
@@ -1198,407 +629,7 @@
     (setf (amount-keep-precision-p amount) t)
     amount))
 
-(defun read-exact-amount (text &key (reduce-to-smallest-units-p t)
-			  (pool *default-commodity-pool*))
-  (let ((amount
-	 (read-amount* text :reduce-to-smallest-units-p reduce-to-smallest-units-p
-			    :pool pool)))
-    (setf (amount-keep-precision-p amount) t)
-    amount))
-
-(defmethod copy-value ((amount amount))
-  (copy-amount amount))
-
-(defun amount-commodity-name (amount)
-  (let ((commodity (amount-commodity amount)))
-    (if (and commodity (commodity-annotated-p commodity))
-	(setq commodity (get-referent-commodity commodity)))
-    (if commodity
-	(if (slot-boundp commodity 'qualified-name)
-	    (commodity-qualified-name commodity)
-	    (let ((symbol (get-symbol (get-basic-commodity commodity))))
-	      (if symbol
-		  (progn
-		    (assert (not (commodity-symbol-needs-quoting-p symbol)))
-		    (commodity-symbol-name symbol))))))))
-
-(define-condition amount-error (error) 
-  ((description :reader error-description :initarg :msg))
-  (:report (lambda (condition stream)
-	     (format stream "~S" (error-description condition)))))
-
-(defun verify-amounts (left right capitalized-gerund)
-  (declare (type amount left))
-  (declare (type amount right))
-
-  (unless (commodity-equal (amount-commodity left)
-			   (amount-commodity right))
-    (error 'amount-error :msg
-	   (format nil "~A amounts with different commodities: ~A != ~A"
-		   capitalized-gerund
-		   (amount-commodity-name left)
-		   (amount-commodity-name right)))))
-
-(defun amount-compare (left right)
-  (verify-amounts left right "Comparing")
-  (cond ((= (amount-precision left)
-	    (amount-precision right))
-	 (- (amount-quantity left)
-	    (amount-quantity right)))
-	((< (amount-precision left)
-	    (amount-precision right))
-	 (let ((tmp (copy-amount left)))
-	   (amount--resize tmp (amount-precision right))
-	   (- (amount-quantity tmp)
-	      (amount-quantity right))))
-	(t
-	 (let ((tmp (copy-amount right)))
-	   (amount--resize tmp (amount-precision left))
-	   (- (amount-quantity left)
-	      (amount-quantity tmp))))))
-
-(defmethod value= ((left amount) (right amount))
-  (cl:zerop (amount-compare left right)))
-
-(defmethod value/= ((left amount) (right amount))
-  (not (cl:zerop (amount-compare left right))))
-
-(defmethod value-equal ((left amount) (right amount))
-  (value= left right))
-
-(defmethod value< ((left amount) (right amount))
-  (cl:minusp (amount-compare left right)))
-
-(defmethod value<= ((left amount) (right amount))
-  (let ((result (amount-compare left right)))
-    (or (cl:minusp result) (cl:zerop result))))
-
-(defmethod value> ((left amount) (right amount))
-  (cl:plusp (amount-compare left right)))
-
-(defmethod value>= ((left amount) (right amount))
-  (let ((result (amount-compare left right)))
-    (or (cl:plusp result) (cl:zerop result))))
-
-(defmethod add ((left amount) (right amount))
-  (let ((tmp (copy-amount left)))
-    (add* tmp right)))
-
-(defmethod add* ((left amount) (right amount))
-  (verify-amounts left right "Adding")
-  (let ((left-quantity (amount-quantity left))
-	(right-quantity (amount-quantity right)))
-    (cond ((= (amount-precision left)
-	      (amount-precision right))
-	   (setf (amount-quantity left)
-		 (+ left-quantity right-quantity)))
-	  ((< (amount-precision left)
-	      (amount-precision right))
-	   (amount--resize left (amount-precision right))
-	   (setf (amount-quantity left)
-		 (+ left-quantity right-quantity)))
-	  (t
-	   (let ((tmp (copy-amount right)))
-	     (amount--resize tmp (amount-precision left))
-	     (setf (amount-quantity left)
-		   (+ left-quantity right-quantity))))))
-  left)
-
-(defmethod subtract ((left amount) (right amount))
-  (let ((tmp (copy-amount left)))
-    (subtract* tmp right)))
-
-(defmethod subtract* ((left amount) (right amount))
-  (verify-amounts left right "Subtracting")
-  (let ((left-quantity (amount-quantity left))
-	(right-quantity (amount-quantity right)))
-    (cond ((= (amount-precision left)
-	      (amount-precision right))
-	   (setf (amount-quantity left)
-		 (- left-quantity right-quantity)))
-	  ((< (amount-precision left)
-	      (amount-precision right))
-	   (amount--resize left (amount-precision right))
-	   (setf (amount-quantity left)
-		 (- left-quantity right-quantity)))
-	  (t
-	   (let ((tmp (copy-amount right)))
-	     (amount--resize tmp (amount-precision left))
-	     (setf (amount-quantity left)
-		   (- left-quantity right-quantity)))))))
-
-(defmethod multiply ((left amount) (right amount))
-  (let ((tmp (copy-amount left)))
-    (multiply* tmp right)))
-
-(defun set-amount-commodity-and-round* (left right)
-  (declare (type amount left))
-  (declare (type amount right))
-
-  (let ((commodity (amount-commodity left)))
-    (unless commodity
-      (setf (amount-commodity left)
-	    (setq commodity (amount-commodity right))))
-
-    ;; If this amount has a commodity, and we're not dealing with plain
-    ;; numbers, or internal numbers (which keep full precision at all
-    ;; times), then round the number to within the commodity's precision
-    ;; plus six places.
-    (when (and commodity (not (amount-keep-precision-p left)))
-      (let ((commodity-precision (display-precision commodity)))
-	(when (> (amount-precision left)
-		 (+ *extra-precision* commodity-precision))
-	  (setf (amount-quantity left)
-		(cl:round (amount-quantity left)
-			  (expt 10 (- (amount-precision left)
-				      (+ *extra-precision* commodity-precision)))))
-	  (setf (amount-precision left)
-		(+ *extra-precision* commodity-precision))))))
-  left)
-
-(defmethod multiply* ((left amount) (right amount))
-  (setf (amount-quantity left)
-	(* (amount-quantity left)
-	   (amount-quantity right)))
-  (setf (amount-precision left)
-	(+ (amount-precision left)
-	   (amount-precision right)))
-
-  (set-amount-commodity-and-round* left right))
-
-(defmethod divide ((left amount) (right amount))
-  (let ((tmp (copy-amount left)))
-    (divide* tmp right)))
-
-(defmethod divide ((left amount) (right integer))
-  (let ((tmp (copy-amount left)))
-    (divide* tmp (integer-to-amount right))))
-
-(defmethod divide ((left integer) (right amount))
-  (let ((tmp (integer-to-amount left)))
-    (divide* tmp right)))
-
-(defmethod divide* ((left amount) (right amount))
-  ;; Increase the value's precision, to capture fractional parts after
-  ;; the divide.  Round up in the last position.
-  (if (zerop right)
-      (error 'amount-error :msg
-	     (format nil "Attempt to divide by zero: ~A / ~A"
-		     (format-value left :full-precision-p t)
-		     (format-value right :full-precision-p t))))
-
-  (setf (amount-quantity left)
-	(/ (* (amount-quantity left)
-	      (expt 10 (+ (1+ *extra-precision*)
-			  (* 2 (amount-precision right))
-			  (amount-precision left))))
-	   (amount-quantity right)))
-  (setf (amount-precision left)
-	(+ *extra-precision* (* 2 (amount-precision left))
-	   (amount-precision right)))
-
-  (setf (amount-quantity left)
-	(cl:round (amount-quantity left)
-		  (expt 10 (- (1+ (amount-precision left))
-			      (amount-precision left)))))
-
-  (set-amount-commodity-and-round* left right))
-
-(defmethod negate* ((amount amount))
-  (assert amount)
-  (setf (amount-quantity amount)
-	(- (amount-quantity amount)))
-  amount)
-
-(defmethod negate ((amount amount))
-  (assert amount)
-  (let ((tmp (copy-amount amount)))
-    (negate* tmp)))
-
-(defmethod absolute ((amount amount))
-  (assert amount)
-  (if (cl:minusp (amount-quantity amount))
-      (negate amount)
-      amount))
-
-(defmethod round* ((amount amount) &optional precision)
-  "Round the given AMOUNT to the stated internal PRECISION.
-  If PRECISION is less than the current internal precision, data will
-  be lost.  If it is greater, the integer value of the amount is
-  increased until the target precision is reached."
-  (unless precision
-    (let ((commodity (amount-commodity amount)))
-      (if commodity
-	  (setq precision (display-precision commodity))
-	  (setq precision 0))))
-
-  (let ((internal-precision (amount-precision amount)))
-    (cond ((< precision internal-precision)
-	   (setf (amount-quantity amount)
-		 (nth-value 0 (truncate (amount-quantity amount)
-					(expt 10 (- internal-precision
-						    precision)))))
-	   (setf (amount-precision amount) precision))
-	  ((> precision internal-precision)
-	   (setf (amount-quantity amount)
-		 (* (amount-quantity amount)
-		    (expt 10 (- precision internal-precision))))
-	   (setf (amount-precision amount) precision))))
-  amount)
-
-(defmethod round ((amount amount) &optional precision)
-  (let ((tmp (copy-amount amount)))
-    (round* tmp precision)))
-
-(defmethod unround ((amount amount))
-  (let ((tmp (copy-amount amount)))
-    (setf (amount-keep-precision-p tmp) t)
-    tmp))
-
-(defmethod smallest-units* ((amount amount))
-  ;; if (! quantity)
-  ;;   throw_(amount_error, "Cannot reduce an uninitialized amount");
-  ;;
-  ;; while (commodity_ && commodity().smaller()) {
-  ;;   *this *= commodity().smaller()->number();
-  ;;   commodity_ = commodity().smaller()->commodity_;
-  ;; }
-  ;; return *this;
-  (assert amount))
-
-(defmethod smallest-units ((amount amount))
-  (let ((tmp (copy-amount amount)))
-    (smallest-units* tmp)
-    tmp))
-
-(defmethod larger-units* ((amount amount))
-  ;; if (! quantity)
-  ;;   throw_(amount_error, "Cannot unreduce an uninitialized amount");
-  ;;
-  ;; while (commodity_ && commodity().larger()) {
-  ;;   *this /= commodity().larger()->number();
-  ;;   commodity_ = commodity().larger()->commodity_;
-  ;;   if (abs() < amount_t(1.0))
-  ;;     break;
-  ;; }
-  ;; return *this;
-  (assert amount))
-
-(defmethod larger-units ((amount amount))
-  (let ((tmp (copy-amount amount)))
-    (larger-units* tmp)
-    tmp))
-
-(defmethod market-value ((amount amount) &optional datetime)
-  (let ((commodity (amount-commodity amount)))
-    (when commodity
-      (let ((value (market-value commodity datetime)))
-	(if value
-	    (round* (multiply* value amount)))))))
-
-(defun amount-sign (amount)
-  "Return -1, 0 or 1 depending on the sign of AMOUNT."
-  (assert amount)
-  (let ((quantity (amount-quantity amount)))
-    (if (cl:minusp quantity)
-	-1
-	(if (cl:plusp quantity)
-	    1
-	    0))))
-
-(defmethod zerop ((amount amount))
-  (let ((commodity (amount-commodity amount)))
-    (if commodity
-	(if (<= (amount-precision amount)
-		(display-precision commodity))
-	    (zerop* amount)
-	    (= 0 (amount-sign (round (display-precision commodity)))))
-	(zerop* amount))))
-
-(defmethod zerop* ((amount amount))
-  (= 0 (amount-quantity amount)))
-
-(defun amount-to-integer (amount &key (dont-check-p t))
-  (declare (type amount amount))
-  (declare (type boolean dont-check-p))
-  (multiple-value-bind (quotient remainder)
-      (truncate (amount-quantity amount)
-		(expt 10 (amount-precision amount)))
-    (if (and (not dont-check-p) remainder)
-	(error 'amount-error :msg
-	       "Conversion of amount to_long loses precision"))
-    quotient))
-
-(defmethod format-value ((amount amount) &key
-			 (omit-commodity-p nil) (full-precision-p nil))
-  (with-output-to-string (out)
-    (print-value amount :output-stream out
-		 :omit-commodity-p omit-commodity-p
-		 :full-precision-p full-precision-p)
-    out))
-
-(defmethod convert-to-fullstring ((amount amount))
-  (assert amount)
-  (with-output-to-string (out)
-    (print-value amount :output-stream out :full-precision-p t)
-    out))
-
-(defun quantity-string (amount)
-  (assert amount)
-  (with-output-to-string (out)
-    (print-value amount :output-stream out :omit-commodity-p t)
-    out))
-
-(defun amount< (left right)
-  (the boolean
-   (cl:minusp (amount-compare left right))))
-
-(defun amount> (left right)
-  (cl:plusp (amount-compare left right)))
-
-(defun amount-sans-commodity (amount)
-  (declare (type amount amount))
-  (the amount
-    (let ((commodity (amount-commodity amount)))
-      (if commodity
-	  (let ((tmp (copy-amount amount)))
-	    (assert (amount-commodity tmp))
-	    (setf (amount-commodity tmp) nil)
-	    tmp)
-	  amount))))
-
-(defmethod annotate-commodity ((amount amount)
-			       (details commodity-annotation))
-  (let ((commodity (amount-commodity amount)))
-    (unless commodity
-      (error 'amount-error :msg
-	     "Cannot annotate an amount which has no commodity"))
-    (let ((referent commodity))
-      (if (commodity-annotated-p referent)
-	  (setq referent (get-referent-commodity referent)))
-
-      (let ((annotated-commodity
-	     (find-annotated-commodity referent details
-				       :create-if-not-exists-p t)))
-	(let ((tmp (copy-amount amount)))
-	  (setf (amount-commodity tmp) annotated-commodity)
-	  tmp)))))
-
-(defmethod commodity-annotated-p ((commodity commodity))
-  (assert (not (slot-boundp commodity 'annotated-p)))
-  nil)
-(defmethod commodity-annotated-p ((annotated-commodity annotated-commodity))
-  (assert (slot-boundp annotated-commodity 'annotated-p))
-  (assert (get-annotated-p annotated-commodity))
-  t)
-(defmethod commodity-annotated-p ((amount amount))
-  (commodity-annotated-p (amount-commodity amount)))
-
-(defmethod commodity-annotation ((annotated-commodity annotated-commodity))
-  (get-annotation annotated-commodity))
-(defmethod commodity-annotation ((amount amount))
-  ;; This calls the appropriate generic function
-  (commodity-annotation (amount-commodity amount)))
+;;;_  + Read AMOUNT objects from streams
 
 (defun read-amount-quantity (in)
   (declare (type stream in))
@@ -1660,8 +691,8 @@
   (declare (type stream in))
 
   (let (symbol quantity details negative-p
-	(connected-p t) (prefixed-p t) thousand-marks-p
-	amount)
+	       (connected-p t) (prefixed-p t) thousand-marks-p
+	       amount)
 
     (when (char= #\- (peek-char-in-line in t))
       (setq negative-p t)
@@ -1704,7 +735,7 @@
     ;; it refers to
     (multiple-value-bind (commodity newly-created-p)
 	(if (and symbol
-		 (not (cl:zerop (length (commodity-symbol-name symbol)))))
+		 (not (zerop (length (commodity-symbol-name symbol)))))
 	    (if details
 		(find-annotated-commodity symbol details :pool pool
 					  :create-if-not-exists-p t)
@@ -1749,12 +780,12 @@
 		  thousand-marks-p))
 
 	(let ((precision (amount-precision amount)))
-	 (if (> precision (display-precision commodity))
-	     (setf (get-display-precision (commodity-base commodity))
-		   precision)))))
+	  (if (> precision (display-precision commodity))
+	      (setf (get-display-precision (commodity-base commodity))
+		    precision)))))
 
     (if negative-p
-	(negate* amount))
+	(value-neg* amount))
 
     (if reduce-to-smallest-units-p
 	(smallest-units* amount))
@@ -1767,60 +798,600 @@
 	       :reduce-to-smallest-units-p reduce-to-smallest-units-p
 	       :pool pool))
 
-(defun amount (text &key (reduce-to-smallest-units-p t)
-	       (pool *default-commodity-pool*))
-  (declare (type string text))
-  (with-input-from-string (in text)
-   (read-amount in :observe-properties-p t
-		:reduce-to-smallest-units-p reduce-to-smallest-units-p
-		:pool pool)))
+(defun read-exact-amount (text &key (reduce-to-smallest-units-p t)
+			  (pool *default-commodity-pool*))
+  (let ((amount
+	 (read-amount* text :reduce-to-smallest-units-p reduce-to-smallest-units-p
+			    :pool pool)))
+    (setf (amount-keep-precision-p amount) t)
+    amount))
 
-(defun amount* (text &key (reduce-to-smallest-units-p t)
-		(pool *default-commodity-pool*))
-  (declare (type string text))
-  (with-input-from-string (in text)
-    (the amount
-      (read-amount in :observe-properties-p nil
-		   :reduce-to-smallest-units-p reduce-to-smallest-units-p
-		   :pool pool))))
+;;;_  + Convert other values to and from AMOUNT
 
-(declaim (ftype function parse-amount))
-(setf (fdefinition 'parse-amount) (fdefinition 'amount))
+(defun float-to-amount (value)
+  (declare (type float value))
+  (the amount
+    (parse-amount* (format nil "~F" value))))
 
-(declaim (ftype function parse-amount*))
-(setf (fdefinition 'parse-amount*) (fdefinition 'amount*))
+(declaim (inline float-to-amount))
 
-(defun parse-amount-conversion (larger-string smaller-string)
-  ;; amount_t larger, smaller;
+(defun integer-to-amount (value)
+  (declare (type (or integer fixnum) value))
+  (the amount
+    (make-amount :quantity value :precision 0)))
+
+(declaim (inline integer-to-amount))
+
+(defun amount-to-integer (amount &key (dont-check-p t))
+  (declare (type amount amount))
+  (declare (type boolean dont-check-p))
+  (multiple-value-bind (quotient remainder)
+      (truncate (amount-quantity amount)
+		(expt 10 (amount-precision amount)))
+    (if (and (not dont-check-p) remainder)
+	(error 'amount-error :msg
+	       "Conversion of amount to integer loses precision"))
+    quotient))
+
+;;;_  + Copiers
+
+(defmethod copy-value ((amount amount))
+  (copy-amount amount))
+
+(defun copy-balance (balance)
+  balance)
+
+(defmethod copy-value ((balance balance))
+  (copy-balance balance))
+(defmethod copy-value ((cost-balance cost-balance))
+  (copy-balance cost-balance))
+
+(declaim (inline copy-value))
+
+;;;_  + Unary truth tests
+
+(defmacro unary-truth-test (test-name exact-test exact-cl-test)
+  `(defmethod ,test-name ((amount amount))
+     (let ((commodity (amount-commodity amount)))
+       (if commodity
+	   (if (<= (amount-precision amount)
+		   (display-precision commodity))
+	       (,exact-test amount)
+	       (,exact-cl-test (amount-sign
+				(value-round (display-precision commodity)))))
+	   (,exact-test amount)))))
+
+(defmethod value-zerop* ((amount amount))
+  (zerop (amount-quantity amount)))
+
+(defmethod value-zerop ((balance balance))
+  ;; if (is_empty())
+  ;;   return true;
   ;;
-  ;; larger.parse(larger_str, AMOUNT_PARSE_NO_REDUCE);
-  ;; smaller.parse(smaller_str, AMOUNT_PARSE_NO_REDUCE);
-  ;;
-  ;; larger *= smaller.number();
-  ;;
-  ;; if (larger.commodity()) {
-  ;;   larger.commodity().set_smaller(smaller);
-  ;;   larger.commodity().add_flags(smaller.commodity().flags() |
-  ;;                                COMMODITY_STYLE_NOMARKET);
+  ;; for (amounts_map::const_iterator i = amounts.begin();
+  ;;      i != amounts.end();
+  ;;      i++)
+  ;;   if (! i->second.is_zero())
+  ;;     return false;
+  ;; return true;
+  (assert balance))
+
+(defmethod value-zerop* ((balance balance)))
+
+(unary-truth-test value-zerop value-zerop* zerop)
+
+(declaim (inline value-zerop value-zerop*))
+
+(defmethod value-minusp* ((amount amount))
+  (minusp (amount-quantity amount)))
+
+(unary-truth-test value-minusp value-minusp* minusp)
+
+(declaim (inline value-minusp value-minusp*))
+
+(defmethod value-plusp* ((amount amount))
+  (plusp (amount-quantity amount)))
+
+(unary-truth-test value-plusp value-plusp* plusp)
+
+(declaim (inline value-plusp value-plusp*))
+
+;;;_  + Binary truth tests
+
+(defmethod value= ((left amount) (right amount))
+  (zerop (amount-compare left right)))
+
+(defmethod value= ((left balance) (right balance))
+  ;; amounts_map::const_iterator i, j;
+  ;; for (i = amounts.begin(), j = bal.amounts.begin();
+  ;;      i != amounts.end() && j != bal.amounts.end();
+  ;;      i++, j++) {
+  ;;   if (! (i->first == j->first && i->second == j->second))
+  ;;     return false;
   ;; }
-  ;; if (smaller.commodity())
-  ;;   smaller.commodity().set_larger(larger);
-  (assert larger-string)
-  (assert smaller-string))
+  ;; return i == amounts.end() && j == bal.amounts.end();
+  )
 
-;; jww (2007-10-15): use keywords here
+(defmethod value= ((balance balance) (amount amount))
+  ;; if (amt.is_null())
+  ;;   throw_(balance_error,
+  ;;          "Cannot compare a balance to an uninitialized amount");
+  ;;
+  ;; if (amt.is_realzero())
+  ;;   return amounts.empty();
+  ;; else
+  ;;   return amounts.size() == 1 && amounts.begin()->second == amt;
+  (assert amount))
+
+(defmethod value/= ((left amount) (right amount))
+  (not (zerop (amount-compare left right))))
+
+(defmethod value-equal ((left amount) (right amount))
+  (value= left right))
+
+(declaim (inline value= value/= value-equal))
+
+(defun verify-amounts (left right capitalized-gerund)
+  (declare (type amount left))
+  (declare (type amount right))
+
+  (unless (commodity-equal (amount-commodity left)
+			   (amount-commodity right))
+    (error 'amount-error :msg
+	   (format nil "~A amounts with different commodities: ~A != ~A"
+		   capitalized-gerund
+		   (commodity-name left)
+		   (commodity-name right)))))
+
+(defun amount--resize (amount precision)
+  (assert (< precision 256))
+  (unless (or (not (amount-quantity amount))
+	      (= precision (amount-precision amount)))
+    (assert (> precision (amount-precision amount)))
+    (setf (amount-quantity amount)
+	  (* (amount-quantity amount)
+	     (expt 10 (- precision
+			 (amount-precision amount)))))
+    (setf (amount-precision amount) precision)))
+
+(defun amount-compare (left right)
+  (verify-amounts left right "Comparing")
+  (cond ((= (amount-precision left)
+	    (amount-precision right))
+	 (- (amount-quantity left)
+	    (amount-quantity right)))
+	((< (amount-precision left)
+	    (amount-precision right))
+	 (let ((tmp (copy-amount left)))
+	   (amount--resize tmp (amount-precision right))
+	   (- (amount-quantity tmp)
+	      (amount-quantity right))))
+	(t
+	 (let ((tmp (copy-amount right)))
+	   (amount--resize tmp (amount-precision left))
+	   (- (amount-quantity left)
+	      (amount-quantity tmp))))))
+
+(defun amount-sign (amount)
+  "Return -1, 0 or 1 depending on the sign of AMOUNT."
+  (assert amount)
+  (let ((quantity (amount-quantity amount)))
+    (if (minusp quantity)
+	-1
+	(if (plusp quantity)
+	    1
+	    0))))
+
+(defun amount< (left right)
+  (declare (type amount left))
+  (declare (type amount right))
+  (minusp (amount-compare left right)))
+
+(defun amount<= (left right)
+  (declare (type amount left))
+  (declare (type amount right))
+  (let ((result (amount-compare left right)))
+    (or (minusp result) (zerop result))))
+
+(defun amount> (left right)
+  (declare (type amount left))
+  (declare (type amount right))
+  (plusp (amount-compare left right)))
+
+(defun amount>= (left right)
+  (declare (type amount left))
+  (declare (type amount right))
+  (let ((result (amount-compare left right)))
+    (or (plusp result) (zerop result))))
+
+(declaim (inline amount< amount<= amount> amount>=))
+
+;;;_  + Unary math operators
+
+(defmethod value-neg ((amount amount))
+  (assert amount)
+  (let ((tmp (copy-amount amount)))
+    (value-neg* tmp)))
+
+(defmethod value-neg* ((amount amount))
+  (assert amount)
+  (setf (amount-quantity amount)
+	(- (amount-quantity amount)))
+  amount)
+
+(defmethod value-neg ((balance balance))
+  (let ((tmp (copy-balance balance)))
+    ;; (value-neg* tmp)
+    (assert tmp)
+    ))
+
+(defmethod value-neg* ((balance balance))
+  ;; for (amounts_map::iterator i = amounts.begin();
+  ;;      i != amounts.end();
+  ;;      i++)
+  ;;   i->second.in_place_value-neg();
+  ;; return *this;
+  (assert balance))
+
+(declaim (inline value-neg value-neg*))
+
+(defmethod value-abs ((amount amount))
+  (assert amount)
+  (if (minusp (amount-quantity amount))
+      (value-neg amount)
+      amount))
+
+(defmethod value-abs ((balance balance))
+  ;; balance_t temp;
+  ;; for (amounts_map::const_iterator i = amounts.begin();
+  ;;      i != amounts.end();
+  ;;      i++)
+  ;;   temp += i->second.abs();
+  ;; return temp;
+  (assert balance))
+
+(declaim (inline value-abs))
+
+(defmethod value-round ((amount amount) &optional precision)
+  (let ((tmp (copy-amount amount)))
+    (value-round* tmp precision)))
+
+(defmethod value-round* ((amount amount) &optional precision)
+  "Round the given AMOUNT to the stated internal PRECISION.
+  If PRECISION is less than the current internal precision, data will
+  be lost.  If it is greater, the integer value of the amount is
+  increased until the target precision is reached."
+  (unless precision
+    (let ((commodity (amount-commodity amount)))
+      (if commodity
+	  (setq precision (display-precision commodity))
+	  (setq precision 0))))
+
+  (let ((internal-precision (amount-precision amount)))
+    (cond ((< precision internal-precision)
+	   (setf (amount-quantity amount)
+		 (nth-value 0 (truncate (amount-quantity amount)
+					(expt 10 (- internal-precision
+						    precision)))))
+	   (setf (amount-precision amount) precision))
+	  ((> precision internal-precision)
+	   (setf (amount-quantity amount)
+		 (* (amount-quantity amount)
+		    (expt 10 (- precision internal-precision))))
+	   (setf (amount-precision amount) precision))))
+  amount)
+
+(defmethod value-unround ((amount amount))
+  (let ((tmp (copy-amount amount)))
+    (setf (amount-keep-precision-p tmp) t)
+    tmp))
+
+(declaim (inline value-round value-unround))
+
+;;;_  + Binary math operators
+
+;;;_   : Addition
+
+(defmethod value-add ((left amount) (right amount))
+  (let ((tmp (copy-amount left)))
+    (value-add* tmp right)))
+
+(defmethod value-add* ((left amount) (right amount))
+  (verify-amounts left right "Adding")
+  (let ((left-quantity (amount-quantity left))
+	(right-quantity (amount-quantity right)))
+    (cond ((= (amount-precision left)
+	      (amount-precision right))
+	   (setf (amount-quantity left)
+		 (+ left-quantity right-quantity)))
+	  ((< (amount-precision left)
+	      (amount-precision right))
+	   (amount--resize left (amount-precision right))
+	   (setf (amount-quantity left)
+		 (+ left-quantity right-quantity)))
+	  (t
+	   (let ((tmp (copy-amount right)))
+	     (amount--resize tmp (amount-precision left))
+	     (setf (amount-quantity left)
+		   (+ left-quantity right-quantity))))))
+  left)
+
+(defmethod value-add* ((amount amount) (balance balance))
+  (error "Cannot be done"))
+
+(defmethod value-add* ((balance balance) (amount amount))
+  ;; if (amt.is_null())
+  ;;   throw_(balance_error,
+  ;;          "Cannot add an uninitialized amount to a balance");
+  ;;
+  ;; if (amt.is_realzero())
+  ;;   return *this;
+  ;;
+  ;; amounts_map::iterator i = amounts.find(&amt.commodity());
+  ;; if (i != amounts.end())
+  ;;   i->second += amt;
+  ;; else
+  ;;   amounts.insert(amounts_map::value_type(&amt.commodity(), amt));
+  ;;
+  ;; return *this;
+  )
+
+(defmethod value-add* ((balance-a balance) (balance-b balance))
+  ;; for (amounts_map::const_iterator i = bal.amounts.begin();
+  ;;      i != bal.amounts.end();
+  ;;      i++)
+  ;;   *this += i->second;
+  ;; return *this;
+  )
+
+(declaim (inline value-add))
+
+;;;_   : Value-Subion
+
+(defmethod value-sub ((left amount) (right amount))
+  (let ((tmp (copy-amount left)))
+    (value-sub* tmp right)))
+
+(defmethod value-sub* ((left amount) (right amount))
+  (verify-amounts left right "Value-Subing")
+  (let ((left-quantity (amount-quantity left))
+	(right-quantity (amount-quantity right)))
+    (cond ((= (amount-precision left)
+	      (amount-precision right))
+	   (setf (amount-quantity left)
+		 (- left-quantity right-quantity)))
+	  ((< (amount-precision left)
+	      (amount-precision right))
+	   (amount--resize left (amount-precision right))
+	   (setf (amount-quantity left)
+		 (- left-quantity right-quantity)))
+	  (t
+	   (let ((tmp (copy-amount right)))
+	     (amount--resize tmp (amount-precision left))
+	     (setf (amount-quantity left)
+		   (- left-quantity right-quantity)))))))
+
+(defmethod value-sub* ((balance balance) (other balance))
+  ;; for (amounts_map::const_iterator i = bal.amounts.begin();
+  ;;      i != bal.amounts.end();
+  ;;      i++)
+  ;;   *this -= i->second;
+  ;; return *this;
+  )
+
+(defmethod value-sub* ((balance balance) (other amount))
+  ;; if (amt.is_null())
+  ;;   throw_(balance_error,
+  ;;          "Cannot value-sub an uninitialized amount from a balance");
+  ;;
+  ;; if (amt.is_realzero())
+  ;;   return *this;
+  ;;
+  ;; amounts_map::iterator i = amounts.find(&amt.commodity());
+  ;; if (i != amounts.end()) {
+  ;;   i->second -= amt;
+  ;;   if (i->second.is_realzero())
+  ;;     amounts.erase(i);
+  ;; } else {
+  ;;   amounts.insert(amounts_map::value_type(&amt.commodity(), amt.negate()));
+  ;; }
+  ;; return *this;
+  )
+
+(declaim (inline value-sub))
+
+;;;_   : Multiplication
+
+(defmethod value-mul ((left amount) (right amount))
+  (let ((tmp (copy-amount left)))
+    (value-mul* tmp right)))
+
+(defun set-amount-commodity-and-round* (left right)
+  (declare (type amount left))
+  (declare (type amount right))
+
+  (let ((commodity (amount-commodity left)))
+    (unless commodity
+      (setf (amount-commodity left)
+	    (setq commodity (amount-commodity right))))
+
+    ;; If this amount has a commodity, and we're not dealing with plain
+    ;; numbers, or internal numbers (which keep full precision at all
+    ;; times), then round the number to within the commodity's precision
+    ;; plus six places.
+    (when (and commodity (not (amount-keep-precision-p left)))
+      (let ((commodity-precision (display-precision commodity)))
+	(when (> (amount-precision left)
+		 (+ *extra-precision* commodity-precision))
+	  (setf (amount-quantity left)
+		(round (amount-quantity left)
+			  (expt 10 (- (amount-precision left)
+				      (+ *extra-precision* commodity-precision)))))
+	  (setf (amount-precision left)
+		(+ *extra-precision* commodity-precision))))))
+  left)
+
+(defmethod value-mul* ((left amount) (right amount))
+  (setf (amount-quantity left)
+	(* (amount-quantity left)
+	   (amount-quantity right)))
+  (setf (amount-precision left)
+	(+ (amount-precision left)
+	   (amount-precision right)))
+
+  (set-amount-commodity-and-round* left right))
+
+(defmethod value-mul* ((balance balance) (other amount))
+  ;; if (amt.is_null())
+  ;;   throw_(balance_error,
+  ;;          "Cannot value-mul a balance by an uninitialized amount");
+  ;;
+  ;; if (is_realzero()) {
+  ;;   ;
+  ;; }
+  ;; else if (amt.is_realzero()) {
+  ;;   *this = amt;
+  ;; }
+  ;; else if (! amt.commodity()) {
+  ;;   // Value-Muling by an amount with no commodity causes all the
+  ;;   // component amounts to be increased by the same factor.
+  ;;   for (amounts_map::iterator i = amounts.begin();
+  ;;        i != amounts.end();
+  ;;        i++)
+  ;;     i->second *= amt;
+  ;; }
+  ;; else if (amounts.size() == 1) {
+  ;;   // Value-Muling by a commoditized amount is only valid if the sole
+  ;;   // commodity in the balance is of the same kind as the amount's
+  ;;   // commodity.
+  ;;   if (*amounts.begin()->first == amt.commodity())
+  ;;     amounts.begin()->second *= amt;
+  ;;   else
+  ;;     throw_(balance_error,
+  ;;            "Cannot value-mul a balance with annotated commodities by a commoditized amount");
+  ;; }
+  ;; else {
+  ;;   assert(amounts.size() > 1);
+  ;;   throw_(balance_error,
+  ;;          "Cannot value-mul a multi-commodity balance by a commoditized amount");
+  ;; }
+  ;; return *this;
+  )
+
+(declaim (inline value-mul))
+
+;;;_   : Division
+
+(defmethod value-div ((left amount) (right amount))
+  (let ((tmp (copy-amount left)))
+    (value-div* tmp right)))
+
+(defmethod value-div ((left amount) (right integer))
+  (let ((tmp (copy-amount left)))
+    (value-div* tmp (integer-to-amount right))))
+
+(defmethod value-div ((left integer) (right amount))
+  (let ((tmp (integer-to-amount left)))
+    (value-div* tmp right)))
+
+(defmethod value-div* ((left amount) (right amount))
+  ;; Increase the value's precision, to capture fractional parts after
+  ;; the value-div.  Round up in the last position.
+  (if (value-zerop right)
+      (error 'amount-error :msg
+	     (format nil "Attempt to value-div by zero: ~A / ~A"
+		     (format-value left :full-precision-p t)
+		     (format-value right :full-precision-p t))))
+
+  (setf (amount-quantity left)
+	(/ (* (amount-quantity left)
+	      (expt 10 (+ (1+ *extra-precision*)
+			  (* 2 (amount-precision right))
+			  (amount-precision left))))
+	   (amount-quantity right)))
+  (setf (amount-precision left)
+	(+ *extra-precision* (* 2 (amount-precision left))
+	   (amount-precision right)))
+
+  (setf (amount-quantity left)
+	(round (amount-quantity left)
+		  (expt 10 (- (1+ (amount-precision left))
+			      (amount-precision left)))))
+
+  (set-amount-commodity-and-round* left right))
+
+(defmethod value-div* ((balance balance) (other amount))
+  ;; if (amt.is_null())
+  ;;   throw_(balance_error,
+  ;;          "Cannot value-div a balance by an uninitialized amount");
+  ;;
+  ;; if (is_realzero()) {
+  ;;   ;
+  ;; }
+  ;; else if (amt.is_realzero()) {
+  ;;   throw_(balance_error, "Value-Div by zero");
+  ;; }
+  ;; else if (! amt.commodity()) {
+  ;;   // Dividing by an amount with no commodity causes all the
+  ;;   // component amounts to be value-divd by the same factor.
+  ;;   for (amounts_map::iterator i = amounts.begin();
+  ;;        i != amounts.end();
+  ;;        i++)
+  ;;     i->second /= amt;
+  ;; }
+  ;; else if (amounts.size() == 1) {
+  ;;   // Dividing by a commoditized amount is only valid if the sole
+  ;;   // commodity in the balance is of the same kind as the amount's
+  ;;   // commodity.
+  ;;   if (*amounts.begin()->first == amt.commodity())
+  ;;     amounts.begin()->second /= amt;
+  ;;   else
+  ;;     throw_(balance_error,
+  ;;            "Cannot value-div a balance with annotated commodities by a commoditized amount");
+  ;; }
+  ;; else {
+  ;;   assert(amounts.size() > 1);
+  ;;   throw_(balance_error,
+  ;;          "Cannot value-div a multi-commodity balance by a commoditized amount");
+  ;; }
+  ;; return *this;
+  )
+
+(declaim (inline value-div))
+
+;;;_ * BALANCE specific
+
+;;;_  + Optimize BALANCE to an AMOUNT if possible
+
+(defmethod optimize-value ((amount amount))
+  amount)
+
+(defmethod optimize-value ((balance balance))
+  ;; if (is_empty())
+  ;;   throw_(balance_error, "Cannot convert an empty balance to an amount");
+  ;; else if (amounts.size() == 1)
+  ;;   return amounts.begin()->second;
+  ;; else
+  ;;   throw_(balance_error,
+  ;;          "Cannot convert a balance with multiple commodities to an amount");
+  (assert balance))
+
+;;;_  + Print and format AMOUNT and BALANCE
+
 (defmethod print-value ((amount amount) &key
 			(output-stream *standard-output*)
 			(omit-commodity-p nil)
-			(full-precision-p nil))
+			(full-precision-p nil)
+			(width nil)
+			(latter-width nil))
   ;; jww (2007-10-17): This should change from a simple boolean to registered
   ;; commodity to which values should be converted (possibly in both
   ;; directions)
-  ;(unless (slot-value amount 'keep-base)
-  ;  ;; amount_t base(*this);
-  ;  ;; if (! amount_t::keep_base)
-  ;  ;;   base.in_place_unreduce();
-  ;  )
+					;(unless (slot-value amount 'keep-base)
+					;  ;; amount_t base(*this);
+					;  ;; if (! amount_t::keep_base)
+					;  ;;   base.in_place_unreduce();
+					;  )
 
   (let* ((commodity (amount-commodity amount))
 	 (omit-commodity-p (or omit-commodity-p (null commodity)))
@@ -1854,15 +1425,15 @@
 		 (princ #\Space output-stream))))
 	(when (and (not omit-commodity-p)
 		   (commodity-symbol-prefixed-p commodity-symbol))
-	  (princ (amount-commodity-name amount) output-stream)
+	  (princ (commodity-name amount) output-stream)
 	  (maybe-gap))
 
-	(format output-stream "~:[~,,vD~;~,,v:D~]" ;
+	(format output-stream "~:[~v,' ,vD~;~v,' ,v:D~]" ;
 		(and commodity
 		     (commodity-thousand-marks-p commodity))
-		(if *european-style* #\. #\,)
-		quotient)
-	(unless (cl:zerop display-precision)
+		width (if *european-style* #\. #\,) quotient)
+
+	(unless (zerop display-precision)
 	  (format output-stream "~C~v,'0D"
 		  (if *european-style* #\, #\.)
 		  display-precision remainder))
@@ -1870,7 +1441,7 @@
 	(when (and (not omit-commodity-p)
 		   (not (commodity-symbol-prefixed-p commodity-symbol)))
 	  (maybe-gap)
-	  (princ (amount-commodity-name amount) output-stream)))
+	  (princ (commodity-name amount) output-stream)))
 
       (if (and (not omit-commodity-p)
 	       commodity
@@ -1878,349 +1449,23 @@
 	  (format-commodity-annotation (commodity-annotation commodity)
 				       :output-stream output-stream)))))
 
-;; jww (2007-10-15): Add back this builtin commodity
-;;  commodity->add_flags(COMMODITY_STYLE_NOMARKET | COMMODITY_STYLE_BUILTIN);
-;;
-;;  parse_conversion("1.0m", "60s");
-;;  parse_conversion("1.0h", "60m");
+(defmethod format-value ((amount amount) &key
+			 (omit-commodity-p nil) (full-precision-p nil)
+			 (width nil) (latter-width nil))
+  (with-output-to-string (out)
+    (print-value amount :output-stream out
+		 :omit-commodity-p omit-commodity-p
+		 :full-precision-p full-precision-p
+		 :width width
+		 :latter-width latter-width)
+    out))
 
-(defun amount--resize (amount precision)
-  (assert (< precision 256))
-  (unless (or (not (amount-quantity amount))
-	      (= precision (amount-precision amount)))
-    (assert (> precision (amount-precision amount)))
-    (setf (amount-quantity amount)
-	  (* (amount-quantity amount)
-	     (expt 10 (- precision
-			 (amount-precision amount)))))
-    (setf (amount-precision amount) precision)))
-
-(defmethod add* ((amount amount) (balance balance))
-  (add balance amount))
-
-(defmethod add* ((balance balance) (amount amount))
-  ;; TRACE_CTOR(balance_t, "const amount_t&");
-  ;; if (amt.is_null())
-  ;;   throw_(balance_error,
-  ;;          "Cannot initialize a balance from an uninitialized amount");
-  ;; if (! amt.is_realzero())
-  ;;   amounts.insert(amounts_map::value_type(&amt.commodity(), amt));
-  )
-
-(defmethod add* ((balance-a balance) (balance-b balance))
-  )
-
-;;;; jww (2007-10-15): What's the difference between FLOAT and REAL?
-;;(defmethod add-to-balance ((balance balance) (real real))
-;;  ;; TRACE_CTOR(balance_t, "const double");
-;;  ;; amounts.insert
-;;  ;;   (amounts_map::value_type(amount_t::current_pool->null_commodity, val));
-;;  (assert (or balance real)))
-;;
-;;(defmethod add-to-balance ((balance balance) (integer integer))
-;;  ;; TRACE_CTOR(balance_t, "const unsigned long");
-;;  ;; amounts.insert
-;;  ;;   (amounts_map::value_type(amount_t::current_pool->null_commodity, val));
-;;  (assert (or balance integer)))
-
-(defun balance-set-to-amount (amount)
-  ;; if (amt.is_null())
-  ;;   throw_(balance_error,
-  ;;          "Cannot assign an uninitialized amount to a balance");
-  ;;
-  ;; amounts.clear();
-  ;; if (! amt.is_realzero())
-  ;;   amounts.insert(amounts_map::value_type(&amt.commodity(), amt));
-  ;;
-  ;; return *this;
-  (assert amount))
-
-(defun balances-equal (balance)
-  ;; amounts_map::const_iterator i, j;
-  ;; for (i = amounts.begin(), j = bal.amounts.begin();
-  ;;      i != amounts.end() && j != bal.amounts.end();
-  ;;      i++, j++) {
-  ;;   if (! (i->first == j->first && i->second == j->second))
-  ;;     return false;
-  ;; }
-  ;; return i == amounts.end() && j == bal.amounts.end();
-  (assert balance))
-
-(defun balance-equal-to-amount (amount)
-  ;; if (amt.is_null())
-  ;;   throw_(balance_error,
-  ;;          "Cannot compare a balance to an uninitialized amount");
-  ;;
-  ;; if (amt.is_realzero())
-  ;;   return amounts.empty();
-  ;; else
-  ;;   return amounts.size() == 1 && amounts.begin()->second == amt;
-  (assert amount))
-
-;; Binary arithmetic operators.  Balances support addition and
-;; subtraction of other balances or amounts, but multiplication and
-;; division are restricted to uncommoditized amounts only.
-(defmethod add* ((balance balance) (other balance))
-  ;; for (amounts_map::const_iterator i = bal.amounts.begin();
-  ;;      i != bal.amounts.end();
-  ;;      i++)
-  ;;   *this += i->second;
-  ;; return *this;
-  )
-
-(defmethod add* ((balance balance) (other amount))
-  ;; if (amt.is_null())
-  ;;   throw_(balance_error,
-  ;;          "Cannot add an uninitialized amount to a balance");
-  ;;
-  ;; if (amt.is_realzero())
-  ;;   return *this;
-  ;;
-  ;; amounts_map::iterator i = amounts.find(&amt.commodity());
-  ;; if (i != amounts.end())
-  ;;   i->second += amt;
-  ;; else
-  ;;   amounts.insert(amounts_map::value_type(&amt.commodity(), amt));
-  ;;
-  ;; return *this;
-  )
-
-(defmethod subtract* ((balance balance) (other balance))
-  ;; for (amounts_map::const_iterator i = bal.amounts.begin();
-  ;;      i != bal.amounts.end();
-  ;;      i++)
-  ;;   *this -= i->second;
-  ;; return *this;
-  )
-
-(defmethod subtract* ((balance balance) (other amount))
-  ;; if (amt.is_null())
-  ;;   throw_(balance_error,
-  ;;          "Cannot subtract an uninitialized amount from a balance");
-  ;;
-  ;; if (amt.is_realzero())
-  ;;   return *this;
-  ;;
-  ;; amounts_map::iterator i = amounts.find(&amt.commodity());
-  ;; if (i != amounts.end()) {
-  ;;   i->second -= amt;
-  ;;   if (i->second.is_realzero())
-  ;;     amounts.erase(i);
-  ;; } else {
-  ;;   amounts.insert(amounts_map::value_type(&amt.commodity(), amt.negate()));
-  ;; }
-  ;; return *this;
-  )
-
-(defmethod multiply* ((balance balance) (other amount))
-  ;; if (amt.is_null())
-  ;;   throw_(balance_error,
-  ;;          "Cannot multiply a balance by an uninitialized amount");
-  ;;
-  ;; if (is_realzero()) {
-  ;;   ;
-  ;; }
-  ;; else if (amt.is_realzero()) {
-  ;;   *this = amt;
-  ;; }
-  ;; else if (! amt.commodity()) {
-  ;;   // Multiplying by an amount with no commodity causes all the
-  ;;   // component amounts to be increased by the same factor.
-  ;;   for (amounts_map::iterator i = amounts.begin();
-  ;;        i != amounts.end();
-  ;;        i++)
-  ;;     i->second *= amt;
-  ;; }
-  ;; else if (amounts.size() == 1) {
-  ;;   // Multiplying by a commoditized amount is only valid if the sole
-  ;;   // commodity in the balance is of the same kind as the amount's
-  ;;   // commodity.
-  ;;   if (*amounts.begin()->first == amt.commodity())
-  ;;     amounts.begin()->second *= amt;
-  ;;   else
-  ;;     throw_(balance_error,
-  ;;            "Cannot multiply a balance with annotated commodities by a commoditized amount");
-  ;; }
-  ;; else {
-  ;;   assert(amounts.size() > 1);
-  ;;   throw_(balance_error,
-  ;;          "Cannot multiply a multi-commodity balance by a commoditized amount");
-  ;; }
-  ;; return *this;
-  )
-
-(defmethod divide* ((balance balance) (other amount))
-  ;; if (amt.is_null())
-  ;;   throw_(balance_error,
-  ;;          "Cannot divide a balance by an uninitialized amount");
-  ;;
-  ;; if (is_realzero()) {
-  ;;   ;
-  ;; }
-  ;; else if (amt.is_realzero()) {
-  ;;   throw_(balance_error, "Divide by zero");
-  ;; }
-  ;; else if (! amt.commodity()) {
-  ;;   // Dividing by an amount with no commodity causes all the
-  ;;   // component amounts to be divided by the same factor.
-  ;;   for (amounts_map::iterator i = amounts.begin();
-  ;;        i != amounts.end();
-  ;;        i++)
-  ;;     i->second /= amt;
-  ;; }
-  ;; else if (amounts.size() == 1) {
-  ;;   // Dividing by a commoditized amount is only valid if the sole
-  ;;   // commodity in the balance is of the same kind as the amount's
-  ;;   // commodity.
-  ;;   if (*amounts.begin()->first == amt.commodity())
-  ;;     amounts.begin()->second /= amt;
-  ;;   else
-  ;;     throw_(balance_error,
-  ;;            "Cannot divide a balance with annotated commodities by a commoditized amount");
-  ;; }
-  ;; else {
-  ;;   assert(amounts.size() > 1);
-  ;;   throw_(balance_error,
-  ;;          "Cannot divide a multi-commodity balance by a commoditized amount");
-  ;; }
-  ;; return *this;
-  )
-
-(defmethod negate* ((balance balance))
-  ;; for (amounts_map::iterator i = amounts.begin();
-  ;;      i != amounts.end();
-  ;;      i++)
-  ;;   i->second.in_place_negate();
-  ;; return *this;
-  (assert balance))
-
-(defmethod negate ((balance balance))
-  (let ((tmp (copy-balance balance)))
-    ;; (negate* tmp)
-    (assert tmp)
-    ))
-
-(defmethod absolute ((balance balance))
-  ;; balance_t temp;
-  ;; for (amounts_map::const_iterator i = amounts.begin();
-  ;;      i != amounts.end();
-  ;;      i++)
-  ;;   temp += i->second.abs();
-  ;; return temp;
-  (assert balance))
-
-(defmethod smallest-units ((balance balance))
-  ;; balance_t temp(*this);
-  ;; temp.in_place_reduce();
-  ;; return temp;
-  (assert balance))
-
-(defmethod smallest-units* ((balance balance))
-  ;; // A temporary must be used here because reduction may cause
-  ;; // multiple component amounts to collapse to the same commodity.
-  ;; balance_t temp;
-  ;; for (amounts_map::const_iterator i = amounts.begin();
-  ;;      i != amounts.end();
-  ;;      i++)
-  ;;   temp += i->second.reduce();
-  ;; return *this = temp;
-  (assert balance))
-
-(defmethod larger-units ((balance balance))
-  ;; balance_t temp(*this);
-  ;; temp.in_place_unreduce();
-  ;; return temp;
-  (assert balance))
-
-(defmethod larger-units* ((balance balance))
-  ;; // A temporary must be used here because unreduction may cause
-  ;; // multiple component amounts to collapse to the same commodity.
-  ;; balance_t temp;
-  ;; for (amounts_map::const_iterator i = amounts.begin();
-  ;;      i != amounts.end();
-  ;;      i++)
-  ;;   temp += i->second.unreduce();
-  ;; return *this = temp;
-  (assert balance))
-
-(defmethod market-value ((balance balance) &optional datetime)
-  ;; optional<balance_t> temp;
-  ;;
-  ;; for (amounts_map::const_iterator i = amounts.begin();
-  ;;      i != amounts.end();
-  ;;      i++)
-  ;;   if (optional<amount_t> val = i->second.value(moment)) {
-  ;;     if (! temp)
-  ;;       temp = balance_t();
-  ;;     *temp += *val;
-  ;;   }
-  ;;
-  ;; return temp;
-  (assert balance)
-  (assert datetime))
-
-(defmethod zerop ((balance balance))
-  ;; if (is_empty())
-  ;;   return true;
-  ;;
-  ;; for (amounts_map::const_iterator i = amounts.begin();
-  ;;      i != amounts.end();
-  ;;      i++)
-  ;;   if (! i->second.is_zero())
-  ;;     return false;
-  ;; return true;
-  (assert balance))
-
-(defmethod convert-to-amount ((balance balance))
-  ;; if (is_empty())
-  ;;   throw_(balance_error, "Cannot convert an empty balance to an amount");
-  ;; else if (amounts.size() == 1)
-  ;;   return amounts.begin()->second;
-  ;; else
-  ;;   throw_(balance_error,
-  ;;          "Cannot convert a balance with multiple commodities to an amount");
-  (assert balance))
-
-(defmethod amount-in-balance ((balance balance) (commodity commodity))
-  ;; // jww (2007-05-20): Needs work
-  ;; if (! commodity) {
-  ;;   if (amounts.size() == 1) {
-  ;;     amounts_map::const_iterator i = amounts.begin();
-  ;;     return i->second;
-  ;;   }
-  ;;   else if (amounts.size() > 1) {
-  ;;     // Try stripping annotations before giving an error.
-  ;;     balance_t temp(strip_annotations());
-  ;;     if (temp.amounts.size() == 1)
-  ;;       return temp.commodity_amount(commodity);
-  ;;
-  ;;     throw_(amount_error,
-  ;;            "Requested amount of a balance with multiple commodities: " << temp);
-  ;;   }
-  ;; }
-  ;; else if (amounts.size() > 0) {
-  ;;   amounts_map::const_iterator i = amounts.find(&*commodity);
-  ;;   if (i != amounts.end())
-  ;;     return i->second;
-  ;; }
-  ;; return none;
-  (assert balance)
-  (assert commodity))
-
-(defmethod strip-annotations ((balance balance)
-			      &key keep-price keep-date keep-tag)
-  ;; balance_t temp;
-  ;;
-  ;; for (amounts_map::const_iterator i = amounts.begin();
-  ;;      i != amounts.end();
-  ;;      i++)
-  ;;   temp += i->second.strip_annotations(keep_price, keep_date, keep_tag);
-  ;;
-  ;; return temp;
-  (assert balance)
-  (assert (or keep-price keep-date keep-tag)))
-
-(defun print-balance (balance &optional out first-width latter-width)
+(defmethod print-value ((balance balance) &key
+			(output-stream *standard-output*)
+			(omit-commodity-p nil)
+			(full-precision-p nil)
+			(width 12)
+			(latter-width nil))
   "Printing methods.  A balance may be output to a stream using the `print'
    method.  There is also a global operator<< defined which simply calls print
    for a balance on the given stream.  There is one form of the print method,
@@ -2277,6 +1522,926 @@
   ;;   out.fill(' ');
   ;;   out << std::right << "0";
   ;; }
-  (assert (or balance out first-width latter-width)))
+  )
+
+(defun quantity-string (amount)
+  (assert amount)
+  (format-value amount :omit-commodity-p t :full-precision-p t))
+
+;;;_  + Find AMOUNT of COMMODITY in a BALANCE
+
+(defmethod amount-in-balance ((balance balance) (commodity commodity))
+  ;; // jww (2007-05-20): Needs work
+  ;; if (! commodity) {
+  ;;   if (amounts.size() == 1) {
+  ;;     amounts_map::const_iterator i = amounts.begin();
+  ;;     return i->second;
+  ;;   }
+  ;;   else if (amounts.size() > 1) {
+  ;;     // Try stripping annotations before giving an error.
+  ;;     balance_t temp(strip_annotations());
+  ;;     if (temp.amounts.size() == 1)
+  ;;       return temp.commodity_amount(commodity);
+  ;;
+  ;;     throw_(amount_error,
+  ;;            "Requested amount of a balance with multiple commodities: " << temp);
+  ;;   }
+  ;; }
+  ;; else if (amounts.size() > 0) {
+  ;;   amounts_map::const_iterator i = amounts.find(&*commodity);
+  ;;   if (i != amounts.end())
+  ;;     return i->second;
+  ;; }
+  ;; return none;
+  (assert balance)
+  (assert commodity))
+
+;;;_ * COMMODITY
+
+;;;_  + Return copy of AMOUNT without a commodity
+
+(defun amount-sans-commodity (amount)
+  (declare (type amount amount))
+  (the amount
+    (let ((commodity (amount-commodity amount)))
+      (if commodity
+	  (let ((tmp (copy-amount amount)))
+	    (assert (amount-commodity tmp))
+	    (setf (amount-commodity tmp) nil)
+	    tmp)
+	  amount))))
+
+;;;_  - Parse commodity symbols
+
+(defun symbol-char-invalid-p (c)
+  (declare (type character c))
+  (let ((code (char-code c)))
+    (and (< code 256)
+	 (aref +invalid-symbol-chars+ code))))
+
+(declaim (inline symbol-char-invalid-p))
+
+(defun symbol-name-needs-quoting-p (name)
+  "Return T if the given symbol NAME requires quoting."
+  (declare (type string name))
+  (the boolean
+    (loop for c across name do
+	 (if (symbol-char-invalid-p c)
+	     (return t)))))
+
+(declaim (inline symbol-name-needs-quoting-p))
+
+(define-condition commodity-error (error) 
+  ((description :reader error-description :initarg :msg))
+  (:report
+   (lambda (condition stream)
+     (format stream "~S" (error-description condition)))))
+
+(defun read-commodity-symbol (in)
+  "Parse a commodity symbol from the input stream IN.
+  This is the correct entry point for creating a new commodity symbol.
+
+  A commodity contain any character not found in `+invalid-symbol-chars+'.
+  To include such characters in a symbol name -- except for #\\\", which may
+  never appear in a symbol name -- surround the commodity name with double
+  quotes.  It is an error if EOF is reached without reading the ending double
+  quote.  If the symbol name is not quoted, and an invalid character is
+  reading, reading from the stream stops and the invalid character is put
+  back."
+  (declare (type stream in))
+  (let ((buf (make-string-output-stream))
+	needs-quoting-p)
+    (if (char= #\" (peek-char nil in))
+	(progn
+	  (read-char in)
+	  (do ((c (read-char in) (read-char in nil 'the-end)))
+	      (nil)
+	    (if (characterp c)
+		(if (char= #\" c)
+		    (return)
+		    (progn
+		      (if (symbol-char-invalid-p c)
+			  (setf needs-quoting-p t))
+		      (write-char c buf)))
+		(error 'commodity-error
+		       :msg "Quoted commodity symbol lacks closing quote"))))
+	(do ((c (read-char in) (read-char in nil 'the-end)))
+	    ((not (characterp c)))
+	  (if (symbol-char-invalid-p c)
+	      (progn
+		(unread-char c in)
+		(return))
+	      (write-char c buf))))
+    (make-commodity-symbol :name (get-output-stream-string buf)
+			   :needs-quoting-p needs-quoting-p)))
+
+;;;_  * Access commodity details (across all commodity classes)
+
+;; The commodity and annotated-commodity classes are the main interface class
+;; for dealing with commodities themselves (which most people will never do).
+
+(defmethod commodity-base ((null null)) nil)
+(defmethod commodity-base ((commodity commodity))
+  (get-basic-commodity commodity))
+(defmethod commodity-base ((annotated-commodity annotated-commodity))
+  (get-basic-commodity (get-referent-commodity annotated-commodity)))
+
+(declaim (inline commodity-base))
+
+(defmacro commodity-indirection (name accessor &key type)
+  `(progn
+     (defmethod ,name ((commodity commodity))
+       (the ,type
+	 (,accessor (get-basic-commodity commodity))))
+     (defmethod ,name ((annotated-commodity annotated-commodity))
+       (the ,type
+	 (,accessor (get-basic-commodity
+		     (get-referent-commodity annotated-commodity)))))))
+
+(commodity-indirection commodity-symbol get-symbol :type commodity-symbol)
+(commodity-indirection commodity-description get-description :type string)
+(commodity-indirection commodity-thousand-marks-p get-thousand-marks-p
+		       :type boolean)
+(commodity-indirection commodity-precision get-display-precision :type fixnum)
+
+(declaim (inline commodity-symbol))
+(declaim (inline commodity-precision))
+(declaim (inline commodity-thousand-marks-p))
+(declaim (inline commodity-description))
+
+(defmethod commodity-name ((amount amount))
+  (let ((commodity (amount-commodity amount)))
+    (if (and commodity (commodity-annotated-p commodity))
+	(setq commodity (get-referent-commodity commodity)))
+    (if commodity
+	(if (slot-boundp commodity 'qualified-name)
+	    (commodity-qualified-name commodity)
+	    (let ((symbol (get-symbol (get-basic-commodity commodity))))
+	      (if symbol
+		  (progn
+		    (assert (not (commodity-symbol-needs-quoting-p symbol)))
+		    (commodity-symbol-name symbol))))))))
+
+(defmethod display-precision ((commodity commodity))
+  (get-display-precision (get-basic-commodity commodity)))
+(defmethod display-precision ((annotated-commodity annotated-commodity))
+  (display-precision (get-referent-commodity annotated-commodity)))
+(defmethod display-precision ((amount amount))
+  (declare (type amount amount))
+  (the fixnum
+    (commodity-precision (amount-commodity amount))))
+
+;;;_  + Commodity equality
+
+(declaim (inline display-precision))
+
+(defmethod commodity-equal ((a null) (b null)) t)
+(defmethod commodity-equal ((a commodity) (b null)) nil)
+(defmethod commodity-equal ((a null) (b commodity)) nil)
+(defmethod commodity-equal ((a commodity) (b commodity))
+  "Two commodities are EQUAL if they have the same BASIC-COMMODITY.
+  They may be of different COMMODITY types, but this is just nomenclature
+  (i.e., USD always equals $)."
+  (eq (get-basic-commodity a) (get-basic-commodity b)))
+(defmethod commodity-equal ((a commodity) (b annotated-commodity)) nil)
+(defmethod commodity-equal ((a annotated-commodity) (b commodity)) nil)
+(defmethod commodity-equal ((a annotated-commodity) (b annotated-commodity))
+  (eq a b))
+
+(declaim (inline commodity-equal))
+
+(defmethod commodity-equalp ((a null) (b null)) t)
+(defmethod commodity-equalp ((a commodity) (b null)) nil)
+(defmethod commodity-equalp ((a null) (b commodity)) nil)
+(defmethod commodity-equalp ((a commodity) (b commodity))
+  "Two commodities are considered EQUALP if they refer to the same base."
+  (eq (get-basic-commodity a) (get-basic-commodity b)))
+(defmethod commodity-equalp ((a commodity) (b annotated-commodity))
+  (commodity-equalp a (get-referent-commodity b)))
+(defmethod commodity-equalp ((a annotated-commodity) (b commodity))
+  (commodity-equalp (get-referent-commodity a) b))
+(defmethod commodity-equalp ((a annotated-commodity) (b annotated-commodity))
+  (commodity-equalp (get-referent-commodity a)
+		    (get-referent-commodity b)))
+
+(declaim (inline commodity-equalp))
+
+;;;_  + Function to sort commodities
+
+(defun commodity-lessp (left right)
+  "Return T if commodity LEFT should be sorted before RIGHT."
+  (declare (type (or commodity annotated-commodity null) left))
+  (declare (type (or commodity annotated-commodity null) right))
+  (the boolean
+    (block nil
+      (if (and (null left) right)
+	  (return t))
+      (if (and left (null right))
+	  (return t))
+
+      (unless (commodity-equal left right)
+	(return (string-lessp (commodity-name left)
+			      (commodity-name right))))
+
+      (if (and (not (commodity-annotated-p left))
+	       (commodity-annotated-p right))
+	  (return t))
+      (if (and (commodity-annotated-p left)
+	       (not (commodity-annotated-p right)))
+	  (return nil))
+
+      (let ((left-annotation (commodity-annotation left))
+	    (right-annotation (commodity-annotation right)))
+
+	(let ((left-price (annotation-price left-annotation))
+	      (right-price (annotation-price right-annotation)))
+	  (if (and (not left-price) right-price)
+	      (return t))
+	  (if (and left-price (not right-price))
+	      (return nil))
+
+	  (if (and left-price right-price)
+	      (setq left-price (smallest-units left-price)
+		    right-price (smallest-units right-price))
+
+	      (if (commodity-equal (amount-commodity left-price)
+				   (amount-commodity right-price))
+		  (return (amount< left-price right-price))
+		  ;; Since we have two different amounts, there's really no way
+		  ;; to establish a true sorting order; we'll just do it based
+		  ;; on the numerical values.
+		  (return (< (amount-quantity left-price)
+			     (amount-quantity right-price))))))
+
+	(let ((left-date (annotation-date left-annotation))
+	      (right-date (annotation-date right-annotation)))
+	  (if (and (not left-date) right-date)
+	      (return t))
+	  (if (and left-date (not right-date))
+	      (return nil))
+
+	  (when (and left-date right-date)
+	    (return (< left-date right-date))))
+
+	(let ((left-tag (annotation-tag left-annotation))
+	      (right-tag (annotation-tag right-annotation)))
+	  (if (and (not left-tag) right-tag)
+	      (return t))
+	  (if (and left-tag (not right-tag))
+	      (return nil))
+
+	  (when (and left-tag right-tag)
+	    (return (string-lessp left-tag right-tag)))))
+
+      (return t))))
+
+;;;_  + Current and historical market values (prices) for a commodity
+
+(defun add-price (commodity price &optional datetime)
+  (declare (type (or commodity annotated-commodity null) commodity))
+  (declare (type amount price))
+  (declare (type (or datetime null) datetime))
+  (when commodity
+    (let ((base (commodity-base commodity))
+	  (pricing-entry
+	   (make-pricing-entry :moment (or datetime
+					   (get-universal-time)) :price price)))
+      (if (not (get-price-history base))
+	  (setf (get-price-history base) (rbt:nil-tree)))
+      (let ((history (get-price-history base)))
+	(multiple-value-bind (new-root node-inserted-or-found item-already-in-p)
+	    (rbt:insert-item pricing-entry history :key 'pricing-entry-moment)
+	  (if item-already-in-p
+	      (setf (pricing-entry-price node-inserted-or-found) price))
+	  (setf (get-price-history base) new-root)))
+      price)))
+
+(defun remove-price (commodity datetime)
+  (declare (type (or commodity annotated-commodity null) commodity))
+  (declare (type datetime datetime))
+  (when commodity
+    (let ((base (commodity-base commodity)))
+      (when (get-price-history base)
+	(multiple-value-bind (new-root node-deleted-p)
+	    (rbt:delete-item datetime (get-price-history base)
+			     :key 'pricing-entry-moment)
+	  (setf (get-price-history base) new-root)
+	  node-deleted-p)))))
+
+(defun find-nearest (it root &key (test #'<=) (key #'identity))
+  "Find an item in the tree which is closest to IT according to TEST.
+  For the default, <=, this means no other item will be more less than
+  IT in the tree than the one found."
+  (declare (type datetime it))
+  (declare (type rbt:rbt-node root))
+  (the (or pricing-entry null)
+    (loop with p = root
+       with last-found = nil
+       named find-loop
+       finally (return-from find-loop
+		 (and last-found (rbt:node-item last-found)))
+       while (not (rbt:rbt-null p))
+       do
+       (if (funcall test (funcall key (rbt:node-item p)) it)
+	   (progn
+	     ;; If the current item meets the test, it may be the one we're
+	     ;; looking for.  However, there might be something closer to the
+	     ;; right -- though definitely not to the left.
+	     (setq last-found p p (rbt:right p)))
+	   ;; If the current item does not meet the test, there might be a
+	   ;; candidate to the left -- but definitely not the right.
+	   (setq p (rbt:left p))))))
+
+(defun get-price-quote (symbol &optional datetime)
+  (declare (type commodity-symbol symbol))
+  (declare (type (or datetime null) datetime))
+  (declare (ignore symbol))
+  (declare (ignore datetime))
+  (values))
+
+(defmethod market-value ((commodity commodity) &optional datetime)
+  (declare (type (or commodity annotated-commodity null) commodity))
+  (declare (type (or datetime null) datetime))
+  (the (or amount null)
+    (let* ((base (commodity-base commodity))
+	   (history (get-price-history base)))
+      (when history
+	(if (null datetime)
+	    (progn
+	      (loop while (not (rbt:rbt-null (rbt:right history)))
+		 do (setq history (rbt:right history)))
+	      (assert history)
+	      (rbt:node-item history))
+	    (find-nearest datetime history :key 'pricing-entry-moment)))))
+
+  ;; jww (2007-10-20): NYI
+  
+  ;; if (! has_flags(COMMODITY_STYLE_NOMARKET) && parent().get_quote) {
+  ;;   if (optional<amount_t> quote = parent().get_quote
+  ;;       (*this, age, moment,
+  ;;        (base->history && base->history->prices.size() > 0 ?
+  ;;         (*base->history->prices.rbegin()).first : optional<moment_t>())))
+  ;;     return *quote;
+  ;; }
+  ;; return price;
+  )
+(defmethod market-value ((annotated-commodity annotated-commodity) &optional datetime)
+  (market-value (get-referent-commodity annotated-commodity) datetime))
+
+(defmethod market-value ((amount amount) &optional datetime)
+  (let ((commodity (amount-commodity amount)))
+    (when commodity
+      (let ((value (market-value commodity datetime)))
+	(if value
+	    (value-round* (value-mul* value amount)))))))
+
+(defmethod market-value ((balance balance) &optional datetime)
+  ;; optional<balance_t> temp;
+  ;;
+  ;; for (amounts_map::const_iterator i = amounts.begin();
+  ;;      i != amounts.end();
+  ;;      i++)
+  ;;   if (optional<amount_t> val = i->second.value(moment)) {
+  ;;     if (! temp)
+  ;;       temp = balance_t();
+  ;;     *temp += *val;
+  ;;   }
+  ;;
+  ;; return temp;
+  (assert balance)
+  (assert datetime))
+
+;;;_ * AMOUNT and COMMODITY
+
+;;;_  + Unit conversions
+
+(defmethod smaller-units ((amount amount))
+  (let ((tmp (copy-amount amount)))
+    (smaller-units* tmp)
+    tmp))
+
+(defmethod smaller-units* ((amount amount))
+  ;; if (! quantity)
+  ;;   throw_(amount_error, "Cannot reduce an uninitialized amount");
+  ;;
+  ;; while (commodity_ && commodity().smaller()) {
+  ;;   *this *= commodity().smaller()->number();
+  ;;   commodity_ = commodity().smaller()->commodity_;
+  ;; }
+  ;; return *this;
+  (assert amount))
+
+(defmethod smallest-units ((amount amount))
+  (let ((tmp (copy-amount amount)))
+    (smallest-units* tmp)
+    tmp))
+
+(defmethod smallest-units* ((amount amount))
+  ;; if (! quantity)
+  ;;   throw_(amount_error, "Cannot reduce an uninitialized amount");
+  ;;
+  ;; while (commodity_ && commodity().smaller()) {
+  ;;   *this *= commodity().smaller()->number();
+  ;;   commodity_ = commodity().smaller()->commodity_;
+  ;; }
+  ;; return *this;
+  (assert amount))
+
+(defmethod smallest-units ((balance balance))
+  ;; balance_t temp(*this);
+  ;; temp.in_place_reduce();
+  ;; return temp;
+  (assert balance))
+
+(defmethod smallest-units* ((balance balance))
+  ;; // A temporary must be used here because reduction may cause
+  ;; // multiple component amounts to collapse to the same commodity.
+  ;; balance_t temp;
+  ;; for (amounts_map::const_iterator i = amounts.begin();
+  ;;      i != amounts.end();
+  ;;      i++)
+  ;;   temp += i->second.reduce();
+  ;; return *this = temp;
+  (assert balance))
+
+(defmethod larger-units ((amount amount))
+  (let ((tmp (copy-amount amount)))
+    (larger-units* tmp)
+    tmp))
+
+(defmethod larger-units* ((amount amount))
+  ;; if (! quantity)
+  ;;   throw_(amount_error, "Cannot unreduce an uninitialized amount");
+  ;;
+  ;; while (commodity_ && commodity().larger()) {
+  ;;   *this /= commodity().larger()->number();
+  ;;   commodity_ = commodity().larger()->commodity_;
+  ;;   if (abs() < amount_t(1.0))
+  ;;     break;
+  ;; }
+  ;; return *this;
+  (assert amount))
+
+(defmethod larger-units ((balance balance))
+  ;; balance_t temp(*this);
+  ;; temp.in_place_unreduce();
+  ;; return temp;
+  (assert balance))
+
+(defmethod larger-units* ((balance balance))
+  ;; // A temporary must be used here because unreduction may cause
+  ;; // multiple component amounts to collapse to the same commodity.
+  ;; balance_t temp;
+  ;; for (amounts_map::const_iterator i = amounts.begin();
+  ;;      i != amounts.end();
+  ;;      i++)
+  ;;   temp += i->second.unreduce();
+  ;; return *this = temp;
+  (assert balance))
+
+(declaim (inline smaller-units smallest-units larger-units))
+
+(defun parse-amount-conversion (larger-string smaller-string)
+  ;; amount_t larger, smaller;
+  ;;
+  ;; larger.parse(larger_str, AMOUNT_PARSE_NO_REDUCE);
+  ;; smaller.parse(smaller_str, AMOUNT_PARSE_NO_REDUCE);
+  ;;
+  ;; larger *= smaller.number();
+  ;;
+  ;; if (larger.commodity()) {
+  ;;   larger.commodity().set_smaller(smaller);
+  ;;   larger.commodity().add_flags(smaller.commodity().flags() |
+  ;;                                COMMODITY_STYLE_NOMARKET);
+  ;; }
+  ;; if (smaller.commodity())
+  ;;   smaller.commodity().set_larger(larger);
+  (assert larger-string)
+  (assert smaller-string))
+
+;; jww (2007-10-15): Add back this builtin commodity
+;;  commodity->add_flags(COMMODITY_STYLE_NOMARKET | COMMODITY_STYLE_BUILTIN);
+;;
+;;  parse_conversion("1.0m", "60s");
+;;  parse_conversion("1.0h", "60m");
+
+;;;_  + Exchange a commodity
+
+(defmethod exchange-commodity ((amount amount) price)
+  )
+
+;;;_ * COMMODITY-POOL
+
+;;;_  - Commodity creation and pool management
+
+;; All commodities are allocated within a pool, which can be used to look them
+;; up.
+
+;;;_   : COMMODITY
+
+(defun create-commodity (name &key (pool *default-commodity-pool*))
+  "Create a COMMODITY after the symbol name found by parsing NAME.
+  The NAME can be either a string or an input stream, or nil, in which
+  case the name is read from *standard-input*.
+  The argument :pool specifies the commodity pool which will maintain
+  this commodity, and by which other code may access it again.
+  The resulting COMMODITY object is returned."
+  (declare (type (or string commodity-symbol) name))
+  (declare (type commodity-pool pool))
+  (the commodity
+    (let* ((symbol (if (stringp name)
+		       (with-input-from-string (in name)
+			 (read-commodity-symbol in))
+		       name))
+	   (base (make-basic-commodity :symbol symbol))
+	   (commodity (make-instance 'commodity :basic-commodity base
+						:commodity-pool pool))
+	   (symbol-name (commodity-symbol-name symbol)))
+
+      (if (commodity-symbol-needs-quoting-p symbol)
+	  (setf (commodity-qualified-name commodity)
+		(concatenate 'string "\"" symbol-name "\"")))
+
+      (let ((commodities-by-serial-list
+	     (commodity-pool-by-serial-list pool)))
+	(setf (commodity-serial-number commodity)
+	      (1+ (caar (last commodities-by-serial-list))))
+	(nconc commodities-by-serial-list
+	       (list (cons (commodity-serial-number commodity)
+			   commodity))))
+
+      (let ((names-map (commodity-pool-by-name-map pool)))
+	(assert (not (gethash symbol-name names-map)))
+	(setf (gethash symbol-name names-map) commodity)))))
+
+(defun find-commodity (name &key (create-if-not-exists-p nil)
+		       (pool *default-commodity-pool*))
+  "Find a COMMODITY identifier by the symbol name found by parsing NAME.
+  The NAME can be either a string or an input stream, or nil, in which
+  case the name is read from *standard-input*.
+
+  The argument :POOL specifies the commodity pool which will maintain
+  this commodity, and by which other code may access it again.
+
+  The argument :CREATE-IF-NOT-EXISTS-P indicates whether a new commodity
+  should be created if one cannot already be found.
+
+  The return values are: COMMODITY or NIL, NEWLY-CREATED-P"
+  (declare (type (or string commodity-symbol) name))
+  (declare (type boolean create-if-not-exists-p))
+  (declare (type commodity-pool pool))
+  (the (values (or commodity null) boolean)
+    (let ((by-name-map (commodity-pool-by-name-map pool)))
+      (multiple-value-bind (entry present-p)
+	  (gethash (if (stringp name)
+		       name
+		       (commodity-symbol-name name)) by-name-map)
+	(if present-p
+	    (values entry nil)
+	    (if create-if-not-exists-p
+		(values
+		 (create-commodity name :pool pool)
+		 t)
+		(values nil nil)))))))
+
+(defun find-commodity-by-serial (serial &key (pool *default-commodity-pool*))
+  "Find the commodity with the matching unique SERIAL number.
+  nil is returned if no such commodity exists."
+  (declare (type fixnum serial))
+  (declare (type commodity-pool pool))
+  (the (or commodity annotated-commodity)
+    (cdr (assoc serial (commodity-pool-by-serial-list pool)))))
+
+;;;_   : ANNOTATED-COMMODITY
+
+(defun make-qualified-name (commodity commodity-annotation)
+  (declare (type commodity commodity))
+  (declare (type commodity-annotation commodity-annotation))
+
+  (if (and (annotation-price commodity-annotation)
+	   (< (amount-sign (annotation-price commodity-annotation)) 0))
+      (error 'amount-error :msg "A commodity's price may not be negative"))
+
+  (with-output-to-string (out)
+    (princ (commodity-symbol-name
+	    (commodity-symbol commodity)) out)
+    (format-commodity-annotation commodity-annotation :output-stream out)))
+
+(defun create-annotated-commodity (commodity details qualified-name)
+  "Create an ANNOTATED-COMMODITY which annotates COMMODITY.
+  The NAME can be either a string or a COMMODITY-SYMBOL."
+  (declare (type commodity commodity))
+  (declare (type commodity-annotation details))
+  (declare (type string qualified-name))
+  (the annotated-commodity
+    (let ((annotated-commodity
+	   (make-instance 'annotated-commodity
+			  :referent commodity
+			  :details details
+			  :qualified-name qualified-name))
+	  (pool (get-commodity-pool commodity)))
+
+      (let ((commodities-by-serial-list
+	     (commodity-pool-by-serial-list pool)))
+	(setf (commodity-serial-number commodity)
+	      (1+ (caar (last commodities-by-serial-list))))
+	(nconc commodities-by-serial-list
+	       (list (cons (commodity-serial-number commodity)
+			   annotated-commodity))))
+
+      (let ((names-map (commodity-pool-by-name-map pool)))
+	(assert (not (gethash qualified-name names-map)))
+	(setf (gethash qualified-name names-map) annotated-commodity)))))
+
+(defun find-annotated-commodity (name-or-commodity details
+				 &key (create-if-not-exists-p nil)
+				 (pool *default-commodity-pool*))
+  "Find an annotated commodity matching the commodity symbol NAME
+  (which may be a STRING or a COMMODITY-SYMBOL) and given set of
+  commodity DETAILS, of type COMMODITY-ANNOTATION.
+
+  Returns two values: COMMODITY or NIL, NEWLY-CREATED-P"
+  (declare (type (or string commodity-symbol commodity)
+		 name-or-commodity))
+  (declare (type commodity-annotation details))
+  (declare (type boolean create-if-not-exists-p))
+  (declare (type commodity-pool pool))
+  (assert (not (commodity-annotation-empty-p details)))
+  (the (values (or annotated-commodity null) boolean)
+    (let ((commodity
+	   (if (typep name-or-commodity 'commodity)
+	       (progn
+		 (assert (not (commodity-annotated-p name-or-commodity)))
+		 name-or-commodity)
+	       (find-commodity name-or-commodity
+			       :create-if-not-exists-p create-if-not-exists-p
+			       :pool pool))))
+      (if commodity
+	  (let* ((annotated-name (make-qualified-name commodity details))
+		 (annotated-commodity
+		  (find-commodity annotated-name :pool pool)))
+	    (if annotated-commodity
+		(progn
+		  (assert (commodity-annotated-p annotated-commodity))
+		  (assert
+		   (commodity-annotation-equal
+		    details (commodity-annotation annotated-commodity)))
+		  (values annotated-commodity nil))
+		(if create-if-not-exists-p
+		    (values
+		     (create-annotated-commodity commodity details
+						 annotated-name)
+		     t))))
+	  (values nil nil)))))
+
+;;;_ * ANNOTATED-COMMODITY
+
+;;;_  - Read commodity annotation from a stream
+
+(defun read-until (in char &optional error-message)
+  (declare (type stream in))
+  (declare (type character char))
+  (declare (type (or string null) error-message))
+  (let ((text (make-string-output-stream)))
+    (do ((c (read-char in nil 'the-end)
+	    (read-char in nil 'the-end)))
+	((if (characterp c)
+	     (char= char c)
+	     (prog1
+		 t
+	       (if error-message
+		   (error 'amount-error :msg error-message)))))
+      (write-char c text))
+    (get-output-stream-string text)))
+
+(defun read-commodity-annotation (in)
+  (declare (type stream in))
+  (let ((annotation (make-commodity-annotation)))
+    (do ((c (peek-char t in nil 'the-end)
+	    (peek-char t in nil 'the-end)))
+	((not (characterp c)))
+
+      (cond ((char= #\{ c)
+	     (if (annotation-price annotation)
+		 (error 'amount-error :msg
+			"Commodity annotation specifies more than one price"))
+
+	     (read-char in)
+	     (let* ((price-string
+		     (read-until in #\} "Commodity price lacks closing brace"))
+		    (tmp-amount (parse-amount* price-string)))
+
+	       ;; jww (2007-10-20): Reduce here, if need be
+	       ;; temp.in_place_reduce();
+
+	       ;; Since this price will maintain its own precision, make sure
+	       ;; it is at least as large as the base commodity, since the user
+	       ;; may have only specified {$1} or something similar.
+	       (let ((commodity (amount-commodity tmp-amount)))
+		 (if (and commodity
+			  (< (amount-precision tmp-amount)
+			     (display-precision commodity)))
+		     (setq tmp-amount
+			   (value-round* tmp-amount
+					 (display-precision commodity)))))
+
+	       (setf (annotation-price annotation) tmp-amount)))
+
+	    ((char= #\[ c)
+	     (if (annotation-date annotation)
+		 (error 'amount-error :msg
+			"Commodity annotation specifies more than one date"))
+
+	     ;; jww (2007-10-20): This code cannot work until I have a decent
+	     ;; Date/Time library for Common Lisp.
+
+	     (read-char in)
+	     ;;(let* ((date-string
+	     ;;	    (read-until in #\] "Commodity date lacks closing bracket"))
+	     ;;	   (tmp-date (parse-datetime date-string)))
+	     ;;  (setf (annotation-date annotation) tmp-date))
+	     )
+
+	    ((char= #\( c)
+	     (if (annotation-tag annotation)
+		 (error 'amount-error :msg
+			"Commodity annotation specifies more than one tag"))
+
+	     (read-char in)
+	     (setf (annotation-tag annotation)
+		   (read-until in #\) "Commodity tag lacks closing parenthesis")))
+
+	    (t
+	     (return))))
+    (the commodity-annotation
+      annotation)))
+
+;;;_  - Format commodity annotation to a string
+
+(defun format-commodity-annotation (annotation &key
+				    (output-stream *standard-output*))
+  "Return the canonical annotation string for ANNOTATION.
+  A fully annotated commodity always follows the form:
+
+    [-]SYMBOL <VALUE> {PRICE} [DATE] (TAG)
+  or
+    <VALUE> SYMBOL {PRICE} [DATE] (TAG)
+
+  If a particular annotation is not present, those sections is simply dropped
+  from the string, for example:
+
+    <VALUE> SYMBOL {PRICE}"
+  (declare (type commodity-annotation annotation))
+  (declare (type stream output-stream))
+  (format output-stream "~:[~; {~:*~A}~]~:[~; [~:*~A]~]~:[~; (~:*~A)~]"
+	  (format-value (annotation-price annotation))
+	  (annotation-date annotation)
+	  (annotation-tag annotation)))
+
+;;;_  + Unary truth tests
+
+(defmethod commodity-annotated-p ((commodity commodity))
+  (assert (not (slot-boundp commodity 'annotated-p)))
+  nil)
+(defmethod commodity-annotated-p ((annotated-commodity annotated-commodity))
+  (assert (slot-boundp annotated-commodity 'annotated-p))
+  (assert (get-annotated-p annotated-commodity))
+  t)
+(defmethod commodity-annotated-p ((amount amount))
+  (commodity-annotated-p (amount-commodity amount)))
+
+;;;_  + Annotate the commodity of a COMMODITY or AMOUNT
+
+(defmethod annotate-commodity ((commodity commodity)
+			       (details commodity-annotation)))
+
+(defmethod annotate-commodity ((amount amount)
+			       (details commodity-annotation))
+  (let ((commodity (amount-commodity amount)))
+    (unless commodity
+      (error 'amount-error :msg
+	     "Cannot annotate an amount which has no commodity"))
+    (let ((referent commodity))
+      (if (commodity-annotated-p referent)
+	  (setq referent (get-referent-commodity referent)))
+
+      (let ((annotated-commodity
+	     (find-annotated-commodity referent details
+				       :create-if-not-exists-p t)))
+	(let ((tmp (copy-amount amount)))
+	  (setf (amount-commodity tmp) annotated-commodity)
+	  tmp)))))
+
+;;;_  + Access a commodity's annotation
+
+(defmethod commodity-annotation ((annotated-commodity annotated-commodity))
+  (get-annotation annotated-commodity))
+(defmethod commodity-annotation ((amount amount))
+  ;; This calls the appropriate generic function
+  (commodity-annotation (amount-commodity amount)))
+
+;;;_  + Commodity annotation tests
+
+(defmethod commodity-annotation-empty-p ((annotation commodity-annotation))
+  (not (or (annotation-price annotation)
+	   (annotation-date annotation)
+	   (annotation-tag annotation))))
+
+(declaim (inline commodity-annotation-empty-p))
+
+(defmethod commodity-annotation-equal ((a commodity-annotation)
+				       (b commodity-annotation))
+  (let ((price-a (annotation-price a))
+	(price-b (annotation-price b))
+	(date-a (annotation-date a))
+	(date-b (annotation-date b))
+	(tag-a (annotation-tag a))
+	(tag-b (annotation-tag b)))
+    (and (or (and (null price-a) (null price-b))
+	     (and price-a price-b
+		  (value= price-a price-b)))
+	 (or (and (null date-a) (null date-b))
+	     (and date-a date-b
+		  (= date-a date-b)))
+	 (or (and (null tag-a) (null tag-b))
+	     (and tag-a tag-b
+		  (string= tag-a tag-b))))))
+
+;;;_  + Strip commodity annotations
+
+;; annotated-commodity's are references to other commodities (which in turn
+;; reference a basic-commodity) which carry along additional contextual
+;; information relating to a point in time.
+
+(defmethod strip-annotations ((commodity commodity)
+			      &key keep-price keep-date keep-tag)
+  (declare (ignore keep-price))
+  (declare (ignore keep-date))
+  (declare (ignore keep-tag))
+  (assert (not (commodity-annotated-p commodity)))
+  commodity)
+
+(defmethod strip-annotations ((annotated-commodity annotated-commodity)
+			      &key keep-price keep-date keep-tag)
+  (declare (type boolean keep-price))
+  (declare (type boolean keep-date))
+  (declare (type boolean keep-tag))
+  (assert (commodity-annotated-p annotated-commodity))
+  (the (or annotated-commodity commodity)
+    (let* ((annotation (commodity-annotation annotated-commodity))
+	   (price (annotation-price annotation))
+	   (date (annotation-date annotation))
+	   (tag (annotation-tag annotation)))
+      (if (and (or keep-price (null price))
+	       (or keep-date (null date))
+	       (or keep-tag (null tag)))
+	  annotated-commodity
+	  (let ((tmp (make-instance 'annotated-commodity)))
+	    (setf (get-referent-commodity tmp)
+		  (get-referent-commodity annotated-commodity))
+	    (let ((new-ann (make-commodity-annotation)))
+	      (setf (get-annotation tmp) new-ann)
+	      (if keep-price
+		  (setf (annotation-price new-ann) price))
+	      (if keep-date
+		  (setf (annotation-date new-ann) date))
+	      (if keep-tag
+		  (setf (annotation-tag new-ann) tag)))
+	    (if (commodity-annotation-empty-p tmp)
+		(get-referent-commodity tmp)
+		tmp))))))
+
+(defmethod strip-annotations ((amount amount)
+			      &key keep-price keep-date keep-tag)
+  (declare (type boolean keep-price))
+  (declare (type boolean keep-date))
+  (declare (type boolean keep-tag))
+
+  (the amount
+    (let ((commodity (amount-commodity amount)))
+      (if (or (null commodity)
+	      (not (commodity-annotated-p commodity))
+	      (and keep-price keep-date keep-tag))
+	  amount
+	  (let ((tmp (copy-amount amount)))
+	    (setf (amount-commodity tmp)
+		  (strip-annotations commodity
+				     :keep-price keep-price
+				     :keep-date keep-date
+				     :keep-tag keep-tag))
+	    tmp)))))
+
+(defmethod strip-annotations ((balance balance)
+			      &key keep-price keep-date keep-tag)
+  ;; balance_t temp;
+  ;;
+  ;; for (amounts_map::const_iterator i = amounts.begin();
+  ;;      i != amounts.end();
+  ;;      i++)
+  ;;   temp += i->second.strip_annotations(keep_price, keep_date, keep_tag);
+  ;;
+  ;; return temp;
+  (assert balance)
+  (assert (or keep-price keep-date keep-tag)))
 
 ;; cambl.lisp ends here
