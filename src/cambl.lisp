@@ -50,36 +50,189 @@
 ;; commodity calculations -- the time of conversion from one type to another,
 ;; the rated value at the time of conversion.
 
-(declaim (optimize (debug 3)))
+;;; Usage: Amounts
+
+;; There are just a few main entry points to the CAMBL library for dealing
+;; with amounts (which is mainly how you'll use it).  Here is a quick list,
+;; following by a description in the context of a REPL session:
+;;
+;;   amount[*]          ; create an amount from a string
+;;   exact-amount       ; create an amount from a string which overrides
+;;                      ; its commodity's display precision; this feature
+;;                      ; "sticks" through any math operations
+;;   parse-amount[*]    ; read an amount from a stream
+;;   read-amount[*]     ; read an exact amount from a stream
+;;   read-exact-amount  ; read an exact amount from a stream
+;;   format-value       ; format a value to a string
+;;   print-value        ; print a value to a stream
+;;
+;;   add[*]                  ; perform math using values; the values are
+;;   subtract[*]        ; changed as necessary to preserve information
+;;   multiply[*]        ; (adding two amounts may result in a balance)
+;;   divide[*]          ; the * versions change the first argument.
+;;
+;;   value=, value/=    ; compare two values
+;;   amount<, amount<=  ; compare amounts (not meaningful for
+;;   amount>, amount>=  ; balances, so the name is 'amount<')
+;;
+;;   amount-precision   ; return the internal precision of an amount
+;;   display-precision  ; return the "display" precision for an amount
+;;                      ; or a commodity
+;;
+;;   *european-style*   ; set this to T if you want to see 1.000,00 style
+;;                      ; numbers printed instead of 1,000.00 (US) style.
+;;
+;; Most all interactions with CAMBL begins with the creation of an amount.
+;; This is easiest done from a string, but can also be read from a stream:
+;;
+;;   (cambl:amount "$100.00") =>
+;;     #<CAMBL:AMOUNT "$100.00" :KEEP-PRECISION-P NIL>
+;;
+;;   (with-input-from-string (in "$100.00"))
+;;      (cambl:read-amount in)) =>
+;;     #<CAMBL:AMOUNT "$100.00" :KEEP-PRECISION-P NIL>
+;;
+;; When you parse an amount using one of these two functions, CAMBL creates a
+;; COMMODITY class, whose symbol name is "$".  This class remembers certain
+;; details about how you used the commodity, such as the input precision, and
+;; the format of the commodity symbol.  Some of these details can be inspected
+;; by looking at the amount's commodity directly:
+;;
+;;   (cambl:amount-commodity (cambl:amount "$100.00")) =>
+;;     #<CAMBL::COMMODITY #S(CAMBL::COMMODITY-SYMBOL
+;;                           :NAME $
+;;                           :NEEDS-QUOTING-P NIL
+;;                           :PREFIXED-P T
+;;                           :CONNECTED-P T)
+;;         :THOUSAND-MARKS-P NIL :DISPLAY-PRECISION 2>
+;;
+;; Here you see that the commodity for $100.00 references a COMMODITY-SYMBOL,
+;; which knows that: 1) the commodity should be prefixed to its amount; and 2)
+;; it's connected to the amount.  The commodity was used without any "thousand
+;; marks" (i.e., $1000.00 vs $1,000.00), and it had a maximum display
+;; precision of two observed so far.  If we print sach an amount, we'll now
+;; see the same style of output as was input:
+;;
+;;   (cambl:format-value (cambl:amount "$100.00")) => "$100.00"
+;;   (cambl:print-value (cambl:amount "$100.00"))  => NIL
+;;     $100.00
+;;
+;; So CAMBL watched how you used the "$" commodity, and will now report back
+;; all dollar figures in the same fashion.  Even though there are no cents in
+;; the amounts above, CAMBL realizes you want to record a full two digits of
+;; precision.
+;;
+;;   (cambl:amount-precision (cambl:amount "$100.00")) => 2
+;;
+;; CAMBL always observes greater precision, but never observes less precision.
+;; So if you parse $100.00 and then $100, both values are printed as $100.00.
+;;
+;; There are three variantions on the parsing and reading functions, which
+;; also create amounts but which change how percision is handled.  The
+;; differences are:
+;;
+;;   (cambl:amount "$100.00") =>
+;;     #<CAMBL:AMOUNT "$100.00" :KEEP-PRECISION-P NIL>
+;;
+;;     a. amount has an internal precision of 2
+;;     b. commodity $ has a display precision of 2 (if no other
+;;        amount using a higher precision was observed so far)
+;;     c. when printing, amount uses the commodity's precision
+;;
+;;       (cambl:format-value *)                      => "$100.00"
+;;       (cambl:format-value ** :full-precision-p t) => "$100.00"
+;;
+;;   (cambl:amount* "$100.0000") =>
+;;     #<CAMBL:AMOUNT "$100.0000" :KEEP-PRECISION-P NIL>
+;;
+;;     a. amount has an internal precision of 4
+;;     b. commodity $ still has a display precision of 2 (from above)
+;;     c. when printing, amount uses the commodity's precision
+;;
+;;       (cambl:format-value *)                      => "$100.00"
+;;       (cambl:format-value ** :full-precision-p t) => "$100.0000"
+;;
+;;   (cambl:exact-amount "$100.0000") =>
+;;     #<CAMBL:AMOUNT "$100.0000" :KEEP-PRECISION-P T>
+;;
+;;     a. amount has an internal precision of 4
+;;     b. commodity $ still has a display precision of 2 (from above)
+;;     c. when printing, amount uses its internal precision
+;;
+;;       (cambl:format-value *)                      => "$100.0000"
+;;       (cambl:format-value ** :full-precision-p t) => "$100.0000"
+;;
+;; There are similar variants for the stream reading functions:
+;;
+;;   read-amount
+;;   read-amount*
+;;   read-exact-amount
+;;
+;; NOTE: The KEEP-PRECISION-P property of an amount carries through any math
+;; operations involving that amount, so that the final result always displays
+;; using its own internal percision also.
+;;
+;; The point of all this is that amounts are displayed as the user expects
+;; them to be, but internally never lose information.  In fact, if you divide
+;; two high internal precision amounts together, you'll get a new amount with
+;; a very high internal precision, but which still displays as expected:
+;;
+;;   (setq *tmp* (cambl:divide  (cambl:amount "$100.00")
+;;                              (cambl:amount "50000000")))
+;;
+;;   (cambl:format-value *tmp* :full-precision-p t) =>
+;;     "$0.000002000000000"
+;;   (cambl:format-value *tmp*) => "$0.00"
+;;
+;; You'll notice here that the amount displayed is not $0.00000200000000002.
+;; This is because CAMBL does not try to capture every digit resulting from a
+;; division; rather, it keeps six more digits of precision than is strictly
+;; necessary so that even after millions of calculations, not a penny is lost.
+;; If you find this is not enough slack for your calculations, you can set
+;; CAMBL:*EXTRA-PRECISION* to a higher or lower value.
+
+;;; Usage: Commodities
+
+;; CAMBL offers several methods for accessing the commodity information
+;; relating to amounts:
+;;
+;;   amount-commodity          ; the COMMODITY referenced by an amount
+;;   display-precision         ; display precision of an AMOUNT or COMMODITY
+;;   commodity-serial-number   ; the unique serial number of each COMMODITY
+;;   commodity-qualified-name  ; the name used print a COMMODITY
+;;   commodity-annotated-p     ; does the commodity have an annotation?
+
+
+(declaim (optimize (debug 3) (safety 3)))
 
 (defpackage :cambl
   (:use :cl :rbt)
-  (:export make-commodity-pool
-	   *default-commodity-pool*
-	   create-commodity
-	   commodity-error
+  (:export *european-style*
+
 	   amount
-	   amount-error
-	   amount-commodity
-	   copy-amount
-	   copy-value
-	   float-to-amount
-	   integer-to-amount
-	   exact-amount
+	   amount*
 	   parse-amount
 	   parse-amount*
+	   exact-amount
 	   read-amount
 	   read-amount*
-	   print-value
-	   format-value
-	   display-precision
+	   read-exact-amount
+
+	   float-to-amount
+	   integer-to-amount
+
+	   copy-amount
+	   copy-balance
+	   copy-value
+
 	   value=
 	   value/=
 	   value-equal
-	   value<
-	   value<=
-	   value>
-	   value>=
+	   amount<
+	   amount<=
+	   amount>
+	   amount>=
+
 	   add
 	   add*
 	   subtract
@@ -88,12 +241,25 @@
 	   multiply*
 	   divide
 	   divide*
-	   *european-style*
-	   *amount-stream-fullstrings*)
-  (:shadow round
-	   zerop
-	   minusp
-	   plusp))
+
+	   print-value
+	   print-value*
+	   format-value
+	   format-value*
+
+	   amount-precision
+	   amount-error
+
+	   *default-commodity-pool*
+	   make-commodity-pool
+
+	   amount-commodity
+	   display-precision
+	   commodity-serial-number
+	   commodity-qualified-name
+	   commodity-annotated-p
+	   commodity-error)
+  (:shadow round zerop minusp plusp))
 
 (in-package :cambl)
 
@@ -152,14 +318,14 @@
 
 (defmethod print-object ((commodity commodity) stream)
   (print-unreadable-object (commodity stream :type t)
-    (princ (commodity-symbol commodity) stream)))
+    (princ (commodity-symbol commodity) stream)
+    (let ((base (get-basic-commodity commodity)))
+      (format stream "~%    :THOUSAND-MARKS-P ~S :DISPLAY-PRECISION ~D"
+	      (get-thousand-marks-p base) (get-display-precision base)))))
 
 ;; Commoditized amounts and balances
 
-(defun print-amount (amount stream depth)
-  (declare (ignore depth))
-  (print-unreadable-object (amount stream :type t)
-    (princ (concatenate 'string "\"" (format-value amount) "\"") stream)))
+(defvar *extra-precision* 6)
 
 (defstruct (amount (:print-function print-amount))
   (commodity  nil :type (or commodity null))
@@ -173,19 +339,24 @@
   ;;(keep-tag :allocation :class :initform nil :type boolean)
   )
 
-(defclass balance ()
-  ((amounts-map :accessor get-amounts-map :initarg :amounts-map)))
+(defun print-amount (amount stream depth)
+  (declare (ignore depth))
+  (print-unreadable-object (amount stream :type t)
+    (format stream "~S :KEEP-PRECISION-P ~S"
+	    (format-value amount :full-precision-p t)
+	    (amount-keep-precision-p amount))))
 
-(defclass cost-balance (balance)
-  ((costs-map :accessor get-costs-map :initarg :costs-map)))
+(defstruct balance
+  (amounts-map nil))
+
+(defstruct (cost-balance (:include balance))
+  (costs nil))
 
 ;; Annotated commodities
 
 (defstruct pricing-entry
   (moment nil :type datetime)
   (price nil :type amount))
-
-(defvar *amount-stream-fullstrings* nil)
 
 (defstruct (commodity-annotation
 	     (:conc-name annotation-))
@@ -247,8 +418,8 @@
 ;; (defun amount-to-integer (amount &key (dont-check-p t))
 ;; (defun amount-quantity (amount)
 ;; (defun quantity-string (amount)
-;; (defun amount< (left right)
-;; (defun amount> (left right)
+;; (defun amount< (amount amount)
+;; (defun amount> (amount amount)
 ;; (defun set-amount-equivalence (larger-amount smaller-amount)
 
 (defgeneric copy-value (value))
@@ -271,10 +442,6 @@
 (defgeneric value= (left right))
 (defgeneric value/= (left right))
 (defgeneric value-equal (left right))
-(defgeneric value< (left right))
-(defgeneric value<= (left right))
-(defgeneric value> (left right))
-(defgeneric value>= (left right))
 
 ;; unary operators
 (defgeneric negate* (value))
@@ -317,23 +484,23 @@
      ,@(when doc (list doc))))
 
 (define-array-constant +invalid-symbol-chars+
-    #(#|        0   1   2   3   4   5   6   7   8   9   a   b   c   d   e   f |#
-      #| 00 |# nil nil nil nil nil nil nil nil nil  t   t  nil nil  t  nil nil
-      #| 10 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-      #| 20 |#  t   t   t  nil nil nil  t  nil  t   t   t   t   t   t   t   t 
-      #| 30 |#  t   t   t   t   t   t   t   t   t   t   t   t   t   t   t   t 
-      #| 40 |#  t  nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-      #| 50 |# nil nil nil nil nil nil nil nil nil nil nil  t  nil  t   t  nil
-      #| 60 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-      #| 70 |# nil nil nil nil nil nil nil nil nil nil nil  t  nil  t   t  nil
-      #| 80 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-      #| 90 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-      #| a0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-      #| b0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-      #| c0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-      #| d0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-      #| e0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-      #| f0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil)
+  #(#|        0   1   2   3   4   5   6   7   8   9   a   b   c   d   e   f |#
+    #| 00 |# nil nil nil nil nil nil nil nil nil  t   t  nil nil  t  nil nil
+    #| 10 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| 20 |#  t   t   t  nil nil nil  t  nil  t   t   t   t   t   t   t   t 
+    #| 30 |#  t   t   t   t   t   t   t   t   t   t   t   t   t   t   t   t 
+    #| 40 |#  t  nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| 50 |# nil nil nil nil nil nil nil nil nil nil nil  t  nil  t   t  nil
+    #| 60 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| 70 |# nil nil nil nil nil nil nil nil nil nil nil  t  nil  t   t  nil
+    #| 80 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| 90 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| a0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| b0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| c0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| d0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| e0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| f0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil)
   "The invalid commodity symbol characters are:
      Space Tab Newline Return
      0-9 . , ; - + * / ^ ? : & | ! = \"
@@ -344,9 +511,8 @@
 (defun symbol-char-invalid-p (c)
   (declare (type character c))
   (let ((code (char-code c)))
-    (the boolean
-      (and (< code 256)
-	   (aref +invalid-symbol-chars+ code)))))
+    (and (< code 256)
+	 (aref +invalid-symbol-chars+ code))))
 
 (declaim (inline symbol-char-invalid-p))
 
@@ -362,8 +528,9 @@
 
 (define-condition commodity-error (error) 
   ((description :reader error-description :initarg :msg))
-  (:report (lambda (condition stream)
-	     (format stream "~S" (error-description condition)))))
+  (:report
+   (lambda (condition stream)
+     (format stream "~S" (error-description condition)))))
 
 (defun read-commodity-symbol (in)
   "Parse a commodity symbol from the input stream IN.
@@ -377,7 +544,6 @@
   reading, reading from the stream stops and the invalid character is put
   back."
   (declare (type stream in))
-
   (let ((buf (make-string-output-stream))
 	needs-quoting-p)
     (if (char= #\" (peek-char nil in))
@@ -401,9 +567,8 @@
 		(unread-char c in)
 		(return))
 	      (write-char c buf))))
-    (the commodity-symbol
-      (make-commodity-symbol :name (get-output-stream-string buf)
-			     :needs-quoting-p needs-quoting-p))))
+    (make-commodity-symbol :name (get-output-stream-string buf)
+			   :needs-quoting-p needs-quoting-p)))
 
 ;; The commodity and annotated-commodity classes are the main interface class
 ;; for dealing with commodities themselves (which most people will never do).
@@ -439,10 +604,8 @@
 
 (defmethod display-precision ((commodity commodity))
   (get-display-precision (get-basic-commodity commodity)))
-
 (defmethod display-precision ((annotated-commodity annotated-commodity))
   (display-precision (get-referent-commodity annotated-commodity)))
-
 (defmethod display-precision ((amount amount))
   (declare (type amount amount))
   (the fixnum
@@ -600,11 +763,17 @@
 	    ;; If the current item meets the test, it may be the one we're
 	    ;; looking for.  However, there might be something closer to the
 	    ;; right -- though definitely not to the left.
-	    (setq last-found p
-		  p (rbt:right p)))
+	    (setq last-found p p (rbt:right p)))
 	  ;; If the current item does not meet the test, there might be a
 	  ;; candidate to the left -- but definitely not the right.
 	  (setq p (rbt:left p))))))
+
+(defun get-price-quote (symbol &optional datetime)
+  (declare (type commodity-symbol symbol))
+  (declare (type (or datetime null) datetime))
+  (declare (ignore symbol))
+  (declare (ignore datetime))
+  (values))
 
 (defmethod market-value ((commodity commodity) &optional datetime)
   (declare (type (or commodity annotated-commodity null) commodity))
@@ -632,16 +801,8 @@
   ;; }
   ;; return price;
   )
-
 (defmethod market-value ((annotated-commodity annotated-commodity) &optional datetime)
   (market-value (get-referent-commodity annotated-commodity) datetime))
-
-(defun get-price-quote (symbol &optional datetime)
-  (declare (type commodity-symbol symbol))
-  (declare (type (or datetime null) datetime))
-  (declare (ignore symbol))
-  (declare (ignore datetime))
-  (values))
 
 ;; annotated-commodity's are references to other commodities (which in turn
 ;; reference a basic-commodity) which carry along additional contextual
@@ -709,6 +870,8 @@
   (not (or (annotation-price annotation)
 	   (annotation-date annotation)
 	   (annotation-tag annotation))))
+
+(declaim (inline commodity-annotation-empty-p))
 
 (defmethod commodity-annotation-equal ((a commodity-annotation)
 				       (b commodity-annotation))
@@ -1020,7 +1183,7 @@
 (defun float-to-amount (value)
   (declare (type float value))
   (the amount
-   (parse-amount* (format nil "~F" value))))
+    (parse-amount* (format nil "~F" value))))
 
 (defun integer-to-amount (value)
   (declare (type (or integer fixnum) value))
@@ -1035,12 +1198,13 @@
     (setf (amount-keep-precision-p amount) t)
     amount))
 
-(defun copy-amount (amount)
-  (declare (type amount amount))
-  (make-amount :quantity         (amount-quantity amount)
-	       :precision        (amount-precision amount)
-	       :keep-precision-p (amount-keep-precision-p amount)
-	       :commodity        (amount-commodity amount)))
+(defun read-exact-amount (text &key (reduce-to-smallest-units-p t)
+			  (pool *default-commodity-pool*))
+  (let ((amount
+	 (read-amount* text :reduce-to-smallest-units-p reduce-to-smallest-units-p
+			    :pool pool)))
+    (setf (amount-keep-precision-p amount) t)
+    amount))
 
 (defmethod copy-value ((amount amount))
   (copy-amount amount))
@@ -1183,21 +1347,19 @@
     (when (and commodity (not (amount-keep-precision-p left)))
       (let ((commodity-precision (display-precision commodity)))
 	(when (> (amount-precision left)
-		 (+ 6 commodity-precision))
+		 (+ *extra-precision* commodity-precision))
 	  (setf (amount-quantity left)
 		(cl:round (amount-quantity left)
 			  (expt 10 (- (amount-precision left)
-				      (+ 6 commodity-precision)))))
+				      (+ *extra-precision* commodity-precision)))))
 	  (setf (amount-precision left)
-		(+ 6 commodity-precision))))))
+		(+ *extra-precision* commodity-precision))))))
   left)
 
 (defmethod multiply* ((left amount) (right amount))
-  (verify-amounts left right "Multiplying")
-
-  (setf (amount-precision left)
-	(* (amount-precision left)
-	   (amount-precision right)))
+  (setf (amount-quantity left)
+	(* (amount-quantity left)
+	   (amount-quantity right)))
   (setf (amount-precision left)
 	(+ (amount-precision left)
 	   (amount-precision right)))
@@ -1217,17 +1379,22 @@
     (divide* tmp right)))
 
 (defmethod divide* ((left amount) (right amount))
-  (verify-amounts left right "Dividing")
-
   ;; Increase the value's precision, to capture fractional parts after
   ;; the divide.  Round up in the last position.
+  (if (zerop right)
+      (error 'amount-error :msg
+	     (format nil "Attempt to divide by zero: ~A / ~A"
+		     (format-value left :full-precision-p t)
+		     (format-value right :full-precision-p t))))
+
   (setf (amount-quantity left)
-	(cl:round (* (amount-quantity left)
-		     (expt 10 (+ 7 (* 2 (amount-precision right))
-				 (amount-precision left))))
-		  (amount-quantity right)))
+	(/ (* (amount-quantity left)
+	      (expt 10 (+ (1+ *extra-precision*)
+			  (* 2 (amount-precision right))
+			  (amount-precision left))))
+	   (amount-quantity right)))
   (setf (amount-precision left)
-	(+ 6 (* 2 (amount-precision left))
+	(+ *extra-precision* (* 2 (amount-precision left))
 	   (amount-precision right)))
 
   (setf (amount-quantity left)
@@ -1339,7 +1506,7 @@
 	    1
 	    0))))
 
-(defmethod zero-p ((amount amount))
+(defmethod zerop ((amount amount))
   (let ((commodity (amount-commodity amount)))
     (if commodity
 	(if (<= (amount-precision amount)
@@ -1348,7 +1515,7 @@
 	    (= 0 (amount-sign (round (display-precision commodity)))))
 	(zerop* amount))))
 
-(defmethod real-zero-p ((amount amount))
+(defmethod zerop* ((amount amount))
   (= 0 (amount-quantity amount)))
 
 (defun amount-to-integer (amount &key (dont-check-p t))
@@ -1363,7 +1530,7 @@
     quotient))
 
 (defmethod format-value ((amount amount) &key
-			    (omit-commodity-p nil) (full-precision-p nil))
+			 (omit-commodity-p nil) (full-precision-p nil))
   (with-output-to-string (out)
     (print-value amount :output-stream out
 		 :omit-commodity-p omit-commodity-p
@@ -1799,7 +1966,7 @@
   ;;      i++)
   ;;   *this += i->second;
   ;; return *this;
-  (assert (or balance other)))
+  )
 
 (defmethod add* ((balance balance) (other amount))
   ;; if (amt.is_null())
@@ -1816,7 +1983,7 @@
   ;;   amounts.insert(amounts_map::value_type(&amt.commodity(), amt));
   ;;
   ;; return *this;
-  (assert (or balance other)))
+  )
 
 (defmethod subtract* ((balance balance) (other balance))
   ;; for (amounts_map::const_iterator i = bal.amounts.begin();
@@ -1824,7 +1991,7 @@
   ;;      i++)
   ;;   *this -= i->second;
   ;; return *this;
-  (assert (or balance other)))
+  )
 
 (defmethod subtract* ((balance balance) (other amount))
   ;; if (amt.is_null())
@@ -1843,7 +2010,7 @@
   ;;   amounts.insert(amounts_map::value_type(&amt.commodity(), amt.negate()));
   ;; }
   ;; return *this;
-  (assert (or balance other)))
+  )
 
 (defmethod multiply* ((balance balance) (other amount))
   ;; if (amt.is_null())
@@ -1880,7 +2047,7 @@
   ;;          "Cannot multiply a multi-commodity balance by a commoditized amount");
   ;; }
   ;; return *this;
-  (assert (or balance other)))
+  )
 
 (defmethod divide* ((balance balance) (other amount))
   ;; if (amt.is_null())
@@ -1917,10 +2084,7 @@
   ;;          "Cannot divide a multi-commodity balance by a commoditized amount");
   ;; }
   ;; return *this;
-  (assert (or balance other)))
-
-(defun copy-balance (balance)
-  (assert balance))
+  )
 
 (defmethod negate* ((balance balance))
   ;; for (amounts_map::iterator i = amounts.begin();
@@ -1995,7 +2159,7 @@
   (assert balance)
   (assert datetime))
 
-(defmethod zero-p ((balance balance))
+(defmethod zerop ((balance balance))
   ;; if (is_empty())
   ;;   return true;
   ;;

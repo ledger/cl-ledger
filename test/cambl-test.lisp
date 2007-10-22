@@ -77,12 +77,10 @@
 (defmethod set-up ((test amount-test-case))
   ;; Cause the display precision for dollars to be initialized to 2.
   (setq cambl:*european-style* nil
-	*default-commodity-pool* (make-commodity-pool))
-  (cambl:parse-amount "$1,000.00")
-  (setq cambl:*amount-stream-fullstrings* t))
+	cambl:*default-commodity-pool* (cambl:make-commodity-pool))
+  (cambl:parse-amount "$1,000.00"))
 
-(defmethod tear-down ((test amount-test-case))
-  (setq cambl:*amount-stream-fullstrings* nil))
+(defmethod tear-down ((test amount-test-case)))
 
 (def-test-method test-parser ((test amount-test-case) :run nil)
   (let* (;;(x4 (cambl:float-to-amount 123.456))
