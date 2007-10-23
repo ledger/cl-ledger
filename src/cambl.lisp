@@ -233,11 +233,19 @@
 
 ;;;_* Todo
 ;;
+;; - balances: unary math (negate, abs)
+;; - balances: binary math (add, subtract, multiply, divide)
+;; - balances: printing
+;; - cost balances: everything
+;; - commodity stripping
+;; - commodity conversions
+;; - downloading quotes
+;;
 ;; - Create a function for calculating a conversion, which will
 ;;   automatically preserve annotation details based on context:
 ;;     (amount-exchange "100 DM" "$100.00" &optional datetime "Note")
 ;;   This will "exchange" 100 DM for $100.00, at the given datetime with
-;;   the given note.
+;;   the given note.  It will be called `exchange-amount'.
 
 ;;;_* Package
 
@@ -356,7 +364,7 @@
 	   larger-units
 	   larger-units*
 
-	   exchange-commodity
+	   exchange-amount
 
 	   amount-commodity
 	   commodity-name
@@ -595,8 +603,6 @@
 (defgeneric larger-units (value))
 (defgeneric larger-units* (value))
 
-(defgeneric exchange-commodity (value price))
-
 (defgeneric commodity-equal (item-a item-b))
 (defgeneric commodity-equalp (item-a item-b)) ; ignores annotation
 
@@ -670,6 +676,12 @@
 
 (defvar *extra-precision* 6
   "Specify the amount of \"extra\" to be added during amount division.")
+
+;; jww (2007-10-15): Add back this builtin commodity
+;;  commodity->add_flags(COMMODITY_STYLE_NOMARKET | COMMODITY_STYLE_BUILTIN);
+;;
+;;  parse_conversion("1.0m", "60s");
+;;  parse_conversion("1.0h", "60m");
 
 ;;;_* Functions
 
@@ -2324,15 +2336,13 @@
   (assert larger-string)
   (assert smaller-string))
 
-;; jww (2007-10-15): Add back this builtin commodity
-;;  commodity->add_flags(COMMODITY_STYLE_NOMARKET | COMMODITY_STYLE_BUILTIN);
-;;
-;;  parse_conversion("1.0m", "60s");
-;;  parse_conversion("1.0h", "60m");
-
 ;;;_  + Exchange a commodity
 
-(defmethod exchange-commodity ((amount amount) price)
+(defun exchange-amount (amount price &optional datetime note)
+  (declare (type amount amount))
+  (declare (type amount price))
+  (declare (type (or datetime null) datetime))
+  (declare (type (or string null) note))
   ;; jww (2007-10-22): NYI
   )
 
