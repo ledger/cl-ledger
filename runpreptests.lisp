@@ -1,7 +1,8 @@
-(push "src/" asdf:*central-registry*)
-(asdf:operate 'asdf:load-op :cambl)
+(declaim (sb-ext:muffle-conditions style-warning))
+(declaim (sb-ext:muffle-conditions sb-ext:compiler-note))
 
-(push "test/" asdf:*central-registry*)
-(asdf:operate 'asdf:load-op :cambl-test)
+(load "src/cambl.lisp")
+(load "test/cambl-test.lisp")
+
 
 (quit)

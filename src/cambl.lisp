@@ -1705,10 +1705,12 @@
 		(zerop (hash-table-count amounts-map)))
 	    0
 	    (if (= 1 (hash-table-count amounts-map))
-		(maphash #'(lambda (commodity amount)
-			     (declare (ignore commodity))
-			     (return (optimize-value amount)))
-			 amounts-map)
+		(prog1
+		    0
+		  (maphash #'(lambda (commodity amount)
+			       (declare (ignore commodity))
+			       (return (optimize-value amount)))
+			   amounts-map))
 		balance))))))
 
 ;;;_  + Print and format AMOUNT and BALANCE
