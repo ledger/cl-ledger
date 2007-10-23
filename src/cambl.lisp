@@ -1674,21 +1674,29 @@
 
 ;;;_ * BALANCE specific
 
-;;;_  + Optimize BALANCE to an AMOUNT if possible
+;;;_  + Optimize the given value, returning its cheaper equivalent
+
+(defmethod optimize-value ((integer integer))
+  integer)
 
 (defmethod optimize-value ((amount amount))
-  amount)
+  (if (amount-zerop* amount)
+      0
+      amount))
 
 (defmethod optimize-value ((balance balance))
-  ;; jww (2007-10-22): NYI
-  ;; if (is_empty())
-  ;;   throw_(balance_error, "Cannot convert an empty balance to an amount");
-  ;; else if (amounts.size() == 1)
-  ;;   return amounts.begin()->second;
-  ;; else
-  ;;   throw_(balance_error,
-  ;;          "Cannot convert a balance with multiple commodities to an amount");
-  (assert balance))
+  (the (or balance amount integer)
+    (block nil
+      (let ((amounts-map (get-amounts-map balance)))
+	(if (or (null amounts-map)
+		(zerop (hash-table-count amounts-map)))
+	    0
+	    (if (= 1 (hash-table-count amounts-map))
+		(maphash #'(lambda (commodity amount)
+			     (declare (ignore commodity))
+			     (return (optimize-value amount)))
+			 amounts-map)
+		balance))))))
 
 ;;;_  + Print and format AMOUNT and BALANCE
 
@@ -1859,30 +1867,13 @@
 ;;;_  + Find AMOUNT of COMMODITY in a BALANCE
 
 (defmethod amount-in-balance ((balance balance) (commodity commodity))
+  (gethash commodity (get-amounts-map balance))
   ;; jww (2007-10-22): NYI
-  ;; if (! commodity) {
-  ;;   if (amounts.size() == 1) {
-  ;;     amounts_map::const_iterator i = amounts.begin();
-  ;;     return i->second;
-  ;;   }
-  ;;   else if (amounts.size() > 1) {
-  ;;     // Try stripping annotations before giving an error.
-  ;;     balance_t temp(strip_annotations());
-  ;;     if (temp.amounts.size() == 1)
-  ;;       return temp.commodity_amount(commodity);
-  ;;
-  ;;     throw_(amount_error,
-  ;;            "Requested amount of a balance with multiple commodities: " << temp);
-  ;;   }
-  ;; }
-  ;; else if (amounts.size() > 0) {
-  ;;   amounts_map::const_iterator i = amounts.find(&*commodity);
-  ;;   if (i != amounts.end())
-  ;;     return i->second;
-  ;; }
-  ;; return none;
-  (assert balance)
-  (assert commodity))
+  ;; // Try stripping annotations before giving an error.
+  ;; balance_t temp(strip_annotations());
+  ;; if (temp.amounts.size() == 1)
+  ;;   return temp.commodity_amount(commodity);
+  )
 
 ;;;_ * COMMODITY
 
@@ -2211,21 +2202,13 @@
 	    (value-round* (value-multiply* value amount)))))))
 
 (defmethod market-value ((balance balance) &optional datetime)
-  ;; jww (2007-10-22): NYI
-  ;; optional<balance_t> temp;
-  ;;
-  ;; for (amounts_map::const_iterator i = amounts.begin();
-  ;;      i != amounts.end();
-  ;;      i++)
-  ;;   if (optional<amount_t> val = i->second.value(moment)) {
-  ;;     if (! temp)
-  ;;       temp = balance_t();
-  ;;     *temp += *val;
-  ;;   }
-  ;;
-  ;; return temp;
-  (assert balance)
-  (assert datetime))
+  (let ((value-balance (make-instance 'balance)))
+    (maphash #'(lambda (commodity amount)
+		 (declare (ignore commodity))
+		 (value-add* value-balance
+			     (market-value amount datetime)))
+	     (get-amounts-map balance))
+    value-balance))
 
 ;;;_ * AMOUNT and COMMODITY
 
@@ -2637,8 +2620,7 @@
 
 (defmethod annotate-commodity ((commodity commodity)
 			       (details commodity-annotation))
-  ;; jww (2007-10-22): NYI
-  )
+  (find-annotated-commodity commodity details :create-if-not-exists-p t))
 
 (defmethod annotate-commodity ((amount amount)
 			       (details commodity-annotation))
