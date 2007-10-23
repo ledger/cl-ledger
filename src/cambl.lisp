@@ -1034,6 +1034,20 @@
 
 ;;;_  + Equality tests
 
+(defun amount-balance-equal (left right test-func)
+  "Compare with the amount LEFT equals the balance RIGHT."
+ (the boolean
+   (let ((amounts-map (get-amounts-map right)))
+     (if (amount-zerop* left)
+	 (or (null amounts-map)
+	     (zerop (hash-table-count amounts-map)))
+	 (if (and amounts-map
+		  (= 1 (hash-table-count amounts-map)))
+	     (let ((amount-value (gethash (amount-commodity left)
+					  amounts-map)))
+	       (if amount-value
+		   (funcall test-func amount-value left))))))))
+
 (defun balance-equal (left right test-func)
   (let ((left-amounts-map (get-amounts-map left))
 	(right-amounts-map (get-amounts-map right)))
@@ -1054,56 +1068,36 @@
 
 (defmethod value-equal ((left amount) (right amount))
   (zerop (amount-compare* left right)))
-
-(declaim (inline amount-equal))
-
-(defun amount-equal (left right)
-  (value-equal left right))
-
+(defmethod value-equal ((left amount) (right balance))
+  (amount-balance-equal left right #'value-equal))
+(defmethod value-equal ((left balance) (right amount))
+  (amount-balance-equal right left #'value-equal))
 (defmethod value-equal ((left balance) (right balance))
   (balance-equal left right #'value-equal))
 
-(defmethod value-equal ((balance balance) (amount amount))
-  (if (amount-zerop* amount)
-      (zerop (hash-table-count (get-amounts-map balance)))
-      )
-  ;; jww (2007-10-22): NYI
-  ;; if (amt.is_null())
-  ;;   throw_(balance_error,
-  ;;          "Cannot compare a balance to an uninitialized amount");
-  ;;
-  ;; if (amt.is_realzero())
-  ;;   return amounts.empty();
-  ;; else
-  ;;   return amounts.size() == 1 && amounts.begin()->second == amt;
-  (assert amount))
+(declaim (inline amount-equal))
+(defun amount-equal (left right)
+  (declare (type amount left))
+  (declare (type amount right))
+  (value-equal left right))
 
 (defmethod value-equalp ((left amount) (right amount))
   (zerop (amount-compare left right)))
-
-(declaim (inline amount-equalp))
-
-(defun amount-equalp (left right)
-  (value-equalp left right))
-
+(defmethod value-equalp ((left amount) (right balance))
+  (amount-balance-equal left right #'value-equalp))
+(defmethod value-equalp ((left balance) (right amount))
+  (amount-balance-equal right left #'value-equalp))
 (defmethod value-equalp ((left balance) (right balance))
   (balance-equal left right #'value-equalp))
 
-(defmethod value-equalp ((balance balance) (amount amount))
-  ;; jww (2007-10-22): NYI
-  ;; if (amt.is_null())
-  ;;   throw_(balance_error,
-  ;;          "Cannot compare a balance to an uninitialized amount");
-  ;;
-  ;; if (amt.is_realzero())
-  ;;   return amounts.empty();
-  ;; else
-  ;;   return amounts.size() == 1 && amounts.begin()->second == amt;
-  (assert amount))
+(declaim (inline amount-equalp))
+(defun amount-equalp (left right)
+  (declare (type amount left))
+  (declare (type amount right))
+  (value-equalp left right))
 
 (defmethod value= ((left amount) (right amount))
   (value-equalp left right))
-
 (defmethod value/= ((left amount) (right amount))
   (not (value-equalp left right)))
 
