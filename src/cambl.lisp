@@ -47,7 +47,10 @@
 
 ;; There are just a few main entry points to the CAMBL library for dealing
 ;; with amounts (which is mainly how you'll use it).  Here is a quick list,
-;; following by a description in the context of a REPL session:
+;; following by a description in the context of a REPL session.  Note that
+;; where the name contains value, it will work for integers, amounts, balances
+;; and cost balances.  If it contains amount or balance, it only operates on
+;; entities of that type.
 ;;
 ;;   amount[*]          ; create an amount from a string
 ;;   exact-amount       ; create an amount from a string which overrides
@@ -59,12 +62,24 @@
 ;;   format-value       ; format a value to a string
 ;;   print-value        ; print a value to a stream
 ;;
-;;   add[*]                  ; perform math using values; the values are
+;;   add[*]             ; perform math using values; the values are
 ;;   subtract[*]        ; changed as necessary to preserve information
 ;;   multiply[*]        ; (adding two amounts may result in a balance)
 ;;   divide[*]          ; the * versions change the first argument.
 ;;
+;;   value-zerop        ; would the value display as zero?
+;;   value-zerop*       ; is the value truly zero?
+;;
+;;   amount-zerop       ; aliases for the value-* versions
+;;   amount-zerop*
+;;
+;;   amount-minusp      ; would the amount display as a negative amount?
+;;   amount-minusp*     ; is the amount truly negative?
+;;   amount-plusp       ; would it display as an amount greater than zero?
+;;   amount-plusp*      ; is it truly greater than zero?
+;;
 ;;   value=, value/=    ; compare two values
+;;   amount=, amount/=  ; synonyms for value= and value/=
 ;;   amount<, amount<=  ; compare amounts (not meaningful for all values,
 ;;   amount>, amount>=  ; such as balances, so the name is 'amount<')
 ;;
@@ -74,6 +89,11 @@
 ;;                      ; -- this is the same as value=
 ;;   value-not-equal    ; compare two values for no exact match
 ;;   value-not-equalp   ; compare two values after commodity rounding
+;;
+;;   amount-equal       ; these and the next for are synonyms for value-X
+;;   amount-equalp
+;;   amount-not-equal
+;;   amount-not-equalp
 ;;
 ;;   amount-lessp       ; same as amount<
 ;;   amount-lessp*      ; compare if a < b exactly, with full precision
@@ -245,6 +265,14 @@
 
 	   value-zerop
 	   value-zerop*
+	   value-zerop
+	   value-zerop*
+
+	   amount-zerop
+	   amount-zerop*
+	   amount-zerop
+	   amount-zerop*
+
 	   amount-minusp
 	   amount-minusp*
 	   amount-plusp
@@ -254,18 +282,28 @@
 	   amount-compare*
 	   amount-sign
 	   amount-sign*
+
 	   value-equal
 	   value-equalp
 	   value-not-equal
 	   value-not-equalp
 	   value=
 	   value/=
+
+	   amount-equal
+	   amount-equalp
+	   amount-not-equal
+	   amount-not-equalp
+	   amount=
+	   amount/=
+
 	   amount-lessp
 	   amount-lessp*
 	   amount-lesseqp
 	   amount-lesseqp*
 	   amount<
 	   amount<=
+
 	   amount-greaterp
 	   amount-greaterp*
 	   amount-greatereqp
@@ -278,7 +316,12 @@
 	   value-abs
 	   value-round
 	   value-round*
-	   value-unround
+
+	   amount-negate*
+	   amount-negate
+	   amount-abs
+	   amount-round
+	   amount-round*
 
 	   value-add
 	   value-add*
@@ -289,8 +332,21 @@
 	   value-divide
 	   value-divide*
 
+	   amount-add
+	   amount-add*
+	   amount-subtract
+	   amount-subtract*
+	   amount-multiply
+	   amount-multiply*
+	   amount-divide
+	   amount-divide*
+
 	   print-value
 	   format-value
+
+	   print-amount
+	   format-amount
+
 	   quantity-string
 
 	   smallest-units
@@ -500,10 +556,6 @@
 
 (defgeneric value-zerop (value))
 (defgeneric value-zerop* (value))		; is it *really* zerop?
-(defgeneric amount-minusp (value))
-(defgeneric amount-minusp* (value))		; is it *really* minusp?
-(defgeneric amount-plusp (value))
-(defgeneric amount-plusp* (value))		; is it *really* plusp?
 
 (defgeneric value-equal (left right))
 (defgeneric value-equalp (left right))
@@ -517,7 +569,6 @@
 (defgeneric value-abs (value))
 (defgeneric value-round (value &optional precision))
 (defgeneric value-round* (value &optional precision))
-(defgeneric value-unround (value))
 
 (defgeneric value-add (value-a value-b))
 (defgeneric value-add* (value-a value-b))
@@ -884,9 +935,15 @@
 
 ;;;_  + Unary truth tests
 
-(defmethod value-zerop ((amount amount))
-  (zerop (amount-quantity (value-round amount))))
+(declaim (inline amount-zerop amount-zerop*))
 
+(defun amount-zerop (amount)
+  (zerop (amount-quantity (value-round amount))))
+(defun amount-zerop* (amount)
+  (zerop (amount-quantity amount)))
+
+(defmethod value-zerop ((amount amount))
+  (amount-zerop amount))
 (defmethod value-zerop ((balance balance))
   (the boolean
     (block nil
@@ -898,8 +955,7 @@
       t)))
 
 (defmethod value-zerop* ((amount amount))
-  (zerop (amount-quantity amount)))
-
+  (amount-zerop* amount))
 (defmethod value-zerop* ((balance balance))
   (the boolean
     (block nil
@@ -910,16 +966,18 @@
 	       (get-amounts-map balance))
       t)))
 
-(defmethod amount-minusp ((amount amount))
-  (minusp (amount-quantity (value-round amount))))
+(declaim (inline amount-minusp amount-minusp*))
 
-(defmethod amount-minusp* ((amount amount))
+(defun amount-minusp (amount)
+  (minusp (amount-quantity (value-round amount))))
+(defun amount-minusp* (amount)
   (minusp (amount-quantity amount)))
 
-(defmethod amount-plusp ((amount amount))
-  (plusp (amount-quantity (value-round amount))))
+(declaim (inline amount-plusp amount-plusp*))
 
-(defmethod amount-plusp* ((amount amount))
+(defun amount-plusp (amount)
+  (plusp (amount-quantity (value-round amount))))
+(defun amount-plusp* (amount)
   (plusp (amount-quantity amount)))
 
 ;;;_  + AMOUNT comparison (return sort order of value)
@@ -997,10 +1055,18 @@
 (defmethod value-equal ((left amount) (right amount))
   (zerop (amount-compare* left right)))
 
+(declaim (inline amount-equal))
+
+(defun amount-equal (left right)
+  (value-equal left right))
+
 (defmethod value-equal ((left balance) (right balance))
   (balance-equal left right #'value-equal))
 
 (defmethod value-equal ((balance balance) (amount amount))
+  (if (amount-zerop* amount)
+      (zerop (hash-table-count (get-amounts-map balance)))
+      )
   ;; jww (2007-10-22): NYI
   ;; if (amt.is_null())
   ;;   throw_(balance_error,
@@ -1014,6 +1080,11 @@
 
 (defmethod value-equalp ((left amount) (right amount))
   (zerop (amount-compare left right)))
+
+(declaim (inline amount-equalp))
+
+(defun amount-equalp (left right)
+  (value-equalp left right))
 
 (defmethod value-equalp ((left balance) (right balance))
   (balance-equal left right #'value-equalp))
@@ -1038,7 +1109,7 @@
 
 ;;;_  + Comparison tests
 
-(declaim (inline amount< amount<= amount> amount>=))
+(declaim (inline amount-lessp amount-lessp*))
 
 (defun amount-lessp (left right)
   (declare (type amount left))
@@ -1050,8 +1121,7 @@
   (declare (type amount right))
   (minusp (amount-compare* left right)))
 
-(declaim (ftype function amount<))
-(setf (fdefinition 'amount<) (fdefinition 'amount-lessp))
+(declaim (inline amount-lesseqp amount-lesseqp*))
 
 (defun amount-lesseqp (left right)
   (declare (type amount left))
@@ -1063,8 +1133,19 @@
   (declare (type amount right))
   (<= (amount-compare* left right) 0))
 
-(declaim (ftype function amount<=))
-(setf (fdefinition 'amount<=) (fdefinition 'amount-lesseqp))
+(declaim (inline amount< amount<=))
+
+(defun amount< (left right)
+  (declare (type amount left))
+  (declare (type amount right))
+  (minusp (amount-compare left right)))
+
+(defun amount<= (left right)
+  (declare (type amount left))
+  (declare (type amount right))
+  (<= (amount-compare left right) 0))
+
+(declaim (inline amount-greaterp amount-greaterp*))
 
 (defun amount-greaterp (left right)
   (declare (type amount left))
@@ -1076,8 +1157,7 @@
   (declare (type amount right))
   (plusp (amount-compare* left right)))
 
-(declaim (ftype function amount>))
-(setf (fdefinition 'amount>) (fdefinition 'amount-greaterp))
+(declaim (inline amount-greatereqp amount-greatereqp*))
 
 (defun amount-greatereqp (left right)
   (declare (type amount left))
@@ -1089,8 +1169,17 @@
   (declare (type amount right))
   (>= (amount-compare* left right) 0))
 
-(declaim (ftype function amount>=))
-(setf (fdefinition 'amount>=) (fdefinition 'amount-greatereqp))
+(declaim (inline amount> amount>=))
+
+(defun amount> (left right)
+  (declare (type amount left))
+  (declare (type amount right))
+  (plusp (amount-compare left right)))
+
+(defun amount>= (left right)
+  (declare (type amount left))
+  (declare (type amount right))
+  (>= (amount-compare left right) 0))
 
 ;;;_  + Unary math operators
 
@@ -1098,6 +1187,11 @@
   (assert amount)
   (let ((tmp (copy-amount amount)))
     (value-negate* tmp)))
+
+(declaim (inline amount-negate))
+
+(defun amount-negate (amount)
+  (value-negate amount))
 
 (defmethod value-negate ((balance balance))
   (let ((tmp (copy-balance balance)))
@@ -1110,6 +1204,11 @@
   (setf (amount-quantity amount)
 	(- (amount-quantity amount)))
   amount)
+
+(declaim (inline amount-negate*))
+
+(defun amount-negate* (amount)
+  (value-negate* amount))
 
 (defmethod value-negate* ((balance balance))
   ;; jww (2007-10-22): NYI
@@ -1126,6 +1225,11 @@
       (value-negate amount)
       amount))
 
+(declaim (inline amount-abs))
+
+(defun amount-abs (amount)
+  (value-abs amount))
+
 (defmethod value-abs ((balance balance))
   ;; jww (2007-10-22): NYI
   ;; balance_t temp;
@@ -1140,10 +1244,10 @@
   (let ((tmp (copy-amount amount)))
     (value-round* tmp precision)))
 
-(defmethod value-unround ((amount amount))
-  (let ((tmp (copy-amount amount)))
-    (setf (amount-keep-precision-p tmp) t)
-    tmp))
+(declaim (inline amount-round))
+
+(defun amount-round (amount)
+  (value-round amount))
 
 (defmethod value-round* ((amount amount) &optional precision)
   "Round the given AMOUNT to the stated internal PRECISION.
@@ -1170,6 +1274,11 @@
 	   (setf (amount-precision amount) precision))))
   amount)
 
+(declaim (inline amount-round*))
+
+(defun amount-round* (amount)
+  (value-round* amount))
+
 ;;;_  + Binary math operators
 
 ;;;_   : Addition
@@ -1189,13 +1298,14 @@
   (+ left right))
 (defmethod value-add* ((left integer) (right integer))
   (+ left right))
-
 (defmethod value-add ((left amount) (right integer))
-  (let ((tmp (copy-amount left)))
-    (value-add* tmp right)))
+  (value-add* (copy-amount left) (integer-to-amount right)))
+(defmethod value-add* ((left amount) (right integer))
+  (value-add* left (integer-to-amount right)))
 (defmethod value-add ((left integer) (right amount))
-  (let ((tmp (copy-amount right)))
-    (value-add* tmp left)))
+  (value-add* (integer-to-amount left) right))
+(defmethod value-add* ((left integer) (right amount))
+  (value-add* (integer-to-amount left) right))
 
 (defmethod value-add ((left amount) (right amount))
   (let ((tmp (copy-amount left)))
@@ -1220,10 +1330,21 @@
 		   (+ left-quantity right-quantity))))))
   left)
 
-(defmethod value-add* ((amount amount) (balance balance))
-  (error "Cannot be done"))
+(declaim (inline amount-add amount-add*))
 
-(defmethod value-add* ((balance balance) (amount amount))
+(defun amount-add (left right)
+  (value-add left right))
+(defun amount-add* (left right)
+  (value-add* left right))
+
+(defmethod value-add ((left amount) (right balance))
+  )
+(defmethod value-add* ((left amount) (right balance))
+  (value-add left right))
+
+(defmethod value-add ((left balance) (right amount))
+  )
+(defmethod value-add* ((left balance) (right amount))
   ;; jww (2007-10-22): NYI
   ;; if (amt.is_null())
   ;;   throw_(balance_error,
@@ -1241,6 +1362,8 @@
   ;; return *this;
   )
 
+(defmethod value-add ((left balance) (right balance))
+  )
 (defmethod value-add* ((left balance) (right balance))
   ;; jww (2007-10-22): NYI
   ;; for (amounts_map::const_iterator i = bal.amounts.begin();
@@ -1252,10 +1375,22 @@
 
 ;;;_   : Value-Subtraction
 
+(defmethod value-subtract ((left integer) (right integer))
+  (- left right))
+(defmethod value-subtract* ((left integer) (right integer))
+  (- left right))
+(defmethod value-subtract ((left amount) (right integer))
+  (value-subtract* (copy-amount left) (integer-to-amount right)))
+(defmethod value-subtract* ((left amount) (right integer))
+  (value-subtract* left (integer-to-amount right)))
+(defmethod value-subtract ((left integer) (right amount))
+  (value-subtract* (integer-to-amount left) right))
+(defmethod value-subtract* ((left integer) (right amount))
+  (value-subtract* (integer-to-amount left) right))
+
 (defmethod value-subtract ((left amount) (right amount))
   (let ((tmp (copy-amount left)))
     (value-subtract* tmp right)))
-
 (defmethod value-subtract* ((left amount) (right amount))
   (verify-amounts left right "Value-Subtracting")
   (let ((left-quantity (amount-quantity left))
@@ -1275,16 +1410,15 @@
 	     (setf (amount-quantity left)
 		   (- left-quantity right-quantity)))))))
 
-(defmethod value-subtract* ((balance balance) (other balance))
-  ;; jww (2007-10-22): NYI
-  ;; for (amounts_map::const_iterator i = bal.amounts.begin();
-  ;;      i != bal.amounts.end();
-  ;;      i++)
-  ;;   *this -= i->second;
-  ;; return *this;
-  )
+(declaim (inline amount-subtract amount-subtract*))
 
-(defmethod value-subtract* ((balance balance) (other amount))
+(defun amount-subtract (left right)
+  (value-subtract left right))
+(defun amount-subtract* (left right)
+  (value-subtract* left right))
+
+(defmethod value-subtract ((left amount) (right balance)))
+(defmethod value-subtract* ((left amount) (right balance))
   ;; jww (2007-10-22): NYI
   ;; if (amt.is_null())
   ;;   throw_(balance_error,
@@ -1304,11 +1438,51 @@
   ;; return *this;
   )
 
+(defmethod value-subtract ((left balance) (right amount)))
+(defmethod value-subtract* ((left balance) (right amount))
+  ;; jww (2007-10-22): NYI
+  ;; if (amt.is_null())
+  ;;   throw_(balance_error,
+  ;;          "Cannot value-subtract an uninitialized amount from a balance");
+  ;;
+  ;; if (amt.is_realzero())
+  ;;   return *this;
+  ;;
+  ;; amounts_map::iterator i = amounts.find(&amt.commodity());
+  ;; if (i != amounts.end()) {
+  ;;   i->second -= amt;
+  ;;   if (i->second.is_realzero())
+  ;;     amounts.erase(i);
+  ;; } else {
+  ;;   amounts.insert(amounts_map::value_type(&amt.commodity(), amt.negate()));
+  ;; }
+  ;; return *this;
+  )
+
+(defmethod value-subtract ((left balance) (right balance)))
+(defmethod value-subtract* ((left balance) (right balance))
+  ;; jww (2007-10-22): NYI
+  ;; for (amounts_map::const_iterator i = bal.amounts.begin();
+  ;;      i != bal.amounts.end();
+  ;;      i++)
+  ;;   *this -= i->second;
+  ;; return *this;
+  )
+
 ;;;_   : Multiplication
 
-(defmethod value-multiply ((left amount) (right amount))
-  (let ((tmp (copy-amount left)))
-    (value-multiply* tmp right)))
+(defmethod value-multiply ((left integer) (right integer))
+  (* left right))
+(defmethod value-multiply* ((left integer) (right integer))
+  (* left right))
+(defmethod value-multiply ((left amount) (right integer))
+  (value-multiply* (copy-amount left) (integer-to-amount right)))
+(defmethod value-multiply* ((left amount) (right integer))
+  (value-multiply* left (integer-to-amount right)))
+(defmethod value-multiply ((left integer) (right amount))
+  (value-multiply* (integer-to-amount left) right))
+(defmethod value-multiply* ((left integer) (right amount))
+  (value-multiply* (integer-to-amount left) right))
 
 (defun set-amount-commodity-and-round* (left right)
   (declare (type amount left))
@@ -1335,6 +1509,9 @@
 		(+ *extra-precision* commodity-precision))))))
   left)
 
+(defmethod value-multiply ((left amount) (right amount))
+  (let ((tmp (copy-amount left)))
+    (value-multiply* tmp right)))
 (defmethod value-multiply* ((left amount) (right amount))
   (setf (amount-quantity left)
 	(* (amount-quantity left)
@@ -1345,7 +1522,15 @@
 
   (set-amount-commodity-and-round* left right))
 
-(defmethod value-multiply* ((balance balance) (other amount))
+(declaim (inline amount-multiply amount-multiply*))
+
+(defun amount-multiply (left right)
+  (value-multiply left right))
+(defun amount-multiply* (left right)
+  (value-multiply* left right))
+
+(defmethod value-multiply ((left balance) (right amount)))
+(defmethod value-multiply* ((left balance) (right amount))
   ;; jww (2007-10-22): NYI
   ;; if (amt.is_null())
   ;;   throw_(balance_error,
@@ -1383,20 +1568,34 @@
   ;; return *this;
   )
 
+(defmethod value-multiply ((left amount) (right balance))
+  (error 'amount-error :msg "Cannot multiply an amount by a balance"))
+(defmethod value-multiply* ((left amount) (right balance))
+  (error 'amount-error :msg "Cannot multiply an amount by a balance"))
+
+(defmethod value-multiply ((left balance) (right balance))
+  (error 'amount-error :msg "Cannot multiply a balance by another balance"))
+(defmethod value-multiply* ((left balance) (right balance))
+  (error 'amount-error :msg "Cannot multiply a balance by another balance"))
+
 ;;;_   : Division
+
+(defmethod value-divide ((left integer) (right integer))
+  (/ left right))
+(defmethod value-divide* ((left integer) (right integer))
+  (/ left right))
+(defmethod value-divide ((left amount) (right integer))
+  (value-divide* (copy-amount left) (integer-to-amount right)))
+(defmethod value-divide* ((left amount) (right integer))
+  (value-divide* left (integer-to-amount right)))
+(defmethod value-divide ((left integer) (right amount))
+  (value-divide* (integer-to-amount left) right))
+(defmethod value-divide* ((left integer) (right amount))
+  (value-divide* (integer-to-amount left) right))
 
 (defmethod value-divide ((left amount) (right amount))
   (let ((tmp (copy-amount left)))
     (value-divide* tmp right)))
-
-(defmethod value-divide ((left amount) (right integer))
-  (let ((tmp (copy-amount left)))
-    (value-divide* tmp (integer-to-amount right))))
-
-(defmethod value-divide ((left integer) (right amount))
-  (let ((tmp (integer-to-amount left)))
-    (value-divide* tmp right)))
-
 (defmethod value-divide* ((left amount) (right amount))
   ;; Increase the value's precision, to capture fractional parts after
   ;; the value-divide.  Round up in the last position.
@@ -1423,7 +1622,15 @@
 
   (set-amount-commodity-and-round* left right))
 
-(defmethod value-divide* ((balance balance) (other amount))
+(declaim (inline amount-divide amount-divide*))
+
+(defun amount-divide (left right)
+  (value-divide left right))
+(defun amount-divide* (left right)
+  (value-divide* left right))
+
+(defmethod value-divide ((left balance) (right amount)))
+(defmethod value-divide* ((left balance) (right amount))
   ;; jww (2007-10-22): NYI
   ;; if (amt.is_null())
   ;;   throw_(balance_error,
@@ -1460,6 +1667,16 @@
   ;; }
   ;; return *this;
   )
+
+(defmethod value-divide ((left amount) (right balance))
+  (error 'amount-error :msg "Cannot divide an amount by a balance"))
+(defmethod value-divide* ((left amount) (right balance))
+  (error 'amount-error :msg "Cannot divide an amount by a balance"))
+
+(defmethod value-divide ((left balance) (right balance))
+  (error 'amount-error :msg "Cannot divide an amount by a balance"))
+(defmethod value-divide* ((left balance) (right balance))
+  (error 'amount-error :msg "Cannot divide an amount by a balance"))
 
 ;;;_ * BALANCE specific
 
