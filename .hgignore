@@ -28,3 +28,4 @@
 ^acconf\.h$
 \.o$
 ^stamp-h1$
+^sbcl\.prep-core$
