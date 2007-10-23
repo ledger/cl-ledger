@@ -925,7 +925,8 @@
 	;; (x5 (cambl:parse-amount "123.45€"))
 	)
 
-    (assert-condition 'amount-error (cambl:value-div x1 0))
+    (assert-condition 'amount-error (cambl:value-divide x1 0))
+    (assert-true (value-zerop (cambl:value-divide 0 x1)))
     ;; assert-value-equal(amount_t("$0.00"), 0L / x1);
     ;; assert-value-equal(x1, x1 / 1L);
     ;; assert-value-equal(internalAmount("$0.00812216"), 1L / x1);
