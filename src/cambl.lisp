@@ -2748,16 +2748,15 @@
 
 (defmethod strip-annotations ((balance balance)
 			      &key keep-price keep-date keep-tag)
-  ;; jww (2007-10-22): NYI
-  ;; balance_t temp;
-  ;;
-  ;; for (amounts_map::const_iterator i = amounts.begin();
-  ;;      i != amounts.end();
-  ;;      i++)
-  ;;   temp += i->second.strip_annotations(keep_price, keep_date, keep_tag);
-  ;;
-  ;; return temp;
-  (assert balance)
-  (assert (or keep-price keep-date keep-tag)))
+  (let ((stripped-balance (make-instance 'balance)))
+    (maphash #'(lambda (commodity amount)
+		 (declare (ignore commodity))
+		 (value-add* stripped-balance
+			     (strip-annotations amount
+						:keep-price keep-price
+						:keep-date  keep-date
+						:keep-tag   keep-tag)))
+	     (get-amounts-map balance))
+    stripped-balance))
 
 ;; cambl.lisp ends here
