@@ -1395,26 +1395,27 @@
   (value-subtract* (integer-to-amount left) right))
 
 (defmethod value-subtract ((left amount) (right amount))
-  (let ((tmp (copy-amount left)))
-    (value-subtract* tmp right)))
+  (value-subtract* (copy-amount left) right))
 (defmethod value-subtract* ((left amount) (right amount))
   (verify-amounts left right "Value-Subtracting")
-  (let ((left-quantity (amount-quantity left))
-	(right-quantity (amount-quantity right)))
-    (cond ((= (amount-precision left)
-	      (amount-precision right))
-	   (setf (amount-quantity left)
-		 (- left-quantity right-quantity)))
-	  ((< (amount-precision left)
-	      (amount-precision right))
-	   (amount--resize left (amount-precision right))
-	   (setf (amount-quantity left)
-		 (- left-quantity right-quantity)))
-	  (t
-	   (let ((tmp (copy-amount right)))
-	     (amount--resize tmp (amount-precision left))
+  (the amount
+    (let ((left-quantity (amount-quantity left))
+	  (right-quantity (amount-quantity right)))
+      (cond ((= (amount-precision left)
+		(amount-precision right))
 	     (setf (amount-quantity left)
-		   (- left-quantity right-quantity)))))))
+		   (- left-quantity right-quantity)))
+	    ((< (amount-precision left)
+		(amount-precision right))
+	     (amount--resize left (amount-precision right))
+	     (setf (amount-quantity left)
+		   (- left-quantity right-quantity)))
+	    (t
+	     (let ((tmp (copy-amount right)))
+	       (amount--resize tmp (amount-precision left))
+	       (setf (amount-quantity left)
+		     (- left-quantity right-quantity)))))
+      left)))
 
 (declaim (inline amount-subtract amount-subtract*))
 
@@ -1775,7 +1776,7 @@
 	(unless (zerop display-precision)
 	  (format output-stream "~C~v,'0D"
 		  (if *european-style* #\, #\.)
-		  display-precision remainder))
+		  display-precision (abs remainder)))
       
 	(when (and (not omit-commodity-p)
 		   (not (commodity-symbol-prefixed-p commodity-symbol)))
@@ -2338,13 +2339,30 @@
 
 ;;;_  + Exchange a commodity
 
-(defun exchange-amount (amount price &optional datetime note)
+(defun exchange-amount (amount price &key
+			(sale nil) (moment nil) (note nil))
   (declare (type amount amount))
   (declare (type amount price))
-  (declare (type (or datetime null) datetime))
+  (declare (type boolean sale))
+  (declare (type (or datetime null) moment))
   (declare (type (or string null) note))
-  ;; jww (2007-10-22): NYI
-  )
+  (the (values amount (or amount null))
+    (let ((current-annotation (commodity-annotation
+			       (amount-commodity amount)))
+	  (per-share-price (amount-divide price amount)))
+      (values
+       (if sale
+	   (and current-annotation
+		(amount-subtract
+		 price
+		 (amount-multiply
+		  (annotation-price current-annotation)
+		  amount)))
+	   (annotate-commodity
+	    amount
+	    (make-commodity-annotation :price per-share-price
+				       :date moment
+				       :tag note)))))))
 
 ;;;_ * COMMODITY-POOL
 
@@ -2651,6 +2669,8 @@
 
 ;;;_  + Access a commodity's annotation
 
+(defmethod commodity-annotation ((commodity commodity))
+  nil)
 (defmethod commodity-annotation ((annotated-commodity annotated-commodity))
   (get-annotation annotated-commodity))
 (defmethod commodity-annotation ((amount amount))
