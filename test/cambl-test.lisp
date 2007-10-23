@@ -74,74 +74,92 @@
   ()
   (:documentation "test-case for CAMBL amounts"))
 
+(defvar original-*european-style* nil)
+
 (defmethod set-up ((test amount-test-case))
   ;; Cause the display precision for dollars to be initialized to 2.
-  (setq cambl:*european-style* nil
-	cambl:*default-commodity-pool* (cambl:make-commodity-pool))
-  (cambl:parse-amount "$1,000.00"))
+  (setq original-*european-style* cambl:*european-style*
+	cambl:*european-style* nil)
+  (reset-commodity-pool)
+  (cambl:amount "$1,000.00"))
 
-(defmethod tear-down ((test amount-test-case)))
+(defmethod tear-down ((test amount-test-case))
+  (setq cambl:*european-style* original-*european-style*))
 
 (def-test-method test-parser ((test amount-test-case) :run nil)
   (let* (;;(x4 (cambl:float-to-amount 123.456))
-	 ;;(x8 (cambl:parse-amount* "$123.45"))
-	 (x12 (cambl:parse-amount* "$100")))
+	 ;;(x8 (cambl:amount* "$123.45"))
+	 (x12 (cambl:amount* "$100")))
   
+    (assert-equal 2 (cambl:display-precision x12))
     (assert-equal 2 (cambl:display-precision (amount-commodity x12)))
 
     (with-input-from-string (in "$100...")
       (let ((x13 (cambl:read-amount* in)))
-	(assert-value-equal x12 x13)))
+	(assert-value-equal x12 x13)
+	(assert-equal 2 (cambl:display-precision x13))))
 
-    (assert-condition 'end-of-file (cambl:parse-amount "DM"))
+    (assert-condition 'end-of-file (cambl:amount "DM"))
 
     (let ((cambl:*european-style* t))
       (assert-equal "$2.000,00"
-		    (cambl:format-value (cambl:parse-amount* "$2000")))
-      (assert-equal "0"
-		    (cambl:format-value (cambl:parse-amount "0")))
+		    (cambl:format-value (cambl:amount* "$2000")))
+      (assert-equal "0" (cambl:format-value (cambl:amount "0")))
+      (assert-equal "$0,00" (cambl:format-value (cambl:amount "$0")))
       (assert-equal "$2.000,00"
-		    (cambl:format-value (cambl:parse-amount* "$2.000,00"))))
+		    (cambl:format-value (cambl:amount* "$2,000.00")))
+      (assert-equal "$2.000,00"
+		    (cambl:format-value (cambl:amount* "$2.000,00"))))
 
-    (let ((x15 (cambl:parse-amount* "$2000"))
-	  (x16 (cambl:parse-amount* "$2,000")))
+    (let ((cambl:*european-style* nil))
+      (assert-equal "$2,000.00"
+		    (cambl:format-value (cambl:amount* "$2000")))
+      (assert-equal "0" (cambl:format-value (cambl:amount "0")))
+      (assert-equal "$0.00" (cambl:format-value (cambl:amount "$0")))
+      (assert-equal "$2,000.00"
+		    (cambl:format-value (cambl:amount* "$2,000.00")))
+      (assert-equal "$2,000.00"
+		    (cambl:format-value (cambl:amount* "$2.000,00"))))
+
+    (let ((x15 (cambl:amount* "$2000"))
+	  (x16 (cambl:amount* "$2,000")))
       (assert-equal "$2,000.00" (cambl:format-value x15))
       (assert-equal "$2,000.00" (cambl:format-value x16))
       (assert-value-equal x15 x16))
 
-    (assert-equal "EUR 100" (cambl:format-value (cambl:parse-amount "EUR 100")))
+    (assert-equal "EUR 100" (cambl:format-value (cambl:amount "EUR 100")))
 
-    (let ((x1 (cambl:parse-amount* "$100.0000")))
+    (let ((x1 (cambl:amount* "$100.0000")))
       (assert-eql 2 (display-precision x12))
       (assert-eql (amount-commodity x1) (amount-commodity x12))
       (assert-value-equal x1 x12))
 
-    (let ((x0 (cambl:parse-amount "$100.0000")))
+    (let ((x0 (cambl:amount "$100.0000")))
       (assert-eql 4 (display-precision x12)) ; should have changed now
       (assert-eql (amount-commodity x0) (amount-commodity x12))
       (assert-value-equal x0 x12))
 
-    (let ((x2 (cambl:parse-amount "$100.00" :reduce-to-smallest-units-p nil)))
+    (let ((x2 (cambl:amount "$100.00" :reduce-to-smallest-units-p nil)))
       (assert-value-equal x2 x12))
-    (let ((x3 (cambl:parse-amount* "$100.00" :reduce-to-smallest-units-p nil)))
+    (let ((x3 (cambl:amount* "$100.00" :reduce-to-smallest-units-p nil)))
       (assert-value-equal x3 x12))
 
-    (let ((x4 (cambl:parse-amount "$100.00")))
+    (let ((x4 (cambl:amount "$100.00")))
       (assert-value-equal x4 x12))
-    (let ((x5 (cambl:parse-amount* "$100.00")))
+    (let ((x5 (cambl:amount* "$100.00")))
       (assert-value-equal x5 x12))
-    (let ((x6 (cambl:parse-amount "$100.00" :reduce-to-smallest-units-p nil)))
+    (let ((x6 (cambl:amount "$100.00" :reduce-to-smallest-units-p nil)))
       (assert-value-equal x6 x12))
-    (let ((x7 (cambl:parse-amount* "$100.00" :reduce-to-smallest-units-p nil)))
+    (let ((x7 (cambl:amount* "$100.00" :reduce-to-smallest-units-p nil)))
       (assert-value-equal x7 x12))
 
-    (let ((x8 (cambl:parse-amount "$100.00")))
+    (let ((x8 (cambl:amount "$100.00")))
       (assert-value-equal x8 x12))
-    (let ((x9 (cambl:parse-amount* "$100.00")))
+    (let ((x9 (cambl:amount* "$100.00")))
       (assert-value-equal x9 x12))
-    (let ((x10 (cambl:parse-amount "$100.00" :reduce-to-smallest-units-p nil)))
+    (let ((x10 (cambl:amount "$100.00" :reduce-to-smallest-units-p nil)))
       (assert-value-equal x10 x12))
-    (let ((x11 (cambl:parse-amount* "$100.00" :reduce-to-smallest-units-p nil)))
+    (let ((x11 (cambl:amount* "$100.00" :reduce-to-smallest-units-p nil)))
       (assert-value-equal x11 x12))
 
     (assert-valid x12)))
@@ -917,12 +935,12 @@
   )
 
 (def-test-method test-commodity-division ((test amount-test-case) :run nil)
-  (let ((x1 (cambl:parse-amount "$123.12"))
-	(y1 (cambl:parse-amount "$456.45"))
+  (let ((x1 (cambl:amount "$123.12"))
+	(y1 (cambl:amount "$456.45"))
 	(x2 (cambl:exact-amount "$123.456789"))
-	(x3 (cambl:parse-amount "DM 123.45"))
-	(x4 (cambl:parse-amount "123.45 euro"))
-	;; (x5 (cambl:parse-amount "123.45€"))
+	(x3 (cambl:amount "DM 123.45"))
+	(x4 (cambl:amount "123.45 euro"))
+	;; (x5 (cambl:amount "123.45€"))
 	)
 
     (assert-condition 'amount-error (cambl:value-divide x1 0))

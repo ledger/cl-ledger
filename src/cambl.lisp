@@ -395,6 +395,7 @@
 
 	   *default-commodity-pool*
 	   make-commodity-pool
+	   reset-commodity-pool
 	   find-commodity
 	   find-annotated-commodity
 
@@ -2377,6 +2378,9 @@
 
 ;; All commodities are allocated within a pool, which can be used to look them
 ;; up.
+
+(defun reset-commodity-pool (&optional pool)
+  (setq *default-commodity-pool* (or pool (make-commodity-pool))))
 
 ;;;_   : COMMODITY
 
