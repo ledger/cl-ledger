@@ -677,6 +677,10 @@
 (defvar *extra-precision* 6
   "Specify the amount of \"extra\" to be added during amount division.")
 
+(defvar *keep-annotation-prices* t)
+(defvar *keep-annotation-dates* t)
+(defvar *keep-annotation-tags* t)
+
 ;; jww (2007-10-15): Add back this builtin commodity
 ;;  commodity->add_flags(COMMODITY_STYLE_NOMARKET | COMMODITY_STYLE_BUILTIN);
 ;;
@@ -1217,13 +1221,13 @@
   (value-negate* amount))
 
 (defmethod value-negate* ((balance balance))
-  ;; jww (2007-10-22): NYI
-  ;; for (amounts_map::iterator i = amounts.begin();
-  ;;      i != amounts.end();
-  ;;      i++)
-  ;;   i->second.in_place_value-negate();
-  ;; return *this;
-  (assert balance))
+  (let ((value-balance (make-instance 'balance)))
+    (maphash #'(lambda (commodity amount)
+		 (declare (ignore commodity))
+		 (value-add* value-balance
+			     (value-negate amount)))
+	     (get-amounts-map balance))
+    value-balance))
 
 (defmethod value-abs ((amount amount))
   (assert amount)
@@ -1237,14 +1241,13 @@
   (value-abs amount))
 
 (defmethod value-abs ((balance balance))
-  ;; jww (2007-10-22): NYI
-  ;; balance_t temp;
-  ;; for (amounts_map::const_iterator i = amounts.begin();
-  ;;      i != amounts.end();
-  ;;      i++)
-  ;;   temp += i->second.abs();
-  ;; return temp;
-  (assert balance))
+  (let ((value-balance (make-instance 'balance)))
+    (maphash #'(lambda (commodity amount)
+		 (declare (ignore commodity))
+		 (value-add* value-balance
+			     (value-abs amount)))
+	     (get-amounts-map balance))
+    value-balance))
 
 (defmethod value-round ((amount amount) &optional precision)
   (let ((tmp (copy-amount amount)))
@@ -1882,13 +1885,15 @@
 ;;;_  + Find AMOUNT of COMMODITY in a BALANCE
 
 (defmethod amount-in-balance ((balance balance) (commodity commodity))
-  (gethash commodity (get-amounts-map balance))
-  ;; jww (2007-10-22): NYI
-  ;; // Try stripping annotations before giving an error.
-  ;; balance_t temp(strip_annotations());
-  ;; if (temp.amounts.size() == 1)
-  ;;   return temp.commodity_amount(commodity);
-  )
+  (or (gethash commodity (get-amounts-map balance))
+      (unless (and *keep-annotation-prices*
+		   *keep-annotation-dates*
+		   *keep-annotation-tags*)
+	(gethash commodity
+		 (strip-annotations (get-amounts-map balance)
+				    :keep-price *keep-annotation-prices*
+				    :keep-date  *keep-annotation-dates*
+				    :keep-tag   *keep-annotation-tags*)))))
 
 ;;;_ * COMMODITY
 
@@ -2712,6 +2717,9 @@
 
 (defmethod strip-annotations ((commodity commodity)
 			      &key keep-price keep-date keep-tag)
+  (declare (type boolean keep-price))
+  (declare (type boolean keep-date))
+  (declare (type boolean keep-tag))
   (declare (ignore keep-price))
   (declare (ignore keep-date))
   (declare (ignore keep-tag))
@@ -2753,32 +2761,39 @@
   (declare (type boolean keep-price))
   (declare (type boolean keep-date))
   (declare (type boolean keep-tag))
-
   (the amount
-    (let ((commodity (amount-commodity amount)))
-      (if (or (null commodity)
-	      (not (commodity-annotated-p commodity))
-	      (and keep-price keep-date keep-tag))
-	  amount
-	  (let ((tmp (copy-amount amount)))
-	    (setf (amount-commodity tmp)
-		  (strip-annotations commodity
-				     :keep-price keep-price
-				     :keep-date keep-date
-				     :keep-tag keep-tag))
-	    tmp)))))
+    (if (and keep-price keep-date keep-tag)
+	amount
+	(let ((commodity (amount-commodity amount)))
+	  (if (or (null commodity)
+		  (not (commodity-annotated-p commodity))
+		  (and keep-price keep-date keep-tag))
+	      amount
+	      (let ((tmp (copy-amount amount)))
+		(setf (amount-commodity tmp)
+		      (strip-annotations commodity
+					 :keep-price keep-price
+					 :keep-date keep-date
+					 :keep-tag keep-tag))
+		tmp))))))
 
 (defmethod strip-annotations ((balance balance)
 			      &key keep-price keep-date keep-tag)
-  (let ((stripped-balance (make-instance 'balance)))
-    (maphash #'(lambda (commodity amount)
-		 (declare (ignore commodity))
-		 (value-add* stripped-balance
-			     (strip-annotations amount
-						:keep-price keep-price
-						:keep-date  keep-date
-						:keep-tag   keep-tag)))
-	     (get-amounts-map balance))
-    stripped-balance))
+  (declare (type boolean keep-price))
+  (declare (type boolean keep-date))
+  (declare (type boolean keep-tag))
+  (the balance
+    (if (and keep-price keep-date keep-tag)
+	balance
+	(let ((stripped-balance (make-instance 'balance)))
+	  (maphash #'(lambda (commodity amount)
+		       (declare (ignore commodity))
+		       (value-add* stripped-balance
+				   (strip-annotations amount
+						      :keep-price keep-price
+						      :keep-date  keep-date
+						      :keep-tag   keep-tag)))
+		   (get-amounts-map balance))
+	  stripped-balance))))
 
 ;; cambl.lisp ends here

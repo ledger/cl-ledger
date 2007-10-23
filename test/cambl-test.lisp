@@ -1537,4 +1537,8 @@
 (textui-test-run (get-suite commodity-test-case))
 (textui-test-run (get-suite amount-test-case))
 
+(in-package :cl)
+(ignore-errors
+ (delete-package :cambl-test))
+
 ;; cambl-test.lisp ends here
