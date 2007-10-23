@@ -31,7 +31,7 @@ ledger$(EXEEXT): $(ledger_OBJECTS) $(ledger_DEPENDENCIES)
                          (c:build-program (first args) :lisp-files (rest args)))" \
 	       -eval "(quit)" -- $@ $(ledger_OBJECTS)
 
-sbcl.prep-core: prepcore.lisp src/cambl.lisp test/cambl-test.lisp
+sbcl.prep-core: prepcore.lisp
 	sbcl --load prepcore.lisp
 
 check: runpreptests.lisp src/cambl.lisp test/cambl-test.lisp sbcl.prep-core
