@@ -314,11 +314,9 @@
 	   quantity-string
 
 	   smallest-units
-	   smallest-units*
 	   smaller-units
-	   smaller-units*
 	   larger-units
-	   larger-units*
+	   convert-to-units
 
 	   exchange-commodity
 	   purchase-commodity
@@ -557,11 +555,9 @@
 (defgeneric amount-in-balance (balance commodity))
 
 (defgeneric smallest-units (value))
-(defgeneric smallest-units* (value))
 (defgeneric smaller-units (value))
-(defgeneric smaller-units* (value))
 (defgeneric larger-units (value))
-(defgeneric larger-units* (value))
+(defgeneric convert-to-units (value commodity))
 
 (defgeneric commodity-equal (item-a item-b))
 (defgeneric commodity-equalp (item-a item-b)) ; ignores annotation
@@ -640,6 +636,8 @@
 (defvar *keep-annotation-prices* t)
 (defvar *keep-annotation-dates* t)
 (defvar *keep-annotation-tags* t)
+
+(defvar *get-price-quote-function* nil)
 
 ;; jww (2007-10-15): Add back this builtin commodity
 ;;  commodity->add_flags(COMMODITY_STYLE_NOMARKET | COMMODITY_STYLE_BUILTIN);
@@ -850,7 +848,7 @@
 	(negate* amount))
 
     (if reduce-to-smallest-units-p
-	(smallest-units* amount))
+	(smallest-units amount))
 
     (the amount amount)))
 
@@ -1233,8 +1231,7 @@
   (add* (integer-to-amount left) right))
 
 (defmethod add ((left amount) (right amount))
-  (let ((tmp (copy-amount left)))
-    (add* tmp right)))
+  (add* (copy-amount left) right))
 (defmethod add* ((left amount) (right amount))
   (verify-amounts left right "Adding")
   (let ((left-quantity (amount-quantity left))
@@ -1256,40 +1253,33 @@
   left)
 
 (defmethod add ((left amount) (right balance))
-  )
+  (add right left))
 (defmethod add* ((left amount) (right balance))
-  (add left right))
+  (add right left))
 
 (defmethod add ((left balance) (right amount))
-  )
+  (add* (copy-balance left) right))
 (defmethod add* ((left balance) (right amount))
-  ;; jww (2007-10-22): NYI
-  ;; if (amt.is_null())
-  ;;   throw_(balance_error,
-  ;;          "Cannot add an uninitialized amount to a balance");
-  ;;
-  ;; if (amt.is_realzero())
-  ;;   return *this;
-  ;;
-  ;; amounts_map::iterator i = amounts.find(&amt.commodity());
-  ;; if (i != amounts.end())
-  ;;   i->second += amt;
-  ;; else
-  ;;   amounts.insert(amounts_map::value_type(&amt.commodity(), amt));
-  ;;
-  ;; return *this;
-  )
+  (unless (zerop* right)
+    (unless (get-amounts-map left)
+      (setf (get-amounts-map left) (make-hash-table)))
+    (let* ((amounts-map (get-amounts-map left))
+	   (current-amount (gethash (amount-commodity right)
+				    amounts-map)))
+      (if current-amount
+	  (add* current-amount right)	; modifies current-amount directly
+	  (setf (gethash (amount-commodity right) amounts-map)
+		right))))
+  left)
+
 
 (defmethod add ((left balance) (right balance))
-  )
+  (add* (copy-balance left) right))
 (defmethod add* ((left balance) (right balance))
-  ;; jww (2007-10-22): NYI
-  ;; for (amounts_map::const_iterator i = bal.amounts.begin();
-  ;;      i != bal.amounts.end();
-  ;;      i++)
-  ;;   *this += i->second;
-  ;; return *this;
-  )
+  (maphash #'(lambda (commodity amount)
+	       (declare (ignore commodity))
+	       (add* left amount))
+	   (get-amounts-map right)))
 
 ;;;_   : Subtraction
 
@@ -2076,29 +2066,32 @@
 (defmethod market-value ((commodity commodity) &optional datetime)
   (declare (type (or commodity annotated-commodity null) commodity))
   (declare (type (or datetime null) datetime))
+
   (the (or amount null)
     (let* ((base (commodity-base commodity))
-	   (history (get-price-history base)))
+	   (history (get-price-history base))
+	   pricing-entry)
       (when history
 	(if (null datetime)
 	    (progn
 	      (loop while (not (rbt:rbt-null (rbt:right history)))
 		 do (setq history (rbt:right history)))
 	      (assert history)
-	      (rbt:node-item history))
-	    (find-nearest datetime history :key 'pricing-entry-moment)))))
+	      (setq pricing-entry (rbt:node-item history)))
+	    (setq pricing-entry
+		  (find-nearest datetime history
+				:key 'pricing-entry-moment)))
+	(assert pricing-entry)		; pricing entry
+	)
 
-  ;; jww (2007-10-20): NYI
-  
-  ;; if (! has_flags(COMMODITY_STYLE_NOMARKET) && parent().get_quote) {
-  ;;   if (optional<amount_t> quote = parent().get_quote
-  ;;       (*this, age, moment,
-  ;;        (base->history && base->history->prices.size() > 0 ?
-  ;;         (*base->history->prices.rbegin()).first : optional<moment_t>())))
-  ;;     return *quote;
-  ;; }
-  ;; return price;
-  )
+;; jww (2007-10-24): When is the right time to download a price quote?
+;;      (unless (or (commodity-no-market-price-p commodity)
+;;		  (null *get-price-quote-function*)
+;;		  (and (get-last-lookup commodity)
+;;		       (< (-))))
+;;	(get-price-quote commodity datetime pricing-entry))
+      )))
+
 (defmethod market-value ((annotated-commodity annotated-commodity) &optional datetime)
   (market-value (get-referent-commodity annotated-commodity) datetime))
 
@@ -2122,115 +2115,110 @@
 
 ;;;_  + Unit conversions
 
+;; jww (2007-10-24): With all of these functions, I cannot just call
+;; `get-basic-commodity' directly, if it's an annotated commodity.
+
 (defmethod smaller-units ((amount amount))
-  (let ((tmp (copy-amount amount)))
-    (smaller-units* tmp)
-    tmp))
+  (unless (null (amount-commodity amount))
+    (let* ((commodity (amount-commodity amount))
+	   (equiv-amount (get-smaller-unit-equivalence
+			  (commodity-base commodity))))
+      (if equiv-amount
+	  (multiply equiv-amount amount)
+	  amount))))
 
-(defmethod smaller-units* ((amount amount))
-  ;; jww (2007-10-22): NYI
-  ;; if (! quantity)
-  ;;   throw_(amount_error, "Cannot reduce an uninitialized amount");
-  ;;
-  ;; while (commodity_ && commodity().smaller()) {
-  ;;   *this *= commodity().smaller()->number();
-  ;;   commodity_ = commodity().smaller()->commodity_;
-  ;; }
-  ;; return *this;
-  (assert amount))
-
-(defmethod smallest-units ((amount amount))
-  (let ((tmp (copy-amount amount)))
-    (smallest-units* tmp)
-    tmp))
-
-(defmethod smallest-units* ((amount amount))
-  ;; jww (2007-10-22): NYI
-  ;; if (! quantity)
-  ;;   throw_(amount_error, "Cannot reduce an uninitialized amount");
-  ;;
-  ;; while (commodity_ && commodity().smaller()) {
-  ;;   *this *= commodity().smaller()->number();
-  ;;   commodity_ = commodity().smaller()->commodity_;
-  ;; }
-  ;; return *this;
-  (assert amount))
-
-(defmethod smallest-units ((balance balance))
-  ;; jww (2007-10-22): NYI
-  ;; balance_t temp(*this);
-  ;; temp.in_place_reduce();
-  ;; return temp;
+(defmethod smaller-units ((balance balance))
   (assert balance))
 
-(defmethod smallest-units* ((balance balance))
-  ;; jww (2007-10-22): NYI
-  ;; // A temporary must be used here because reduction may cause
-  ;; // multiple component amounts to collapse to the same commodity.
-  ;; balance_t temp;
-  ;; for (amounts_map::const_iterator i = amounts.begin();
-  ;;      i != amounts.end();
-  ;;      i++)
-  ;;   temp += i->second.reduce();
-  ;; return *this = temp;
+(defmethod smallest-units ((amount amount))
+  (unless (null (amount-commodity amount))
+    (do* ((commodity (amount-commodity amount)
+		     (amount-commodity amount))
+	  (equiv-amount (get-smaller-unit-equivalence
+			 (commodity-base commodity))
+			(get-smaller-unit-equivalence
+			 (commodity-base commodity))))
+	 ((null equiv-amount) amount)
+      (setq amount (multiply equiv-amount amount)))
+    amount))
+
+(defmethod smallest-units ((balance balance))
   (assert balance))
 
 (defmethod larger-units ((amount amount))
-  (let ((tmp (copy-amount amount)))
-    (larger-units* tmp)
-    tmp))
-
-(defmethod larger-units* ((amount amount))
-  ;; jww (2007-10-22): NYI
-  ;; if (! quantity)
-  ;;   throw_(amount_error, "Cannot unreduce an uninitialized amount");
-  ;;
-  ;; while (commodity_ && commodity().larger()) {
-  ;;   *this /= commodity().larger()->number();
-  ;;   commodity_ = commodity().larger()->commodity_;
-  ;;   if (cl:abs() < amount_t(1.0))
-  ;;     break;
-  ;; }
-  ;; return *this;
-  (assert amount))
+  (unless (null (amount-commodity amount))
+    (do* ((commodity (amount-commodity amount)
+		     (amount-commodity amount))
+	  (equiv-amount (get-larger-unit-equivalence
+			 (commodity-base commodity))
+			(get-larger-unit-equivalence
+			 (commodity-base commodity))))
+	 ((null equiv-amount) amount)
+      (let ((new-amount (multiply equiv-amount amount)))
+	(if (< (amount-to-integer new-amount) 1)
+	    (return amount)
+	    (setq amount new-amount))))))
 
 (defmethod larger-units ((balance balance))
-  ;; jww (2007-10-22): NYI
-  ;; balance_t temp(*this);
-  ;; temp.in_place_unreduce();
-  ;; return temp;
   (assert balance))
 
-(defmethod larger-units* ((balance balance))
-  ;; jww (2007-10-22): NYI
-  ;; // A temporary must be used here because unreduction may cause
-  ;; // multiple component amounts to collapse to the same commodity.
-  ;; balance_t temp;
-  ;; for (amounts_map::const_iterator i = amounts.begin();
-  ;;      i != amounts.end();
-  ;;      i++)
-  ;;   temp += i->second.unreduce();
-  ;; return *this = temp;
+(defmethod convert-to-units ((amount amount) (commodity commodity))
+  ;; jww (2007-10-24): The `do' loop here are broken
+  (unless (or (null (amount-commodity amount))
+	      (null commodity))
+    (block nil
+      ;; See if the commodity is smaller than the current one
+      (let ((new-amount amount))
+	(do ((equiv-amount
+	      (get-smaller-unit-equivalence
+	       (commodity-base (amount-commodity amount)))))
+	    ((null equiv-amount))
+	  (setq new-amount (multiply equiv-amount new-amount))
+	  (if (commodity-equal (amount-commodity new-amount)
+			       commodity)
+	      (return new-amount))))
+
+      ;; No, see if it's larger than the current one
+      (let ((new-amount amount))
+	(do ((equiv-amount
+	      (get-larger-unit-equivalence
+	       (commodity-base (amount-commodity new-amount)))))
+	    ((null equiv-amount))
+	  (setq new-amount (multiply equiv-amount new-amount))
+	  (if (commodity-equal (amount-commodity new-amount)
+			       commodity)
+	      (return new-amount))))
+
+      ;; No, we couldn't convert to the given units
+      amount)))
+
+(defmethod convert-to-units ((balance balance) (commodity commodity))
   (assert balance))
 
-(defun parse-amount-conversion (larger-string smaller-string)
-  ;; jww (2007-10-22): NYI
-  ;; amount_t larger, smaller;
-  ;;
-  ;; larger.parse(larger_str, AMOUNT_PARSE_NO_REDUCE);
-  ;; smaller.parse(smaller_str, AMOUNT_PARSE_NO_REDUCE);
-  ;;
-  ;; larger *= smaller.number();
-  ;;
-  ;; if (larger.commodity()) {
-  ;;   larger.commodity().set_smaller(smaller);
-  ;;   larger.commodity().add_flags(smaller.commodity().flags() |
-  ;;                                COMMODITY_STYLE_NOMARKET);
-  ;; }
-  ;; if (smaller.commodity())
-  ;;   smaller.commodity().set_larger(larger);
-  (assert larger-string)
-  (assert smaller-string))
+(defun set-commodity-equivalence (base-amount equivalent-amount)
+  (unless (or (null (amount-commodity base-amount))
+	      (null (amount-commodity equivalent-amount)))
+    (multiple-value-bind (quotient remainder)
+	(truncate (amount-quantity base-amount)
+		  (expt 10 (amount-precision base-amount)))
+
+      (unless (and (cl:zerop remainder)
+		   (= 1 quotient))
+	(error 'amount-error :msg
+	       "First arg to `set-commodity-equivalence' must be of a single unit"))
+      (unless (> 1 (nth-value 0 (truncate
+				 (amount-quantity equivalent-amount)
+				 (expt 10 (amount-precision equivalent-amount)))))
+	(error 'amount-error :msg
+	       "Second arg to `set-commodity-equivalence' must be more than a single unit"))
+
+      (let ((commodity (amount-commodity base-amount))
+	    (equiv-commodity (amount-commodity equivalent-amount)))
+	(setf (get-smaller-unit-equivalence
+	       (commodity-base commodity)) equivalent-amount)
+	(setf (get-larger-unit-equivalence
+	       (commodity-base equiv-commodity))
+	      (divide base-amount equivalent-amount))))))
 
 ;;;_  + Exchange a commodity
 
