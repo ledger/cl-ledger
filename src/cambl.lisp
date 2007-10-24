@@ -245,7 +245,7 @@
 ;;   automatically preserve annotation details based on context:
 ;;     (amount-exchange "100 DM" "$100.00" &optional datetime "Note")
 ;;   This will "exchange" 100 DM for $100.00, at the given datetime with
-;;   the given note.  It will be called `exchange-amount'.
+;;   the given note.  It will be called `exchange-commodity'.
 
 ;;;_* Package
 
@@ -364,7 +364,9 @@
 	   larger-units
 	   larger-units*
 
-	   exchange-amount
+	   exchange-commodity
+	   purchase-commodity
+	   sell-commodity
 
 	   amount-commodity
 	   commodity-name
@@ -2347,8 +2349,8 @@
 
 ;;;_  + Exchange a commodity
 
-(defun exchange-amount (amount price &key
-			(sale nil) (moment nil) (note nil))
+(defun exchange-commodity (amount price &key
+			   (sale nil) (moment nil) (note nil))
   (declare (type amount amount))
   (declare (type amount price))
   (declare (type boolean sale))
@@ -2371,6 +2373,12 @@
 	    (make-commodity-annotation :price per-share-price
 				       :date moment
 				       :tag note)))))))
+
+(defun purchase-commodity (amount price &key (moment nil) (note nil))
+  (exchange-commodity amount price :moment moment :note note))
+
+(defun sell-commodity (amount price &key (moment nil) (note nil))
+  (exchange-commodity amount price :sale t :moment moment :note note))
 
 ;;;_ * COMMODITY-POOL
 
