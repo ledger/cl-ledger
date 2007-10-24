@@ -1,7 +1,7 @@
 ;; cambl-test.lisp
 
 (defpackage :cambl-test
-  (:use :cl :xlunit :cambl)
+  (:use :cl :xlunit)
   (:export :cambl-test-suite
 	   :commodity-test-case
 	   :amount-test-case))
@@ -80,7 +80,7 @@
   ;; Cause the display precision for dollars to be initialized to 2.
   (setq original-*european-style* cambl:*european-style*
 	cambl:*european-style* nil)
-  (reset-commodity-pool)
+  (cambl:reset-commodity-pool)
   (cambl:amount "$1,000.00"))
 
 (defmethod tear-down ((test amount-test-case))
@@ -92,7 +92,7 @@
 	 (x12 (cambl:amount* "$100")))
   
     (assert-equal 2 (cambl:display-precision x12))
-    (assert-equal 2 (cambl:display-precision (amount-commodity x12)))
+    (assert-equal 2 (cambl:display-precision (cambl:amount-commodity x12)))
 
     (with-input-from-string (in "$100...")
       (let ((x13 (cambl:read-amount* in)))
@@ -130,13 +130,13 @@
     (assert-equal "EUR 100" (cambl:format-value (cambl:amount "EUR 100")))
 
     (let ((x1 (cambl:amount* "$100.0000")))
-      (assert-eql 2 (display-precision x12))
-      (assert-eql (amount-commodity x1) (amount-commodity x12))
+      (assert-eql 2 (cambl:display-precision x12))
+      (assert-eql (cambl:amount-commodity x1) (cambl:amount-commodity x12))
       (assert-value-equal x1 x12))
 
     (let ((x0 (cambl:amount "$100.0000")))
-      (assert-eql 4 (display-precision x12)) ; should have changed now
-      (assert-eql (amount-commodity x0) (amount-commodity x12))
+      (assert-eql 4 (cambl:display-precision x12)) ; should have changed now
+      (assert-eql (cambl:amount-commodity x0) (cambl:amount-commodity x12))
       (assert-value-equal x0 x12))
 
     (let ((x2 (cambl:amount "$100.00" :reduce-to-smallest-units-p nil)))
@@ -943,8 +943,8 @@
 	;; (x5 (cambl:amount "123.45€"))
 	)
 
-    (assert-condition 'amount-error (cambl:value-divide x1 0))
-    (assert-true (value-zerop (cambl:value-divide 0 x1)))
+    (assert-condition 'cambl:amount-error (cambl:divide x1 0))
+    (assert-true (cambl:zerop (cambl:divide 0 x1)))
     ;; assert-value-equal(amount_t("$0.00"), 0L / x1);
     ;; assert-value-equal(x1, x1 / 1L);
     ;; assert-value-equal(internalAmount("$0.00812216"), 1L / x1);
