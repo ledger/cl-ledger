@@ -86,11 +86,38 @@
 (defmethod tear-down ((test amount-test-case))
   (setq *european-style* original-*european-style*))
 
-(def-test-method test-parser ((test amount-test-case) :run nil)
-  (let* (;;(x4 (float-to-amount 123.456))
-	 ;;(x8 (amount* "$123.45"))
-	 (x12 (amount* "$100")))
-  
+(defmacro define-test (name empty &rest body-forms)
+  (declare (ignore empty))
+  `(def-test-method ,name ((test amount-test-case) :run nil)
+     ,@body-forms))
+
+(define-test amount/uncommoditized ()
+  (assert-equal "0" (format-value (amount "0")))
+  (assert-equal "0.10" (format-value (amount "0.10")))
+  (assert-equal "0.10" (format-value (amount ".10")))
+  (assert-equal "12.1000000000000" (format-value (amount "12.1000000000000")))
+  (assert-equal "12.10000" (format-value (amount* "12.10000"))))
+
+(define-test amount/commoditized ()
+  (assert-equal "$0.00" (format-value (amount "$0")))
+  (assert-equal "$0.10" (format-value (amount "$0.10")))
+  (assert-equal "$12.10" (format-value (amount* "$12.1000000000000")))
+  (assert-equal "$12.10" (format-value (amount* "$12.10000")))
+  (assert-equal "$ 12.10" (format-value (amount "$ 12.10")))
+  (assert-equal "$12.10" (format-value (amount "$12.10")))
+
+  (assert-equal "DX 12.10001" (format-value (amount "DX 12.10001")))
+  (assert-equal "DX 12.10000" (format-value (amount* "DX 12.1")))
+
+  (assert-equal "12x" (format-value (amount "12x")))
+  ;; jww (2007-10-25): This should be an error instead
+  (assert-equal "12x" (format-value (amount "12x."))) ; ignore bogus chars
+
+  (assert-condition 'end-of-file (amount "EUR"))
+  ;; jww (2007-10-25): This should give a much better error
+  ;;(assert-condition 'no-integer-present (amount "."))
+
+  (let ((x12 (amount* "$100")))
     (assert-equal 2 (display-precision x12))
     (assert-equal 2 (display-precision (amount-commodity x12)))
 
@@ -98,8 +125,6 @@
       (let ((x13 (read-amount* in)))
 	(assert-value-equal x12 x13)
 	(assert-equal 2 (display-precision x13))))
-
-    (assert-condition 'end-of-file (amount "DM"))
 
     (let ((*european-style* t))
       (assert-equal "$2.000,00"
@@ -153,19 +178,114 @@
     (let ((x7 (amount* "$100.00" :reduce-to-smallest-units-p nil)))
       (assert-value-equal x7 x12))
 
-    (let ((x8 (amount "$100.00")))
-      (assert-value-equal x8 x12))
-    (let ((x9 (amount* "$100.00")))
-      (assert-value-equal x9 x12))
-    (let ((x10 (amount "$100.00" :reduce-to-smallest-units-p nil)))
-      (assert-value-equal x10 x12))
-    (let ((x11 (amount* "$100.00" :reduce-to-smallest-units-p nil)))
-      (assert-value-equal x11 x12))
-
     (assert-valid x12)))
-  
 
-(def-test-method test-constructors ((test amount-test-case) :run nil)
+(defun read-string (function string)
+  (with-input-from-string (in string)
+    (funcall function in)))
+
+(define-test read-amount/commoditized ()
+  (assert-equal "$0.00" (format-value (read-string #'read-amount "$0")))
+  (assert-equal "$0.10" (format-value (read-string #'read-amount "$0.10")))
+  (assert-equal "$12.10" (format-value (read-string #'read-amount*
+						    "$12.1000000000000")))
+  (assert-equal "$12.10" (format-value (read-string #'read-amount*
+						    "$12.10000")))
+
+  (assert-equal "EUR 12.10001"
+		(format-value (read-string #'read-amount "EUR 12.10001")))
+  (assert-equal "EUR 12.10000"
+		(format-value (read-string #'read-amount* "EUR 12.1"))))
+
+(define-test exact-amount ()
+  (assert-equal "$0.0000" (format-value (exact-amount "$0.0000")))
+  (assert-equal "$0.00" (format-value (amount* "$0.0000"))))
+
+(define-test read-exact-amount ()
+  (assert-equal "$0.0000"
+		(format-value (read-string #'read-exact-amount
+					   "$0.0000"))))
+
+(define-test float-to-amount ()
+  (assert-equal "0.0" (format-value (float-to-amount 0.0)))
+  (assert-equal "2.10005" (format-value (float-to-amount 2.10005)))
+  (assert-equal "-2.10005" (format-value (float-to-amount -2.10005))))
+
+(define-test integer-to-amount ()
+  (assert-equal "0" (format-value (integer-to-amount 0)))
+  (assert-equal "12072349872398572398723598723598723987235"
+		(format-value (integer-to-amount
+  12072349872398572398723598723598723987235))))
+
+(define-test copy-amount ()
+  (let* ((x (amount* "$123.45678"))
+	 (copy (copy-amount x)))
+    (assert-condition 'assert-error (assert-equal x copy))
+    (assert-value-equal x copy)))
+
+(define-test copy-amount ()
+  (let* ((x (amount* "$123.45678"))
+	 (copy (copy-value x)))
+    (assert-condition 'assert-error (assert-equal x copy))
+    (assert-value-equal x copy)))
+
+(define-test value-zerop ()
+  (assert-true (value-zerop (amount* "$0")))
+  (assert-true (value-zerop (amount* "$0.00000000000")))
+  (assert-true (value-zerop (amount* "EDU 0")))
+  (assert-true (value-zerop (amount* "0")))
+  (assert-true (value-zerop (amount* "0000000")))
+  (assert-true (value-zerop (amount* "0.0000000000000")))
+  ;; It's would display as zero...
+  (assert-true (value-zerop (amount* "0.0000000000000000000000000000001")))
+  ;; But it's not *really* zero
+  (assert-false (value-zerop* (amount* "0.0000000000000000000000000000001"))))
+
+(define-test value-plusp ()
+  (assert-false (value-plusp (amount* "$0")))
+  (assert-false (value-plusp (amount* "$0.00000000000")))
+  (assert-false (value-plusp (amount* "EDU 0")))
+  (assert-false (value-plusp (amount* "0")))
+  (assert-false (value-plusp (amount* "0000000")))
+  (assert-false (value-plusp (amount* "0.0000000000000")))
+  ;; It's would display as zero...
+  (assert-false (value-plusp (amount* "0.0000000000000000000000000000001")))
+  ;; But it's *really* plusp
+  (assert-true (value-plusp* (amount* "0.0000000000000000000000000000001")))
+
+  (assert-true (value-plusp (amount* "$1")))
+  (assert-false (value-plusp (amount* "$0.00000000001")))
+  (assert-true (value-plusp (amount* "EDU 1")))
+  (assert-true (value-plusp (amount* "1")))
+  (assert-true (value-plusp (amount* "10000000")))
+  ;; It's would display as zero...
+  (assert-false (value-plusp (amount* "0.0000000000000000000000000000001")))
+  ;; But it's not *really* zero
+  (assert-true (value-plusp* (amount* "0.0000000000000000000000000000001"))))
+
+(define-test value-minusp ()
+  (assert-false (value-minusp (amount* "-$0")))
+  (assert-false (value-minusp (amount* "-$0.00000000000")))
+  (assert-false (value-minusp (amount* "EDU -0")))
+  (assert-false (value-minusp (amount* "-0")))
+  (assert-false (value-minusp (amount* "-0000000")))
+  (assert-false (value-minusp (amount* "-0.0000000000000")))
+  ;; It's would display as zero...
+  (assert-false (value-minusp (amount* "-0.0000000000000000000000000000001")))
+  ;; But it's *really* minusp
+  (assert-true (value-minusp* (amount* "-0.0000000000000000000000000000001")))
+
+  (assert-true (value-minusp (amount* "-$1")))
+  (assert-false (value-minusp (amount* "-$0.00000000001")))
+  (assert-true (value-minusp (amount* "-EDU 1")))
+  (assert-true (value-minusp (amount* "-1")))
+  (assert-true (value-minusp (amount* "-10000000")))
+  ;; It's would display as zero...
+  (assert-false (value-minusp (amount* "-0.0000000000000000000000000000001")))
+  ;; But it's not *really* zero
+  (assert-true (value-minusp* (amount* "-0.0000000000000000000000000000001"))))
+
+(define-test constructors ()
   ;; amount_t x0;
   ;; amount_t x1(123456L);
   ;; amount_t x2(123456UL);
@@ -203,7 +323,7 @@
   ;; assert-valid(x11);
   )
 
-(def-test-method test-commodity-constructors ((test amount-test-case) :run nil)
+(define-test commodity-constructors ()
   ;; amount_t x1("$123.45");
   ;; amount_t x2("-$123.45");
   ;; amount_t x3("$-123.45");
@@ -249,7 +369,7 @@
   ;; assert-valid(x10);
   )
 
-(def-test-method test-assignment ((test amount-test-case) :run nil)
+(define-test assignment ()
   ;; amount_t x0;
   ;; amount_t x1;
   ;; amount_t x2;
@@ -296,7 +416,7 @@
   ;; assert-valid(x10);
   )
 
-(def-test-method test-commodity-assignment ((test amount-test-case) :run nil)
+(define-test commodity-assignment ()
   ;; amount_t x1;
   ;; amount_t x2;
   ;; amount_t x3;
@@ -353,7 +473,7 @@
   ;; assert-valid(x10);
   )
 
-(def-test-method test-equality ((test amount-test-case) :run nil)
+(define-test equality ()
   ;; amount_t x1(123456L);
   ;; amount_t x2(456789L);
   ;; amount_t x3(333333L);
@@ -383,7 +503,7 @@
   ;; assert-valid(x6);
   )
 
-(def-test-method test-commodity-equality ((test amount-test-case) :run nil)
+(define-test commodity-equality ()
   ;; amount_t x0;
   ;; amount_t x1;
   ;; amount_t x2;
@@ -438,7 +558,7 @@
   ;; assert-valid(x10);
   )
 
-(def-test-method test-comparisons ((test amount-test-case) :run nil)
+(define-test comparisons ()
   ;; amount_t x0;
   ;; amount_t x1(-123L);
   ;; amount_t x2(123L);
@@ -476,7 +596,7 @@
   ;; assert-valid(x6);
   )
 
-(def-test-method test-commodity-comparisons ((test amount-test-case) :run nil)
+(define-test commodity-comparisons ()
   ;; amount_t x1("$-123");
   ;; amount_t x2("$123.00");
   ;; amount_t x3(internalAmount("$-123.4544"));
@@ -503,7 +623,7 @@
   ;; assert-valid(x6);
   )
 
-(def-test-method test-integer-addition ((test amount-test-case) :run nil)
+(define-test integer-addition ()
   ;; amount_t x0;
   ;; amount_t x1(123L);
   ;; amount_t y1(456L);
@@ -527,7 +647,7 @@
   ;; assert-valid(x4);
   )
 
-(def-test-method test-fractional-addition ((test amount-test-case) :run nil)
+(define-test fractional-addition ()
   ;; amount_t x1(123.123);
   ;; amount_t y1(456.456);
 
@@ -551,7 +671,7 @@
   ;; assert-valid(x2);
   )
 
-(def-test-method test-commodity-addition ((test amount-test-case) :run nil)
+(define-test commodity-addition ()
   ;; amount_t x0;
   ;; amount_t x1("$123.45");
   ;; amount_t x2(internalAmount("$123.456789"));
@@ -606,7 +726,7 @@
   ;; assert-valid(x7);
   )
 
-(def-test-method test-integer-subtraction ((test amount-test-case) :run nil)
+(define-test integer-subtraction ()
   ;; amount_t x1(123L);
   ;; amount_t y1(456L);
 
@@ -632,7 +752,7 @@
   ;; assert-valid(y4);
   )
 
-(def-test-method test-fractional-subtraction ((test amount-test-case) :run nil)
+(define-test fractional-subtraction ()
   ;; amount_t x1(123.123);
   ;; amount_t y1(456.456);
 
@@ -658,7 +778,7 @@
   ;; assert-valid(y2);
   )
 
-(def-test-method test-commodity-subtraction ((test amount-test-case) :run nil)
+(define-test commodity-subtraction ()
   ;; amount_t x0;
   ;; amount_t x1("$123.45");
   ;; amount_t x2(internalAmount("$123.456789"));
@@ -736,7 +856,7 @@
   ;; assert-valid(x8);
   )
 
-(def-test-method test-integer-multiplication ((test amount-test-case) :run nil)
+(define-test integer-multiplication ()
   ;; amount_t x1(123L);
   ;; amount_t y1(456L);
 
@@ -769,7 +889,7 @@
   ;; assert-valid(x4);
   )
 
-(def-test-method test-fractional-multiplication ((test amount-test-case) :run nil)
+(define-test fractional-multiplication ()
   ;; amount_t x1(123.123);
   ;; amount_t y1(456.456);
 
@@ -804,7 +924,7 @@
   ;; assert-valid(x2);
   )
 
-(def-test-method test-commodity-multiplication ((test amount-test-case) :run nil)
+(define-test commodity-multiplication ()
   ;; amount_t x0;
   ;; amount_t x1("$123.12");
   ;; amount_t y1("$456.45");
@@ -860,7 +980,7 @@
   ;; assert-valid(x7);
   )
 
-(def-test-method test-integer-division ((test amount-test-case) :run nil)
+(define-test integer-division ()
   ;; amount_t x1(123L);
   ;; amount_t y1(456L);
 
@@ -896,7 +1016,7 @@
   ;; assert-valid(y4);
   )
 
-(def-test-method test-fractional-division ((test amount-test-case) :run nil)
+(define-test fractional-division ()
   ;; amount_t x1(123.123);
   ;; amount_t y1(456.456);
 
@@ -934,7 +1054,7 @@
   ;; assert-valid(y4);
   )
 
-(def-test-method test-commodity-division ((test amount-test-case) :run nil)
+(define-test commodity-division ()
   (let ((x1 (amount "$123.12"))
 	(y1 (amount "$456.45"))
 	(x2 (exact-amount "$123.456789"))
@@ -995,7 +1115,7 @@
     ;; assert-valid(x7);
     ))
 
-(def-test-method test-negation ((test amount-test-case) :run nil)
+(define-test negation ()
   ;; amount_t x0;
   ;; amount_t x1(-123456L);
   ;; amount_t x3(-123.456);
@@ -1027,7 +1147,7 @@
   ;; assert-valid(x10);
   )
 
-(def-test-method test-commodity-negation ((test amount-test-case) :run nil)
+(define-test commodity-negation ()
   ;; amount_t x1("$123.45");
   ;; amount_t x2("-$123.45");
   ;; amount_t x3("$-123.45");
@@ -1081,7 +1201,7 @@
   ;; assert-valid(x10);
   )
 
-(def-test-method test-abs ((test amount-test-case) :run nil)
+(define-test abs ()
   ;; amount_t x0;
   ;; amount_t x1(-1234L);
   ;; amount_t x2(1234L);
@@ -1095,7 +1215,7 @@
   ;; assert-valid(x2);
   )
 
-(def-test-method test-commodity-abs ((test amount-test-case) :run nil)
+(define-test commodity-abs ()
   ;; amount_t x1("$-1234.56");
   ;; amount_t x2("$1234.56");
 
@@ -1106,7 +1226,7 @@
   ;; assert-valid(x2);
   )
 
-(def-test-method test-fractional-round ((test amount-test-case) :run nil)
+(define-test fractional-round ()
   ;; amount_t x0;
   ;; amount_t x1("1234.567890");
 
@@ -1189,7 +1309,7 @@
   ;; assert-valid(x5);
   )
 
-(def-test-method test-commodity-round ((test amount-test-case) :run nil)
+(define-test commodity-round ()
   ;; amount_t x1(internalAmount("$1234.567890"));
 
   ;; assert-value-equal(internalAmount("$1234.56789"), x1.round(6));
@@ -1246,7 +1366,7 @@
   ;; assert-valid(x5);
   )
 
-(def-test-method test-commodity-display-round ((test amount-test-case) :run nil)
+(define-test commodity-display-round ()
   ;; amount_t x1("$0.85");
   ;; amount_t x2("$0.1");
 
@@ -1267,7 +1387,7 @@
   ;; assert-value-equal(string("$1.13"), x1.to_string());
   )
 
-(def-test-method test-reduction ((test amount-test-case) :run nil)
+(define-test reduction ()
   ;; amount_t x0;
   ;; amount_t x1("60s");
   ;; amount_t x2("600s");
@@ -1290,7 +1410,7 @@
   ;; assert-value-equal(string("100.0h"), x4.unreduce().to_string());
   )
 
-(def-test-method test-sign ((test amount-test-case) :run nil)
+(define-test sign ()
   ;; amount_t x0;
   ;; amount_t x1("0.0000000000000000000000000000000000001");
   ;; amount_t x2("-0.0000000000000000000000000000000000001");
@@ -1310,7 +1430,7 @@
   ;; assert-valid(x4);
   )
 
-(def-test-method test-commodity-sign ((test amount-test-case) :run nil)
+(define-test commodity-sign ()
   ;; amount_t x1(internalAmount("$0.0000000000000000000000000000000000001"));
   ;; amount_t x2(internalAmount("$-0.0000000000000000000000000000000000001"));
   ;; amount_t x3("$1");
@@ -1327,7 +1447,7 @@
   ;; assert-valid(x4);
   )
 
-(def-test-method test-truth ((test amount-test-case) :run nil)
+(define-test truth ()
   ;; amount_t x0;
   ;; amount_t x1("1234");
   ;; amount_t x2("1234.56");
@@ -1342,7 +1462,7 @@
   ;; assert-valid(x2);
   )
 
-(def-test-method test-commodity-truth ((test amount-test-case) :run nil)
+(define-test commodity-truth ()
   ;; amount_t x1("$1234");
   ;; amount_t x2("$1234.56");
 
@@ -1360,7 +1480,7 @@
   ;; assert-valid(x2);
   )
 
-(def-test-method test-for-zero ((test amount-test-case) :run nil)
+(define-test for-zero ()
   ;; amount_t x0;
   ;; amount_t x1("0.000000000000000000001");
 
@@ -1374,7 +1494,7 @@
   ;; assert-valid(x1);
   )
 
-(def-test-method test-commodity-for-zero ((test amount-test-case) :run nil)
+(define-test commodity-for-zero ()
   ;; amount_t x1(internalAmount("$0.000000000000000000001"));
 
   ;; assert-false(x1);
@@ -1384,7 +1504,7 @@
   ;; assert-valid(x1);
   )
 
-(def-test-method test-integer-conversion ((test amount-test-case) :run nil)
+(define-test integer-conversion ()
   ;; amount_t x0;
   ;; amount_t x1(123456L);
   ;; amount_t x2("12345682348723487324");
@@ -1400,7 +1520,7 @@
   ;; assert-valid(x1);
   )
 
-(def-test-method test-fractional-conversion ((test amount-test-case) :run nil)
+(define-test fractional-conversion ()
   ;; amount_t x1(1234.56);
   ;; amount_t x2("1234.5683787634678348734");
 
@@ -1415,7 +1535,7 @@
   ;; assert-valid(x1);
   )
 
-(def-test-method test-commodity-conversion ((test amount-test-case) :run nil)
+(define-test commodity-conversion ()
   ;; amount_t x1("$1234.56");
 
   ;; assert-condition(x1.to_long(), amount_error); // loses precision
@@ -1427,7 +1547,7 @@
   ;; assert-valid(x1);
   )
 
-(def-test-method test-printing ((test amount-test-case) :run nil)
+(define-test printing ()
   ;; amount_t x0;
   ;; amount_t x1("982340823.380238098235098235098235098");
 
@@ -1447,7 +1567,7 @@
   ;; assert-valid(x1);
   )
 
-(def-test-method test-commodity-printing ((test amount-test-case) :run nil)
+(define-test commodity-printing ()
   ;; amount_t x1(internalAmount("$982340823.386238098235098235098235098"));
   ;; amount_t x2("$982340823.38");
 
@@ -1476,7 +1596,7 @@
   ;; assert-valid(x2);
   )
 
-(def-test-method test-serialization ((test amount-test-case) :run nil)
+(define-test serialization ()
   ;; amount_t x0;
   ;; amount_t x1("$8,192.34");
   ;; amount_t x2("8192.34");
