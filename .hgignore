@@ -29,3 +29,5 @@
 \.o$
 ^stamp-h1$
 ^sbcl\.prep-core$
+^\.svn$
+.*/\.svn$
