@@ -67,13 +67,13 @@
 ;;   multiply[*]        ; (adding two amounts may result in a balance)
 ;;   divide[*]          ; the * versions change the first argument.
 ;;
-;;   zerop              ; would the value display as zero?
-;;   zerop*             ; is the value truly zero?
+;;   value-zerop        ; would the value display as zero?
+;;   value-zerop*       ; is the value truly zero?
 ;;
-;;   minusp             ; would the amount display as a negative amount?
-;;   minusp*            ; is the amount truly negative?
-;;   plusp              ; would it display as an amount greater than zero?
-;;   plusp*             ; is it truly greater than zero?
+;;   value-minusp       ; would the amount display as a negative amount?
+;;   value-minusp*      ; is the amount truly negative?
+;;   value-plusp        ; would it display as an amount greater than zero?
+;;   value-plusp*       ; is it truly greater than zero?
 ;;
 ;;   value=, value/=    ; compare two values
 ;;   value<, value<=    ; compare values (not meaningful for all values,
@@ -261,12 +261,12 @@
 	   copy-balance
 	   copy-value
 
-	   zerop
-	   zerop*
-	   minusp
-	   minusp*
-	   plusp
-	   plusp*
+	   value-zerop
+	   value-zerop*
+	   value-minusp
+	   value-minusp*
+	   value-plusp
+	   value-plusp*
 
 	   compare
 	   compare*
@@ -294,12 +294,12 @@
 	   value>
 	   value>=
 
+	   value-abs
+	   value-round
+	   value-round*
+
 	   negate*
 	   negate
-	   abs
-	   round
-	   round*
-
 	   add
 	   add*
 	   subtract
@@ -355,8 +355,7 @@
 	   find-commodity
 	   find-annotated-commodity
 
-	   commodity-error)
-  (:shadow zerop minusp plusp abs round))
+	   commodity-error))
 
 (in-package :cambl)
 
@@ -520,8 +519,8 @@
 
 (defgeneric copy-value (value))
 
-(defgeneric zerop (value))
-(defgeneric zerop* (value))	; is it *really* zerop?
+(defgeneric value-zerop (value))
+(defgeneric value-zerop* (value))	; is it *really* zerop?
 
 (defgeneric value-equal (left right))
 (defgeneric value-equalp (left right))
@@ -530,12 +529,12 @@
 (defgeneric value= (left right))
 (defgeneric value/= (left right))
 
+(defgeneric value-abs (value))
+(defgeneric value-round (value &optional precision))
+(defgeneric value-round* (value &optional precision))
+
 (defgeneric negate* (value))
 (defgeneric negate (value))
-(defgeneric abs (value))
-(defgeneric round (value &optional precision))
-(defgeneric round* (value &optional precision))
-
 (defgeneric add (value-a value-b))
 (defgeneric add* (value-a value-b))
 (defgeneric subtract (value-a value-b))
@@ -909,26 +908,26 @@
 
 ;;;_  + Unary truth tests
 
-(defmethod zerop ((amount amount))
-  (cl:zerop (amount-quantity (round amount))))
-(defmethod zerop ((balance balance))
+(defmethod value-zerop ((amount amount))
+  (cl:zerop (amount-quantity (value-round amount))))
+(defmethod value-zerop ((balance balance))
   (the boolean
     (block nil
       (maphash #'(lambda (key value)
 		   (declare (ignore key))
-		   (unless (zerop value)
+		   (unless (value-zerop value)
 		     (return nil)))
 	       (get-amounts-map balance))
       t)))
 
-(defmethod zerop* ((amount amount))
+(defmethod value-zerop* ((amount amount))
   (cl:zerop (amount-quantity amount)))
-(defmethod zerop* ((balance balance))
+(defmethod value-zerop* ((balance balance))
   (the boolean
     (block nil
       (maphash #'(lambda (key value)
 		   (declare (ignore key))
-		   (unless (zerop* value)
+		   (unless (value-zerop* value)
 		     (return nil)))
 	       (get-amounts-map balance))
       t)))
@@ -936,14 +935,14 @@
 (declaim (inline value-minusp value-minusp*))
 
 (defun value-minusp (amount)
-  (cl:minusp (amount-quantity (round amount))))
+  (cl:minusp (amount-quantity (value-round amount))))
 (defun value-minusp* (amount)
   (cl:minusp (amount-quantity amount)))
 
 (declaim (inline value-plusp value-plusp*))
 
 (defun value-plusp (amount)
-  (cl:plusp (amount-quantity (round amount))))
+  (cl:plusp (amount-quantity (value-round amount))))
 (defun value-plusp* (amount)
   (cl:plusp (amount-quantity amount)))
 
@@ -963,8 +962,8 @@
 
 (defun compare (left right)
   (verify-amounts left right "Comparing")
-  (let ((left-rounded (round left))
-	(right-rounded (round right)))
+  (let ((left-rounded (value-round left))
+	(right-rounded (value-round right)))
     (compare* left-rounded right-rounded)))
 
 (defun compare* (left right)
@@ -987,7 +986,7 @@
 
 (defun sign (amount)
   "Return -1, 0 or 1 depending on the sign of AMOUNT."
-  (sign* (round amount)))
+  (sign* (value-round amount)))
 
 (defun sign* (amount)
   "Return -1, 0 or 1 depending on the sign of AMOUNT."
@@ -1005,7 +1004,7 @@
   "Compare with the amount LEFT equals the balance RIGHT."
   (the boolean
     (let ((amounts-map (get-amounts-map right)))
-      (if (zerop* left)
+      (if (value-zerop* left)
 	  (or (null amounts-map)
 	      (cl:zerop (hash-table-count amounts-map)))
 	  (if (and amounts-map
@@ -1132,6 +1131,50 @@
 
 ;;;_  + Unary math operators
 
+(defmethod value-abs ((amount amount))
+  (assert amount)
+  (if (cl:minusp (amount-quantity amount))
+      (negate amount)
+      amount))
+
+(defmethod value-abs ((balance balance))
+  (let ((value-balance (make-instance 'balance)))
+    (maphash #'(lambda (commodity amount)
+		 (declare (ignore commodity))
+		 (add* value-balance
+		       (value-abs amount)))
+	     (get-amounts-map balance))
+    value-balance))
+
+(defmethod value-round ((amount amount) &optional precision)
+  (let ((tmp (copy-amount amount)))
+    (value-round* tmp precision)))
+
+(defmethod value-round* ((amount amount) &optional precision)
+  "Round the given AMOUNT to the stated internal PRECISION.
+  If PRECISION is less than the current internal precision, data will
+  be lost.  If it is greater, the integer value of the amount is
+  increased until the target precision is reached."
+  (unless precision
+    (let ((commodity (amount-commodity amount)))
+      (if commodity
+	  (setq precision (display-precision commodity))
+	  (setq precision 0))))
+
+  (let ((internal-precision (amount-precision amount)))
+    (cond ((< precision internal-precision)
+	   (setf (amount-quantity amount)
+		 (nth-value 0 (truncate (amount-quantity amount)
+					(expt 10 (- internal-precision
+						    precision)))))
+	   (setf (amount-precision amount) precision))
+	  ((> precision internal-precision)
+	   (setf (amount-quantity amount)
+		 (* (amount-quantity amount)
+		    (expt 10 (- precision internal-precision))))
+	   (setf (amount-precision amount) precision))))
+  amount)
+
 (defmethod negate ((amount amount))
   (assert amount)
   (let ((tmp (copy-amount amount)))
@@ -1157,50 +1200,6 @@
 		       (negate amount)))
 	     (get-amounts-map balance))
     value-balance))
-
-(defmethod abs ((amount amount))
-  (assert amount)
-  (if (cl:minusp (amount-quantity amount))
-      (negate amount)
-      amount))
-
-(defmethod abs ((balance balance))
-  (let ((value-balance (make-instance 'balance)))
-    (maphash #'(lambda (commodity amount)
-		 (declare (ignore commodity))
-		 (add* value-balance
-		       (abs amount)))
-	     (get-amounts-map balance))
-    value-balance))
-
-(defmethod round ((amount amount) &optional precision)
-  (let ((tmp (copy-amount amount)))
-    (round* tmp precision)))
-
-(defmethod round* ((amount amount) &optional precision)
-  "Round the given AMOUNT to the stated internal PRECISION.
-  If PRECISION is less than the current internal precision, data will
-  be lost.  If it is greater, the integer value of the amount is
-  increased until the target precision is reached."
-  (unless precision
-    (let ((commodity (amount-commodity amount)))
-      (if commodity
-	  (setq precision (display-precision commodity))
-	  (setq precision 0))))
-
-  (let ((internal-precision (amount-precision amount)))
-    (cond ((< precision internal-precision)
-	   (setf (amount-quantity amount)
-		 (nth-value 0 (truncate (amount-quantity amount)
-					(expt 10 (- internal-precision
-						    precision)))))
-	   (setf (amount-precision amount) precision))
-	  ((> precision internal-precision)
-	   (setf (amount-quantity amount)
-		 (* (amount-quantity amount)
-		    (expt 10 (- precision internal-precision))))
-	   (setf (amount-precision amount) precision))))
-  amount)
 
 ;;;_  + Binary math operators
 
@@ -1260,7 +1259,7 @@
 (defmethod add ((left balance) (right amount))
   (add* (copy-balance left) right))
 (defmethod add* ((left balance) (right amount))
-  (unless (zerop* right)
+  (unless (value-zerop* right)
     (unless (get-amounts-map left)
       (setf (get-amounts-map left) (make-hash-table)))
     (let* ((amounts-map (get-amounts-map left))
@@ -1405,8 +1404,8 @@
 		 (+ *extra-precision* commodity-precision))
 	  (setf (amount-quantity left)
 		(cl:round (amount-quantity left)
-		       (expt 10 (- (amount-precision left)
-				   (+ *extra-precision* commodity-precision)))))
+			  (expt 10 (- (amount-precision left)
+				      (+ *extra-precision* commodity-precision)))))
 	  (setf (amount-precision left)
 		(+ *extra-precision* commodity-precision))))))
   left)
@@ -1494,7 +1493,7 @@
 (defmethod divide* ((left amount) (right amount))
   ;; Increase the value's precision, to capture fractional parts after
   ;; the divide.  Round up in the last position.
-  (if (zerop right)
+  (if (value-zerop right)
       (error 'amount-error :msg
 	     (format nil "Attempt to divide by zero: ~A / ~A"
 		     (format-value left :full-precision-p t)
@@ -1512,8 +1511,8 @@
 
   (setf (amount-quantity left)
 	(cl:round (amount-quantity left)
-	       (expt 10 (- (1+ (amount-precision left))
-			   (amount-precision left)))))
+		  (expt 10 (- (1+ (amount-precision left))
+			      (amount-precision left)))))
 
   (set-amount-commodity-and-round* left right))
 
@@ -1574,7 +1573,7 @@
   integer)
 
 (defmethod optimize-value ((amount amount))
-  (if (zerop* amount)
+  (if (value-zerop* amount)
       0
       amount))
 
@@ -2084,12 +2083,12 @@
 	(assert pricing-entry)		; pricing entry
 	)
 
-;; jww (2007-10-24): When is the right time to download a price quote?
-;;      (unless (or (commodity-no-market-price-p commodity)
-;;		  (null *get-price-quote-function*)
-;;		  (and (get-last-lookup commodity)
-;;		       (< (-))))
-;;	(get-price-quote commodity datetime pricing-entry))
+      ;; jww (2007-10-24): When is the right time to download a price quote?
+      ;;      (unless (or (commodity-no-market-price-p commodity)
+      ;;		  (null *get-price-quote-function*)
+      ;;		  (and (get-last-lookup commodity)
+      ;;		       (< (-))))
+      ;;	(get-price-quote commodity datetime pricing-entry))
       )))
 
 (defmethod market-value ((annotated-commodity annotated-commodity) &optional datetime)
@@ -2100,7 +2099,7 @@
     (when commodity
       (let ((value (market-value commodity datetime)))
 	(if value
-	    (round* (multiply* value amount)))))))
+	    (value-round* (multiply* value amount)))))))
 
 (defmethod market-value ((balance balance) &optional datetime)
   (let ((value-balance (make-instance 'balance)))
@@ -2466,7 +2465,7 @@
 			  (< (amount-precision tmp-amount)
 			     (display-precision commodity)))
 		     (setq tmp-amount
-			   (round* tmp-amount
+			   (value-round* tmp-amount
 					 (display-precision commodity)))))
 
 	       (setf (annotation-price annotation) tmp-amount)))
