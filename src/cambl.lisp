@@ -1255,7 +1255,6 @@
   (add right left))
 (defmethod add* ((left amount) (right balance))
   (add right left))
-
 (defmethod add ((left balance) (right amount))
   (add* (copy-balance left) right))
 (defmethod add* ((left balance) (right amount))
@@ -1318,57 +1317,33 @@
 		     (- left-quantity right-quantity)))))
       left)))
 
-(defmethod subtract ((left amount) (right balance)))
+(defmethod subtract ((left amount) (right balance))
+  (error 'amount-error :msg "Cannot subtract a BALANCE from an AMOUNT"))
 (defmethod subtract* ((left amount) (right balance))
-  ;; jww (2007-10-22): NYI
-  ;; if (amt.is_null())
-  ;;   throw_(balance_error,
-  ;;          "Cannot subtract an uninitialized amount from a balance");
-  ;;
-  ;; if (amt.is_realzero())
-  ;;   return *this;
-  ;;
-  ;; amounts_map::iterator i = amounts.find(&amt.commodity());
-  ;; if (i != amounts.end()) {
-  ;;   i->second -= amt;
-  ;;   if (i->second.is_realzero())
-  ;;     amounts.erase(i);
-  ;; } else {
-  ;;   amounts.insert(amounts_map::value_type(&amt.commodity(), amt.negate()));
-  ;; }
-  ;; return *this;
-  )
-
-(defmethod subtract ((left balance) (right amount)))
+  (error 'amount-error :msg "Cannot subtract a BALANCE from an AMOUNT"))
+(defmethod subtract ((left balance) (right amount))
+  (subtract* (copy-balance left) right))
 (defmethod subtract* ((left balance) (right amount))
-  ;; jww (2007-10-22): NYI
-  ;; if (amt.is_null())
-  ;;   throw_(balance_error,
-  ;;          "Cannot subtract an uninitialized amount from a balance");
-  ;;
-  ;; if (amt.is_realzero())
-  ;;   return *this;
-  ;;
-  ;; amounts_map::iterator i = amounts.find(&amt.commodity());
-  ;; if (i != amounts.end()) {
-  ;;   i->second -= amt;
-  ;;   if (i->second.is_realzero())
-  ;;     amounts.erase(i);
-  ;; } else {
-  ;;   amounts.insert(amounts_map::value_type(&amt.commodity(), amt.negate()));
-  ;; }
-  ;; return *this;
-  )
+  (unless (value-zerop* right)
+    (unless (get-amounts-map left)
+      (setf (get-amounts-map left) (make-hash-table)))
+    (let* ((amounts-map (get-amounts-map left))
+	   (current-amount (gethash (amount-commodity right)
+				    amounts-map)))
+      (if current-amount
+	  (subtract* current-amount right)	; modifies current-amount directly
+	  (setf (gethash (amount-commodity right) amounts-map)
+		(negate right)))))
+  left)
 
-(defmethod subtract ((left balance) (right balance)))
+
+(defmethod subtract ((left balance) (right balance))
+  (subtract* (copy-balance left) right))
 (defmethod subtract* ((left balance) (right balance))
-  ;; jww (2007-10-22): NYI
-  ;; for (amounts_map::const_iterator i = bal.amounts.begin();
-  ;;      i != bal.amounts.end();
-  ;;      i++)
-  ;;   *this -= i->second;
-  ;; return *this;
-  )
+  (maphash #'(lambda (commodity amount)
+	       (declare (ignore commodity))
+	       (subtract* left amount))
+	   (get-amounts-map right)))
 
 ;;;_   : Multiplication
 
