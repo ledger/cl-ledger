@@ -56,8 +56,8 @@
 ;;   exact-amount       ; create an amount from a string which overrides
 ;;                      ; its commodity's display precision; this feature
 ;;                      ; "sticks" through any math operations
-;;   parse-amount[*]    ; read an amount from a stream
-;;   read-amount[*]     ; read an exact amount from a stream
+;;   parse-amount[*]    ; parse an amount from a string (alias for `amount')
+;;   read-amount[*]     ; read an amount from a stream
 ;;   read-exact-amount  ; read an exact amount from a stream
 ;;   format-value       ; format a value to a string
 ;;   print-value        ; print a value to a stream
