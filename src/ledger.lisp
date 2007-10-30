@@ -8,17 +8,22 @@
 
 (in-package :ledger)
 
-(defclass transaction ()
-  ((parent-entry   :accessor parent-entry   :initarg :parent-entry)
-   (actual-date	   :accessor actual-date    :initarg :actual-date)
-   (effective-date :accessor effective-date :initarg :effective-date)
-   (status	   :accessor status	    :initarg :status)
-   (account	   :accessor account	    :initarg :account)
-   (amount	   :accessor get-amount	    :initarg :amount)
-   (comment	   :accessor comment	    :initarg :comment)
-   (tags	   :accessor tags	    :initarg :tags)
-   (virtual-p	   :accessor virtual-p	    :initarg :virtual-p)
-   (must-balance-p :accessor must-balance-p :initarg :must-balance-p)))
+(defstruct (transaction (:print-function print-transaction))
+  parent
+  date
+  effective-date
+  status
+  account
+  amount
+  comment
+  tags
+  virtual
+  (must-balance-p t))
+
+(defun print-transaction (transaction stream depth)
+  (declare (ignore depth))
+  (print-unreadable-object (transaction stream :type t)
+    (format stream "")))
 
 (defclass entry ()
   ((parent-journal :accessor parent-journal :initarg :parent-journal)
