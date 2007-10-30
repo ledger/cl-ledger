@@ -487,7 +487,7 @@
 ;; @see to_fullstring
 
 (defstruct (amount (:print-function print-amount))
-  (commodity  nil :type (or commodity null))
+  (commodity nil :type (or commodity null))
   (quantity 0 :type integer)
   (precision 0 :type fixnum)
   (keep-precision-p nil :type boolean)
