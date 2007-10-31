@@ -246,6 +246,7 @@
   (:use :cl :rbt)
   (:export *european-style*
 	   datetime
+	   pushend
 
 	   amount
 	   amount*
@@ -341,7 +342,7 @@
 
 	   market-value
 
-	   commodity-serial-number
+	   ;;commodity-serial-number
 	   commodity-qualified-name
 	   commodity-thousand-marks-p
 	   commodity-lessp
@@ -399,7 +400,9 @@
 
 (defstruct commodity-pool
   (by-name-map (make-hash-table :test 'equal) :type hash-table)
-  (by-serial-list '((0 . nil)) :type list)
+;;  (by-serial-list '() :type list)
+;;  (next-serial-list-index 0 :type integer)
+;;  (last-serial-list-cell nil :type (or cons null))
   (default-commodity nil))
 
 (defparameter *default-commodity-pool* (make-commodity-pool))
@@ -415,8 +418,8 @@
 		    :type basic-commodity)
    (commodity-pool :accessor get-commodity-pool :initarg :commodity-pool
 		   :type commodity-pool)
-   (serial-number :accessor commodity-serial-number :initarg :serial-number
-		  :type fixnum)
+;;   (serial-number :accessor commodity-serial-number :initarg :serial-number
+;;		  :type fixnum)
    (qualified-name :accessor commodity-qualified-name :initarg :qualified-name
 		   :type (or string null))
    ;; This is set automatically by initialize-instance whenever an
@@ -2238,6 +2241,20 @@
 
 ;;;_   : COMMODITY
 
+(defmacro pushend (item the-list &optional final-cons)
+  `(let ((items ,the-list)
+	 (new-cons (list ,item)))
+     (if items
+	 ,(if final-cons
+	      `(prog1
+		   (setf (cdr ,final-cons) new-cons)
+		 (setf ,final-cons new-cons))
+	      `(nconc items new-cons))
+	 (prog1
+	     (setf ,the-list new-cons)
+	   ,(if final-cons
+		`(setf ,final-cons new-cons))))))
+
 (defun create-commodity (name &key (pool *default-commodity-pool*))
   "Create a COMMODITY after the symbol name found by parsing NAME.
   The NAME can be either a string or an input stream, or nil, in which
@@ -2260,14 +2277,16 @@
       (if (commodity-symbol-needs-quoting-p symbol)
 	  (setf (commodity-qualified-name commodity)
 		(concatenate 'string "\"" symbol-name "\"")))
-
-      (let ((commodities-by-serial-list
-	     (commodity-pool-by-serial-list pool)))
-	(setf (commodity-serial-number commodity)
-	      (1+ (caar (last commodities-by-serial-list))))
-	(nconc commodities-by-serial-list
-	       (list (cons (commodity-serial-number commodity)
-			   commodity))))
+      
+;;      (setf (commodity-pool-next-serial-list-index pool)
+;;	    (1+ (commodity-pool-next-serial-list-index pool)))
+;;
+;;      (setf (commodity-serial-number commodity)
+;;	    (commodity-pool-next-serial-list-index pool))
+;;
+;;      (pushend (cons (commodity-serial-number commodity) commodity)
+;;	       (commodity-pool-by-serial-list pool)
+;;	       (commodity-pool-last-serial-list-cell pool))
 
       (let ((names-map (commodity-pool-by-name-map pool)))
 	(assert (not (gethash symbol-name names-map)))
@@ -2303,13 +2322,13 @@
 		 t)
 		(values nil nil)))))))
 
-(defun find-commodity-by-serial (serial &key (pool *default-commodity-pool*))
-  "Find the commodity with the matching unique SERIAL number.
-  nil is returned if no such commodity exists."
-  (declare (type fixnum serial))
-  (declare (type commodity-pool pool))
-  (the (or commodity annotated-commodity)
-    (cdr (assoc serial (commodity-pool-by-serial-list pool)))))
+;;(defun find-commodity-by-serial (serial &key (pool *default-commodity-pool*))
+;;  "Find the commodity with the matching unique SERIAL number.
+;;  nil is returned if no such commodity exists."
+;;  (declare (type fixnum serial))
+;;  (declare (type commodity-pool pool))
+;;  (the (or commodity annotated-commodity)
+;;    (cdr (assoc serial (commodity-pool-by-serial-list pool)))))
 
 ;;;_   : ANNOTATED-COMMODITY
 
@@ -2340,13 +2359,13 @@
 			  :qualified-name qualified-name))
 	  (pool (get-commodity-pool commodity)))
 
-      (let ((commodities-by-serial-list
-	     (commodity-pool-by-serial-list pool)))
-	(setf (commodity-serial-number commodity)
-	      (1+ (caar (last commodities-by-serial-list))))
-	(nconc commodities-by-serial-list
-	       (list (cons (commodity-serial-number commodity)
-			   annotated-commodity))))
+;;      (let ((commodities-by-serial-list
+;;	     (commodity-pool-by-serial-list pool)))
+;;	(setf (commodity-serial-number commodity)
+;;	      (1+ (caar (last commodities-by-serial-list))))
+;;	(nconc commodities-by-serial-list
+;;	       (list (cons (commodity-serial-number commodity)
+;;			   annotated-commodity))))
 
       (let ((names-map (commodity-pool-by-name-map pool)))
 	(assert (not (gethash qualified-name names-map)))

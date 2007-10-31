@@ -4,7 +4,7 @@
 
 (defpackage :ledger
   (:use :common-lisp :cambl :cl-ppcre)
-  (:export read-journal-file))
+  (:export binder))
 
 (in-package :ledger)
 
@@ -13,14 +13,14 @@
 
 (defstruct (transaction (:print-function print-transaction))
   entry
-  (date nil	       :type datetime)
-  (effective-date nil  :type datetime)
+  (date nil	       :type (or datetime null))
+  (effective-date nil  :type (or datetime null))
   (status 'uncleared   :type item-status)
   account
   (amount nil	       :type amount)
-  (note nil	       :type string)
+  (note nil	       :type (or string null))
   (tags nil)
-  (stream-position nil :type integer)
+  (stream-position nil :type (or integer null))
   (virtual-p nil       :type boolean)
   (must-balance-p t    :type boolean))
 
@@ -43,7 +43,8 @@
 		   :type string)
    (comment	   :accessor entry-note		   :initarg :note
 		   :initform nil :type (or string null))
-   (transactions   :accessor entry-transactions	   :initarg :transactions)))
+   (transactions   :accessor entry-transactions	   :initarg :transactions
+		   :initform nil)))
 
 (defclass account ()
   ((parent         :accessor account-parent	   :initarg :parent
@@ -53,11 +54,14 @@
    (name	   :accessor account-name	   :initarg :name
 		   :type string)
    (transactions   :accessor account-transactions  :initarg :transactions
-		   :initform nil)))
+		   :initform nil)
+   (last-transaction-cell :accessor account-last-transaction-cell :initform nil)))
 
 (defclass journal ()
   ((binder	   :accessor journal-binder	   :initarg :binder)
-   (entries	   :accessor journal-entries	   :initarg :entries)
+   (entries	   :accessor journal-entries	   :initarg :entries
+		   :initform nil)
+   (last-entry-cell :accessor journal-last-entry-cell :initform nil)
    (source-path	   :accessor journal-source-path   :initarg :source-path
 		   :type pathname)))
 
@@ -65,74 +69,91 @@
   ((commodity-pool :accessor binder-commodity-pool :initarg :commodity-pool
 		   :type commodity-pool)
    (root-account   :accessor binder-root-account   :initarg :root-account
-		   :type account)
-   (journals	   :accessor binder-journals	   :initarg :journals)))
+		   :initform (make-instance 'account :name "") :type account)
+   (journals	   :accessor binder-journals	   :initarg :journals
+		   :initform nil)))
 
 (defgeneric add-transaction (item transaction))
 (defgeneric add-entry (journal entry))
 (defgeneric add-journal (binder journal))
 (defgeneric find-child-account (account account-name &key create-if-not-exists-p))
-(defgeneric find-account (binder account-path &key create-if-not-exists-p))
-(defgeneric find-account (journal account-path &key create-if-not-exists-p))
+(defgeneric find-account (item account-path &key create-if-not-exists-p))
 
 ;; Textual journal parser
 
 (defvar *date-regexp* "[0-9]{4}[-./][0-9]{2}[-./][0-9]{2}")
 
-(defvar *spacing-regexp* "(?:  |\#Tab| \#Tab)\\s*")
+(defvar *spacing-regexp* (format nil "(?:  |~C| ~C)\\s*" #\Tab #\Tab))
 
-(defvar *comment-regexp* "(?:~A;(.+))?")
+(defvar *comment-regexp* (format nil "(?:~A;(.+))?" *spacing-regexp*))
 
 (defvar *entry-heading-scanner*
   (cl-ppcre:create-scanner
-   (format nil "^(?:(~A)(?:=(~A))?)\\s+(?:(\\*|!)\\s*)?(?:\\((.+?)\\)\\s*)?(.+?)~A$"
-	   *date-regexp* *date-regexp* *spacing-regexp* *comment-regexp*)))
+   (format nil (concatenate 'string
+			    "^(?:(~A)(?:=(~A))?)\\s+(?:(\\*|!)\\s*)?"
+			    "(?:\\((.+?)\\)\\s+)?(.+?)~A$")
+	   *date-regexp* *date-regexp* *comment-regexp*)))
 
 (defvar *transaction-scanner*
   (cl-ppcre:create-scanner
-   (format nil "^\\s+(?:(\\*|!)\\s*)?([\\[(])?(.+?)([\\])])?~A(?:(.+?)(?:(@@?)\\s*(.+?))?)~A$"
-	   *spacing-regexp* *spacing-regexp* *comment-regexp*)))
+   (format nil (concatenate 'string
+			    "^\\s+(?:(\\*|!)\\s*)?([\\[(])?(.+?)([\\])])?"
+			    "~A(?:(.+?)(?:(@@?)\\s*(.+?))?)~A$")
+	   *spacing-regexp* *comment-regexp*)))
 
 (defun read-transaction (entry in)
   (declare (type stream in))
-  (format t "read-transaction~%")
-  (let* ((xact-line (read-line in))
-	 (groups (nth-value 1 (cl-ppcre:scan-to-strings
-			       *transaction-scanner* xact-line))))
-    (format t "xact-line: '~A'~%groups: ~S~%" xact-line groups)
+  ;;(format t "read-transaction~%")
+  (let* ((beg-pos (file-position in))
+	 (xact-line (read-line in nil))
+	 (groups (and xact-line
+		      (nth-value 1 (cl-ppcre:scan-to-strings
+				    *transaction-scanner* xact-line)))))
+    ;;(format t "xact-line: '~A'~%groups: ~S~%" xact-line groups)
     (when groups
-      (let ((xact (make-instance 'transaction :entry entry))
-	    (status (aref groups 0))
+      (let ((status (aref groups 0))
 	    (open-bracket (aref groups 1))
 	    (account-name (aref groups 2))
 	    (close-bracket (aref groups 3))
 	    (amount-expr (aref groups 4))
-	    (cost-specifier (aref groups 5))
-	    (cost-expr (aref groups 6))
-	    (comment (aref groups 7)))
-	(make-transaction :entry entry
-			  ;;:date
-			  ;;:effective-date
-			  :status
-			  :account
-			  :amount
-			  :note
-			  :tags
-			  :stream-position
-			  :virtual-p
-			  :must-balance-p)))))
+	    ;;(cost-specifier (aref groups 5))
+	    ;;(cost-expr (aref groups 6))
+	    (note (aref groups 7)))
+	(let ((virtual-p (and (string/= open-bracket "")
+			      (string= open-bracket close-bracket))))
+	  (make-transaction
+	   :entry entry
+	   ;;:date
+	   ;;:effective-date
+	   :status (cond ((string= status "*")
+			  'cleared)
+			 ((string= status "!")
+			  'pending)
+			 (t
+			  'uncleared))
+	   :account (find-account (entry-journal entry) account-name
+				  :create-if-not-exists-p t)
+	   :amount (cambl:amount amount-expr)
+	   :note note
+	   ;;:tags
+	   :stream-position beg-pos
+	   :virtual-p virtual-p
+	   :must-balance-p (and virtual-p
+				(zerop (string/= open-bracket "[")))))))))
 
 (defmethod add-transaction ((entry entry) (transaction transaction))
-  )
+  (pushend transaction (entry-transactions entry)))
 
 (defmethod add-transaction ((account account) (transaction transaction))
-  )
+  (pushend transaction (account-transactions account)
+	   (account-last-transaction-cell account)))
 
 (defmethod add-entry ((journal journal) (entry entry))
-  )
+  (pushend entry (journal-entries journal)
+	   (journal-last-entry-cell journal)))
 
 (defmethod add-journal ((binder binder) (journal journal))
-  )
+  (pushend journal (binder-journals binder)))
 
 (defun split-by-colon (string)
   "Returns a list of substrings of string
@@ -146,37 +167,39 @@ if there were an empty string between them."
 
 (defmethod find-child-account ((account account) (account-name string)
 			       &key (create-if-not-exists-p nil))
-  (let ((accounts-map (account-children account)))
-    (or (and accounts-map
-	     (gethash account-name accounts-map))
-	(when create-if-not-exists-p
-	  (unless accounts-map
-	    (setf (account-children account)
-		  (setq accounts-map (make-hash-table :test #'string=))))
-	  (setf (gethash account-name accounts-map)
-		(make-instance 'account :parent account
-			       :name account-name))))))
+  (the (or account null)
+    (let ((accounts-map (account-children account)))
+      (or (and accounts-map
+	       (gethash account-name accounts-map))
+	  (when create-if-not-exists-p
+	    (unless accounts-map
+	      (setf (account-children account)
+		    (setq accounts-map (make-hash-table :test #'equal))))
+	    (setf (gethash account-name accounts-map)
+		  (make-instance 'account :parent account
+				 :name account-name)))))))
 
 (defmethod find-account ((binder binder) (account-path string)
 			 &key (create-if-not-exists-p nil))
-  (labels ((traverse-accounts (account path-elements)
-	     (let ((child-account
-		    (find-child-account account (car path-elements)
-					:create-if-not-exists-p
-					create-if-not-exists-p)))
-	       (if child-account
-		   (if path-elements
-		       (traverse-accounts child-account (cdr path-elements))
-		       child-account)))))
-    (traverse-accounts (binder-root-account binder)
-		       (split-by-colon account-path))))
+  (the (or account null)
+    (labels ((traverse-accounts (account path-elements)
+	       (let ((child-account
+		      (find-child-account account (car path-elements)
+					  :create-if-not-exists-p
+					  create-if-not-exists-p)))
+		 (if child-account
+		     (if (cdr path-elements)
+			 (traverse-accounts child-account (cdr path-elements))
+			 child-account)))))
+      (traverse-accounts (binder-root-account binder)
+			 (split-by-colon account-path)))))
 
 (defmethod find-account ((journal journal) (account-path string)
 			 &key (create-if-not-exists-p nil))
   (find-account (journal-binder journal) account-path
 		:create-if-not-exists-p create-if-not-exists-p))
 
-(defun read-plain-entry (in)
+(defun read-plain-entry (journal in)
   "Read in the header line for the entry, which has the syntax:
   
     (DATE(=DATE)?)( (*|!))?( (\((.+?)\)))? (.+)(:spacer:;(.+))?
@@ -193,50 +216,86 @@ if there were an empty string between them."
   6 - The (optional) \"code\" for the entry; has no meaning to Ledger.
   7 - The payee or description of the entry.
   9 - A comment giving further details about the entry."
+  (declare (type journal journal))
   (declare (type stream in))
-  (format t "read-plain-entry~%")
-  (let* ((heading-line (read-line in))
-	 (groups (nth-value 1 (cl-ppcre:scan-to-strings
-			       *entry-heading-scanner* heading-line))))
-    (format t "heading-line: '~A'~%groups: ~S~%" heading-line groups)
+  ;;(format t "read-plain-entry~%")
+  (let* ((heading-line (read-line in nil))
+	 (groups (and heading-line
+		      (nth-value 1 (cl-ppcre:scan-to-strings
+				    *entry-heading-scanner* heading-line)))))
+    ;;(format t "heading-line: '~A'~%groups: ~S~%" heading-line groups)
     (when groups
-      (let ((entry (make-instance 'entry))
-	    (actual-date (aref groups 0))
-	    (effective-date (aref groups 1))
-	    (entry-status (aref groups 2))
-	    (entry-code (aref groups 3))
+      (let (;;(actual-date (aref groups 0))
+	    ;;(effective-date (aref groups 1))
+	    (status (aref groups 2))
+	    (code (aref groups 3))
 	    (payee (aref groups 4))
-	    (comment (aref groups 5)))
-	(loop
-	   (let ((transaction (read-transaction entry in)))
-	     (if transaction
-		 entry		       ;(append-transaction entry transaction)
-		 (return))))))))
+	    (note (aref groups 5)))
+	(let ((entry (make-instance
+		      'entry
+		      :journal journal
+		      ;;:date actual-date   ; jww (2007-10-31): need parse-time
+		      ;;:effective-date
+		      :status (cond ((string= status "*")
+				     'cleared)
+				    ((string= status "!")
+				     'pending)
+				    (t
+				     'uncleared))
+		      :code code
+		      :payee payee
+		      :note note)))
+	  (loop
+	     for transaction = (read-transaction entry in)
+	     while transaction do
+	     (add-transaction entry transaction)
+	     (add-transaction (transaction-account transaction)
+			      transaction))
+	  entry)))))
 
-(defun read-textual-journal (in)
+(defun read-textual-journal (binder in)
   (declare (type stream in))
-  (let ((bolp t))
-   (loop
-      for c = (read-char in nil)
-      while c do
-      (cond ((char-equal c #\;)
-	     ;; comma begins a comment; gobble up the rest of the line
-	     (read-line in)
-	     (setq bolp t))
-	    ((or (char-equal c #\Newline)
-		 (char-equal c #\Return))
-	     (setq bolp t))
-	    ((and bolp (digit-char-p c))
-	     (unread-char c in)
-	     (read-plain-entry in)
-	     (setq bolp t))
-	    (t
-	     (setq bolp nil))))))
+  (let ((bolp t)
+	(journal (make-instance 'journal :binder binder)))
+    (loop
+       for c = (read-char in nil)
+       while c do
+       (cond ((char-equal c #\;)
+	      ;; comma begins a comment; gobble up the rest of the line
+	      (read-line in nil)
+	      (setq bolp t))
+	     ((or (char-equal c #\Newline)
+		  (char-equal c #\Return))
+	      (setq bolp t))
+	     ((and bolp (digit-char-p c))
+	      (unread-char c in)
+	      (loop
+		 for entry = (read-plain-entry journal in)
+		 while entry do
+		 (add-entry journal entry))
+	      (setq bolp t))
+	     (t
+	      (setq bolp nil))))
+    journal))
 
-(defun read-journal-file (path)
+(defun read-journal-file (binder path)
   "Read in a textual Ledger journal from the given PATH.
 The result is of type JOURNAL."
   (with-open-file (in path :direction :input)
-    (read-textual-journal in)))
+    (read-textual-journal binder in)))
+
+(defun binder (&rest journals-or-paths-or-strings)
+  (let ((binder (make-instance 'binder
+			       :commodity-pool *default-commodity-pool*)))
+    (dolist (item journals-or-paths-or-strings)
+      (cond ((typep item 'journal)
+	     (add-journal binder item))
+	    ((typep item '(or pathname string))
+	     (let ((journal (read-journal-file binder item)))
+	       (if journal
+		   (add-journal binder journal))))
+	    (t
+	     (error "unknown"))))
+    binder))
 
 ;; ledger.lisp ends here
