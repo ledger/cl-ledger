@@ -245,6 +245,7 @@
 (defpackage :cambl
   (:use :cl :rbt)
   (:export *european-style*
+	   datetime
 
 	   amount
 	   amount*
@@ -351,6 +352,7 @@
 	   annotate-commodity
 	   strip-annotations
 
+	   commodity-pool
 	   *default-commodity-pool*
 	   make-commodity-pool
 	   reset-commodity-pool

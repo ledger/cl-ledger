@@ -8,17 +8,21 @@
 
 (in-package :ledger)
 
+(deftype item-status ()
+  '(member uncleared pending cleared))
+
 (defstruct (transaction (:print-function print-transaction))
-  parent
-  date
-  effective-date
-  status
+  entry
+  (date nil	       :type datetime)
+  (effective-date nil  :type datetime)
+  (status 'uncleared   :type item-status)
   account
-  amount
-  comment
-  tags
-  virtual
-  (must-balance-p t))
+  (amount nil	       :type amount)
+  (note nil	       :type string)
+  (tags nil)
+  (stream-position nil :type integer)
+  (virtual-p nil       :type boolean)
+  (must-balance-p t    :type boolean))
 
 (defun print-transaction (transaction stream depth)
   (declare (ignore depth))
@@ -26,23 +30,50 @@
     (format stream "")))
 
 (defclass entry ()
-  ((parent-journal :accessor parent-journal :initarg :parent-journal)
-   (actual-date	   :accessor actual-date    :initarg :actual-date)
-   (effective-date :accessor effective-date :initarg :effective-date)
-   (entry-status   :accessor entry-status   :initarg :entry-status)
-   (entry-code	   :accessor entry-code	    :initarg :entry-code)
-   (payee	   :accessor payee	    :initarg :payee)
-   (comment	   :accessor comment	    :initarg :comment)
-   (transactions   :accessor transactions   :initarg :transactions)))
+  ((journal        :accessor entry-journal	   :initarg :journal)
+   (date	   :accessor entry-date		   :initarg :date
+		   :type datetime)
+   (effective-date :accessor entry-effective-date  :initarg :effective-date
+		   :initform nil :type (or datetime null))
+   (entry-status   :accessor entry-status	   :initarg :status
+		   :initform 'uncleared :type item-status)
+   (entry-code	   :accessor entry-code		   :initarg :code
+		   :initform nil :type (or string null))
+   (payee	   :accessor entry-payee	   :initarg :payee
+		   :type string)
+   (comment	   :accessor entry-note		   :initarg :note
+		   :initform nil :type (or string null))
+   (transactions   :accessor entry-transactions	   :initarg :transactions)))
 
 (defclass account ()
-  ((parent         :accessor parent-account :initarg :parent)
-   (name	   :accessor account-name   :initarg :name)
-   (transactions   :accessor transactions   :initarg :transactions)))
+  ((parent         :accessor account-parent	   :initarg :parent
+		   :initform nil :type (or account null))
+   (children       :accessor account-children	   :initarg :children
+		   :initform nil :type (or hash-table null))
+   (name	   :accessor account-name	   :initarg :name
+		   :type string)
+   (transactions   :accessor account-transactions  :initarg :transactions
+		   :initform nil)))
 
 (defclass journal ()
-  ((entries	   :accessor entries	    :initarg :entries)
-   (accounts-map   :accessor accounts-map   :initarg :accounts-map)))
+  ((binder	   :accessor journal-binder	   :initarg :binder)
+   (entries	   :accessor journal-entries	   :initarg :entries)
+   (source-path	   :accessor journal-source-path   :initarg :source-path
+		   :type pathname)))
+
+(defclass binder ()
+  ((commodity-pool :accessor binder-commodity-pool :initarg :commodity-pool
+		   :type commodity-pool)
+   (root-account   :accessor binder-root-account   :initarg :root-account
+		   :type account)
+   (journals	   :accessor binder-journals	   :initarg :journals)))
+
+(defgeneric add-transaction (item transaction))
+(defgeneric add-entry (journal entry))
+(defgeneric add-journal (binder journal))
+(defgeneric find-child-account (account account-name &key create-if-not-exists-p))
+(defgeneric find-account (binder account-path &key create-if-not-exists-p))
+(defgeneric find-account (journal account-path &key create-if-not-exists-p))
 
 ;; Textual journal parser
 
@@ -79,10 +110,71 @@
 	    (cost-specifier (aref groups 5))
 	    (cost-expr (aref groups 6))
 	    (comment (aref groups 7)))
-	xact))))
+	(make-transaction :entry entry
+			  ;;:date
+			  ;;:effective-date
+			  :status
+			  :account
+			  :amount
+			  :note
+			  :tags
+			  :stream-position
+			  :virtual-p
+			  :must-balance-p)))))
 
 (defmethod add-transaction ((entry entry) (transaction transaction))
   )
+
+(defmethod add-transaction ((account account) (transaction transaction))
+  )
+
+(defmethod add-entry ((journal journal) (entry entry))
+  )
+
+(defmethod add-journal ((binder binder) (journal journal))
+  )
+
+(defun split-by-colon (string)
+  "Returns a list of substrings of string
+divided by ONE colon each.
+Note: Two consecutive colons will be seen as
+if there were an empty string between them."
+  (loop for i = 0 then (1+ j)
+     as j = (position #\: string :start i)
+     collect (subseq string i j)
+     while j))
+
+(defmethod find-child-account ((account account) (account-name string)
+			       &key (create-if-not-exists-p nil))
+  (let ((accounts-map (account-children account)))
+    (or (and accounts-map
+	     (gethash account-name accounts-map))
+	(when create-if-not-exists-p
+	  (unless accounts-map
+	    (setf (account-children account)
+		  (setq accounts-map (make-hash-table :test #'string=))))
+	  (setf (gethash account-name accounts-map)
+		(make-instance 'account :parent account
+			       :name account-name))))))
+
+(defmethod find-account ((binder binder) (account-path string)
+			 &key (create-if-not-exists-p nil))
+  (labels ((traverse-accounts (account path-elements)
+	     (let ((child-account
+		    (find-child-account account (car path-elements)
+					:create-if-not-exists-p
+					create-if-not-exists-p)))
+	       (if child-account
+		   (if path-elements
+		       (traverse-accounts child-account (cdr path-elements))
+		       child-account)))))
+    (traverse-accounts (binder-root-account binder)
+		       (split-by-colon account-path))))
+
+(defmethod find-account ((journal journal) (account-path string)
+			 &key (create-if-not-exists-p nil))
+  (find-account (journal-binder journal) account-path
+		:create-if-not-exists-p create-if-not-exists-p))
 
 (defun read-plain-entry (in)
   "Read in the header line for the entry, which has the syntax:
