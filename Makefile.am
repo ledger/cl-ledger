@@ -45,10 +45,10 @@ check: sbcl.ledger-core
 	     --eval "(quit)"
 
 server: sbcl.ledger-core
-	$(SBCL) --core sbcl.ledger-core --noinform --noprint --disable-debugger \
+	$(SBCL) --core sbcl.ledger-core --noinform --noprint \
 	     --eval "(compile-file \"src/cambl\" :print nil)" \
 	     --eval "(compile-file \"src/ledger\" :print nil)" \
-	     --eval "(compile-file \"src/ledger-server\" :print nil)" \
+	     --load "src/ledger-server" \
 	     --eval "(format t \"Ledger server started at http://localhost:4242/~%\")" \
 	     --eval "(hunchentoot:start-server :port 4242)"
 
