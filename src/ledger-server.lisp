@@ -2,6 +2,13 @@
 
 (declaim (optimize (safety 3) (debug 3)))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (require :cambl)
+  (require :ledger)
+  (require :cl-ppcre)
+  (require :hunchentoot)
+  (require :cl-who))
+
 (defpackage :ledger-server
   (:use :common-lisp :cambl :ledger :cl-ppcre :hunchentoot :cl-who))
 

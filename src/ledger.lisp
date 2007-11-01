@@ -2,6 +2,10 @@
 
 (declaim (optimize (safety 3) (debug 3)))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (require :cambl)
+  (require :cl-ppcre))
+
 (defpackage :ledger
   (:use :common-lisp :cambl :cl-ppcre)
   (:export binder

@@ -39,20 +39,16 @@ core: sbcl.ledger-core
 
 check: sbcl.ledger-core
 	$(SBCL) --core sbcl.ledger-core --noinform --noprint \
-	     --eval "(declaim (sb-ext:muffle-conditions style-warning))" \
-	     --eval "(declaim (sb-ext:muffle-conditions sb-ext:compiler-note))" \
 	     --eval "(format t \"Running CAMBL unit tests...~%\")" \
-	     --load src/cambl \
-	     --load test/cambl-test \
+	     --eval "(compile-file \"src/cambl\" :print nil)" \
+	     --eval "(compile-file \"test/cambl-test\" :print nil)" \
 	     --eval "(quit)"
 
 server: sbcl.ledger-core
 	$(SBCL) --core sbcl.ledger-core --noinform --noprint --disable-debugger \
-	     --eval "(declaim (sb-ext:muffle-conditions style-warning))" \
-	     --eval "(declaim (sb-ext:muffle-conditions sb-ext:compiler-note))" \
-	     --load src/cambl \
-	     --load src/ledger \
-	     --load src/ledger-server \
+	     --eval "(compile-file \"src/cambl\" :print nil)" \
+	     --eval "(compile-file \"src/ledger\" :print nil)" \
+	     --eval "(compile-file \"src/ledger-server\" :print nil)" \
 	     --eval "(format t \"Ledger server started at http://localhost:4242/~%\")" \
 	     --eval "(hunchentoot:start-server :port 4242)"
 

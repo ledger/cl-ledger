@@ -1,5 +1,9 @@
 ;; cambl-test.lisp
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (require :cambl)
+  (require :xlunit))
+
 (defpackage :cambl-test
   (:use :cl :cambl :xlunit)
   (:export :cambl-test-suite

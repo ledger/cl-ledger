@@ -242,6 +242,9 @@
 
 (declaim (optimize (debug 3) (safety 3) (speed 0) (space 0)))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (require :rbt-trees-struct))
+
 (defpackage :cambl
   (:use :cl :rbt)
   (:export *european-style*

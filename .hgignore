@@ -32,3 +32,4 @@
 ^sbcl\.ledger-core$
 ^\.svn$
 .*/\.svn$
+^doc/Structure \[backup]\.ooutline$
