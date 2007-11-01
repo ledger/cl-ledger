@@ -31,19 +31,19 @@
 
 (in-package :cl-user)
 
-(defpackage :cambl-asd
+(defpackage :ledger-asd
   (:use :cl :asdf))
 
-(in-package :cambl-asd)
+(in-package :ledger-asd)
 
-(defvar *cambl-version* "4.0.0-pre-0"
-  "A string denoting the current version of CAMBL.  Used
+(defvar *ledger-version* "4.0.0-pre-0"
+  "A string denoting the current version of LEDGER.  Used
 for diagnostic output.")
 
-(export '*cambl-version*)
+(export '*ledger-version*)
 
-(asdf:defsystem :cambl
+(asdf:defsystem :ledger
   :serial t
-  :version #.*cambl-version*
-  :depends-on (:rbt-trees-struct)
-  :components ((:file "src/cambl")))
+  :version #.*ledger-version*
+  :depends-on (:cambl)
+  :components ((:file "src/ledger")))

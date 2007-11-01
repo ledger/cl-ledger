@@ -21,6 +21,7 @@ nodist_info_TEXINFOS = doc/ledger.texi
 
 #ECL = $(ESC_builddir)/ecl-0.9i/build/bin/ecl
 ECL = ecl
+SBCL = sbcl
 
 .lisp.o:
 	$(ECL) -s -o $@ -compile $< 
@@ -31,13 +32,27 @@ ledger$(EXEEXT): $(ledger_OBJECTS) $(ledger_DEPENDENCIES)
                          (c:build-program (first args) :lisp-files (rest args)))" \
 	       -eval "(quit)" -- $@ $(ledger_OBJECTS)
 
-sbcl.prep-core: prepcore.lisp
-	sbcl --load prepcore.lisp
+sbcl.ledger-core: bootstrap.lisp
+	$(SBCL) --load bootstrap.lisp
 
-check: runpreptests.lisp src/cambl.lisp test/cambl-test.lisp sbcl.prep-core
-	sbcl --core sbcl.prep-core --load runpreptests.lisp
+core: sbcl.ledger-core
 
-DISTCLEANFILES = sbcl.prep-core
+check: sbcl.ledger-core
+	$(SBCL) --core sbcl.ledger-core \
+	     --load src/cambl \
+	     --load test/cambl-test \
+	     --load runpreptests
+
+server: sbcl.ledger-core
+	$(SBCL) --core sbcl.ledger-core \
+	     --load src/cambl \
+	     --load src/ledger \
+	     --load src/ledger-server \
+	     --eval "(progn \
+                       (format t \"Ledger server starting at http://localhost:4242/...~%\") \
+                       (hunchentoot:start-server :port 4242))"
+
+DISTCLEANFILES = sbcl.ledger-core
 
 ###############################################################################
 

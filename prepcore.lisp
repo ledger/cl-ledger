@@ -19,4 +19,17 @@
 (load-or-install :xlunit)
 (load-or-install :cl-ppcre)
 
+(load-or-install :md5)
+(load-or-install :cffi)
+(push "/usr/local/lib" cffi:*foreign-library-directories*)
+(load-or-install :trivial-gray-streams)
+(load-or-install :flexi-streams)
+(load-or-install :url-rewrite)
+(load-or-install :rfc2388)
+(load-or-install :cl-base64)
+(load-or-install :chunga)
+(push  :hunchentoot-no-ssl *features*)
+(load-or-install :hunchentoot)
+(load-or-install :cl-who)
+
 (sb-ext:save-lisp-and-die "sbcl.prep-core")

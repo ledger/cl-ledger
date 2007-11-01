@@ -24,13 +24,14 @@
 	   (:table
 	    :border 0 :cellpadding 5 :cellspacing 0
 	    (:tr
-	     (:td "Journal path:")
+	     (:td :style "text-align: right"
+		  (str "Journal path:"))
 	     (:td (:input
 		   :type :text
-		   :style "width: 40em"
+		   :style "width: 30em"
 		   :name "journal-path"
-		   :value (or journal-path
-			      "/home/johnw/Documents/ledger.dat")))))))
+		   :value (or journal-path "sample.dat")))
+	     (:td (:input :type :submit :value "Register"))))))
       (when journal-path
 	(let ((binder (binder journal-path)))
 	  (dolist (journal (binder-journals binder))

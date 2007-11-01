@@ -685,10 +685,9 @@
 		(pool *default-commodity-pool*))
   (declare (type string text))
   (with-input-from-string (in text)
-    (the amount
-      (read-amount in :observe-properties-p nil
-		   :reduce-to-smallest-units-p reduce-to-smallest-units-p
-		   :pool pool))))
+    (read-amount in :observe-properties-p nil
+		 :reduce-to-smallest-units-p reduce-to-smallest-units-p
+		 :pool pool)))
 
 (declaim (ftype function parse-amount))
 (setf (fdefinition 'parse-amount) (fdefinition 'amount))
@@ -885,8 +884,7 @@
 
 (defun float-to-amount (value)
   (declare (type float value))
-  (the amount
-    (parse-amount* (format nil "~F" value))))
+  (parse-amount* (format nil "~F" value)))
 
 (declaim (inline integer-to-amount))
 
@@ -1024,17 +1022,16 @@
 
 (defun amount-balance-equal (left right test-func)
   "Compare with the amount LEFT equals the balance RIGHT."
-  (the boolean
-    (let ((amounts-map (get-amounts-map right)))
-      (if (value-zerop* left)
-	  (or (null amounts-map)
-	      (cl:zerop (hash-table-count amounts-map)))
-	  (if (and amounts-map
-		   (= 1 (hash-table-count amounts-map)))
-	      (let ((amount-value (gethash (amount-commodity left)
-					   amounts-map)))
-		(if amount-value
-		    (funcall test-func amount-value left))))))))
+  (let ((amounts-map (get-amounts-map right)))
+    (if (value-zerop* left)
+	(or (null amounts-map)
+	    (cl:zerop (hash-table-count amounts-map)))
+	(if (and amounts-map
+		 (= 1 (hash-table-count amounts-map)))
+	    (let ((amount-value (gethash (amount-commodity left)
+					 amounts-map)))
+	      (if amount-value
+		  (funcall test-func amount-value left)))))))
 
 (defun balance-equal (left right test-func)
   (let ((left-amounts-map (get-amounts-map left))
@@ -1542,20 +1539,19 @@
       amount))
 
 (defmethod optimize-value ((balance balance))
-  (the (or balance amount integer)
-    (block nil
-      (let ((amounts-map (get-amounts-map balance)))
-	(if (or (null amounts-map)
-		(cl:zerop (hash-table-count amounts-map)))
-	    0
-	    (if (= 1 (hash-table-count amounts-map))
-		(prog1
-		    0
-		  (maphash #'(lambda (commodity amount)
-			       (declare (ignore commodity))
-			       (return (optimize-value amount)))
-			   amounts-map))
-		balance))))))
+  (block nil
+    (let ((amounts-map (get-amounts-map balance)))
+      (if (or (null amounts-map)
+	      (cl:zerop (hash-table-count amounts-map)))
+	  0
+	  (if (= 1 (hash-table-count amounts-map))
+	      (prog1
+		  0
+		(maphash #'(lambda (commodity amount)
+			     (declare (ignore commodity))
+			     (return (optimize-value amount)))
+			 amounts-map))
+	      balance)))))
 
 ;;;_  + Print and format AMOUNT and BALANCE
 
@@ -1653,14 +1649,13 @@
 (defun compare-amounts-visually (left right)
   (declare (type amount left))
   (declare (type amount right))
-  (the boolean
-    (let ((left-commodity (amount-commodity left))
-	  (right-commodity (amount-commodity right)))
-      (if (commodity-equalp left-commodity
-			    right-commodity)
-	  (value-lessp* left right)
-	  (commodity-lessp left-commodity
-			   right-commodity)))))
+  (let ((left-commodity (amount-commodity left))
+	(right-commodity (amount-commodity right)))
+    (if (commodity-equalp left-commodity
+			  right-commodity)
+	(value-lessp* left right)
+	(commodity-lessp left-commodity
+			 right-commodity))))
 
 (defmethod print-value ((balance balance) &key
 			(output-stream *standard-output*)
@@ -1885,8 +1880,7 @@
   (display-precision (get-referent-commodity annotated-commodity)))
 (defmethod display-precision ((amount amount))
   (declare (type amount amount))
-  (the fixnum
-    (commodity-precision (amount-commodity amount))))
+  (commodity-precision (amount-commodity amount)))
 
 ;;;_  + Commodity equality
 
@@ -2218,21 +2212,20 @@
   (declare (type boolean sale))
   (declare (type (or datetime null) moment))
   (declare (type (or string null) note))
-  (the (values amount (or amount null))
-    (let ((current-annotation (commodity-annotation
-			       (amount-commodity amount)))
-	  (per-share-price (divide price amount)))
-      (values
-       (if sale
-	   (and current-annotation
-		(subtract price
-			  (multiply (annotation-price current-annotation)
-				    amount)))
-	   (annotate-commodity
-	    amount
-	    (make-commodity-annotation :price per-share-price
-				       :date moment
-				       :tag note)))))))
+  (let ((current-annotation (commodity-annotation
+			     (amount-commodity amount)))
+	(per-share-price (divide price amount)))
+    (values
+     (if sale
+	 (and current-annotation
+	      (subtract price
+			(multiply (annotation-price current-annotation)
+				  amount)))
+	 (annotate-commodity
+	  amount
+	  (make-commodity-annotation :price per-share-price
+				     :date moment
+				     :tag note))))))
 
 (defun purchase-commodity (amount price &key (moment nil) (note nil))
   (exchange-commodity amount price :moment moment :note note))
@@ -2396,32 +2389,31 @@
   (declare (type boolean create-if-not-exists-p))
   (declare (type commodity-pool pool))
   (assert (not (commodity-annotation-empty-p details)))
-  (the (values (or annotated-commodity null) boolean)
-    (let ((commodity
-	   (if (typep name-or-commodity 'commodity)
-	       (progn
-		 (assert (not (commodity-annotated-p name-or-commodity)))
-		 name-or-commodity)
-	       (find-commodity name-or-commodity
-			       :create-if-not-exists-p create-if-not-exists-p
-			       :pool pool))))
-      (if commodity
-	  (let* ((annotated-name (make-qualified-name commodity details))
-		 (annotated-commodity
-		  (find-commodity annotated-name :pool pool)))
-	    (if annotated-commodity
-		(progn
-		  (assert (commodity-annotated-p annotated-commodity))
-		  (assert
-		   (commodity-annotation-equal
-		    details (commodity-annotation annotated-commodity)))
-		  (values annotated-commodity nil))
-		(if create-if-not-exists-p
-		    (values
-		     (create-annotated-commodity commodity details
-						 annotated-name)
-		     t))))
-	  (values nil nil)))))
+  (let ((commodity
+	 (if (typep name-or-commodity 'commodity)
+	     (progn
+	       (assert (not (commodity-annotated-p name-or-commodity)))
+	       name-or-commodity)
+	     (find-commodity name-or-commodity
+			     :create-if-not-exists-p create-if-not-exists-p
+			     :pool pool))))
+    (if commodity
+	(let* ((annotated-name (make-qualified-name commodity details))
+	       (annotated-commodity
+		(find-commodity annotated-name :pool pool)))
+	  (if annotated-commodity
+	      (progn
+		(assert (commodity-annotated-p annotated-commodity))
+		(assert
+		 (commodity-annotation-equal
+		  details (commodity-annotation annotated-commodity)))
+		(values annotated-commodity nil))
+	      (if create-if-not-exists-p
+		  (values
+		   (create-annotated-commodity commodity details
+					       annotated-name)
+		   t))))
+	(values nil nil))))
 
 ;;;_ * ANNOTATED-COMMODITY
 
@@ -2615,29 +2607,28 @@
   (declare (type boolean keep-date))
   (declare (type boolean keep-tag))
   (assert (commodity-annotated-p annotated-commodity))
-  (the (or annotated-commodity commodity)
-    (let* ((annotation (commodity-annotation annotated-commodity))
-	   (price (annotation-price annotation))
-	   (date (annotation-date annotation))
-	   (tag (annotation-tag annotation)))
-      (if (and (or keep-price (null price))
-	       (or keep-date (null date))
-	       (or keep-tag (null tag)))
-	  annotated-commodity
-	  (let ((tmp (make-instance 'annotated-commodity)))
-	    (setf (get-referent-commodity tmp)
-		  (get-referent-commodity annotated-commodity))
-	    (let ((new-ann (make-commodity-annotation)))
-	      (setf (get-annotation tmp) new-ann)
-	      (if keep-price
-		  (setf (annotation-price new-ann) price))
-	      (if keep-date
-		  (setf (annotation-date new-ann) date))
-	      (if keep-tag
-		  (setf (annotation-tag new-ann) tag)))
-	    (if (commodity-annotation-empty-p tmp)
-		(get-referent-commodity tmp)
-		tmp))))))
+  (let* ((annotation (commodity-annotation annotated-commodity))
+	 (price (annotation-price annotation))
+	 (date (annotation-date annotation))
+	 (tag (annotation-tag annotation)))
+    (if (and (or keep-price (null price))
+	     (or keep-date (null date))
+	     (or keep-tag (null tag)))
+	annotated-commodity
+	(let ((tmp (make-instance 'annotated-commodity)))
+	  (setf (get-referent-commodity tmp)
+		(get-referent-commodity annotated-commodity))
+	  (let ((new-ann (make-commodity-annotation)))
+	    (setf (get-annotation tmp) new-ann)
+	    (if keep-price
+		(setf (annotation-price new-ann) price))
+	    (if keep-date
+		(setf (annotation-date new-ann) date))
+	    (if keep-tag
+		(setf (annotation-tag new-ann) tag)))
+	  (if (commodity-annotation-empty-p tmp)
+	      (get-referent-commodity tmp)
+	      tmp)))))
 
 (defmethod strip-annotations ((amount amount)
 			      &key keep-price keep-date keep-tag)

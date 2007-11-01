@@ -1,0 +1,5 @@
+If you have SBCL installed, just type:
+
+  make server
+
+Then browse to the URL it tells you.

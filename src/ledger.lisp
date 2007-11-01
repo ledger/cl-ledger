@@ -58,7 +58,7 @@
 
 (defclass account ()
   ((parent         :accessor account-parent	   :initarg :parent
-		   :initform nil :type (or account null))
+		   :initform nil)
    (children       :accessor account-children	   :initarg :children
 		   :initform nil :type (or hash-table null))
    (name	   :accessor account-name	   :initarg :name
