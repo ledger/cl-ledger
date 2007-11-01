@@ -4,14 +4,24 @@
 
 (defpackage :ledger
   (:use :common-lisp :cambl :cl-ppcre)
-  (:export binder))
+  (:export binder
+	   binder-journals
+	   journal
+	   journal-entries
+	   entry
+	   entry-payee
+	   entry-transactions
+	   transaction
+	   xact-amount))
 
 (in-package :ledger)
 
 (deftype item-status ()
   '(member uncleared pending cleared))
 
-(defstruct (transaction (:print-function print-transaction))
+(defstruct (transaction
+	     (:conc-name xact-)
+	     (:print-function print-transaction))
   entry
   (date nil	       :type (or datetime null))
   (effective-date nil  :type (or datetime null))
@@ -133,7 +143,8 @@
 			  'uncleared))
 	   :account (find-account (entry-journal entry) account-name
 				  :create-if-not-exists-p t)
-	   :amount (cambl:amount amount-expr)
+	   :amount (and (string/= amount-expr "")
+			(cambl:amount amount-expr))
 	   :note note
 	   ;;:tags
 	   :stream-position beg-pos
@@ -249,8 +260,7 @@ if there were an empty string between them."
 	     for transaction = (read-transaction entry in)
 	     while transaction do
 	     (add-transaction entry transaction)
-	     (add-transaction (transaction-account transaction)
-			      transaction))
+	     (add-transaction (xact-account transaction) transaction))
 	  entry)))))
 
 (defun read-textual-journal (binder in)

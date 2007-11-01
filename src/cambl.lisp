@@ -563,9 +563,9 @@
 (defgeneric optimize-value (value))
 
 (defgeneric print-value (value &key output-stream omit-commodity-p
-			       full-precision-p width latter-width))
+			       full-precision-p width latter-width line-feed-string))
 (defgeneric format-value (value &key omit-commodity-p full-precision-p
-				width latter-width))
+				width latter-width line-feed-string))
 
 (defgeneric amount-in-balance (balance commodity))
 
@@ -1564,12 +1564,14 @@
 			(omit-commodity-p nil)
 			(full-precision-p nil)
 			(width nil)
-			latter-width)
+			latter-width
+			line-feed-string)
   (declare (type stream output-stream))
   (declare (type boolean omit-commodity-p))
   (declare (type boolean full-precision-p))
   (declare (type (or fixnum null) width))
   (declare (ignore latter-width))
+  (declare (ignore line-feed-string))
   ;; jww (2007-10-17): This should change from a simple boolean to registered
   ;; commodity to which values should be converted (possibly in both
   ;; directions)
@@ -1665,7 +1667,8 @@
 			(omit-commodity-p nil)
 			(full-precision-p nil)
 			(width 12)
-			(latter-width nil))
+			(latter-width nil)
+			(line-feed-string (format nil "~C" #\Newline)))
   "Printing methods.  A balance may be output to a stream using the `print'
    method.  There is also a global operator<< defined which simply calls print
    for a balance on the given stream.  There is one form of the print method,
@@ -1698,31 +1701,39 @@
 			   :omit-commodity-p omit-commodity-p
 			   :full-precision-p full-precision-p)
 	      (when (plusp amount-count)
-		(terpri output-stream)
+		(princ line-feed-string output-stream)
 		(setq first nil)))
 	  amounts))
   (values))
 
 (defmethod format-value ((amount amount) &key
-			 (omit-commodity-p nil) (full-precision-p nil)
-			 (width nil) (latter-width nil))
+			 (omit-commodity-p nil)
+			 (full-precision-p nil)
+			 (width nil)
+			 (latter-width nil)
+			 (line-feed-string nil))
+  (declare (ignore latter-width))
+  (declare (ignore line-feed-string))
   (with-output-to-string (out)
     (print-value amount :output-stream out
 		 :omit-commodity-p omit-commodity-p
 		 :full-precision-p full-precision-p
-		 :width width
-		 :latter-width latter-width)
+		 :width width)
     out))
 
 (defmethod format-value ((balance balance) &key
-			 (omit-commodity-p nil) (full-precision-p nil)
-			 (width nil) (latter-width nil))
+			 (omit-commodity-p nil)
+			 (full-precision-p nil)
+			 (width nil)
+			 (latter-width nil)
+			 (line-feed-string (format nil "~C" #\Newline)))
   (with-output-to-string (out)
     (print-value balance :output-stream out
 		 :omit-commodity-p omit-commodity-p
 		 :full-precision-p full-precision-p
 		 :width width
-		 :latter-width latter-width)
+		 :latter-width latter-width
+		 :line-feed-string line-feed-string)
     out))
 
 (defun quantity-string (amount)
