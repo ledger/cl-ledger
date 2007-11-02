@@ -15,29 +15,26 @@
                                 :default-request-type :post)
     ((journal-path :parameter-type 'string))
   (with-html
-    (:html
-     (:head (:title "Ledger Register"))
-     (:body
-      :style "margin: 50px"
-      (:p (:form
-	   :method :post
-	   (:table
-	    :border 0 :cellpadding 5 :cellspacing 0
-	    (:tr
-	     (:td :style "text-align: right"
-		  (str "Journal path:"))
-	     (:td (:input
-		   :type :text
-		   :style "width: 30em"
-		   :name "journal-path"
-		   :value (or journal-path "sample.dat")))
-	     (:td (:input :type :submit :value "Register"))))))
-      (when journal-path
-	(with-open-file (debug-stream #p"/tmp/debug" :direction :output)
+      (:html
+       (:head (:title "Ledger Register"))
+       (:body
+	:style "margin: 50px"
+	(:p (:form
+	     :method :post
+	     (:table
+	      :border 0 :cellpadding 5 :cellspacing 0
+	      (:tr
+	       (:td :style "text-align: right"
+		    (str "Journal path:"))
+	       (:td (:input
+		     :type :text
+		     :style "width: 30em"
+		     :name "journal-path"
+		     :value (or journal-path "sample.dat")))
+	       (:td (:input :type :submit :value "Register"))))))
+	(when journal-path
 	  (let ((binder (binder journal-path)))
-	    (format debug-stream "binder: ~S~%" binder)
 	    (dolist (journal (binder-journals binder))
-	      (format debug-stream "journal: ~S~%" journal)
 	      (htm
 	       (:p
 		(:table
@@ -48,9 +45,7 @@
 		 (let ((running-total (integer-to-amount 0))
 		       (zero-amount (integer-to-amount 0)))
 		   (dolist (entry (journal-entries journal))
-		     (format debug-stream "entry: ~S~%" entry)
 		     (dolist (xact (entry-transactions entry))
-		       (format debug-stream "xact: ~S~%" xact)
 		       (let ((amt (xact-amount xact)))
 			 (htm
 			  (:tr
@@ -72,7 +67,7 @@
 			   :style "text-align: right; padding-left: 2em;
                                  font-weight: bold"
 			   (print-value running-total
-					:line-feed-string "<br />")))))))))))))))))
+					:line-feed-string "<br />"))))))))))))))))
 
 (defun hello-world ()
   (with-html

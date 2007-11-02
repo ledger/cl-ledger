@@ -1629,7 +1629,7 @@
   (declare (type (cons (or commodity null) amount) right))
   (if (commodity-equal (car left) (car right))
       (value-lessp* (cdr left) (cdr right))
-      (commodity-lessp (car left) (cdr left))))
+      (commodity-lessp (car left) (car left))))
 
 (defmethod print-value ((balance balance) &key
 			(output-stream *standard-output*)
@@ -1659,10 +1659,11 @@
   (declare (type (or fixnum null) latter-width))
   (let* ((first t)
 	 (amounts
-	  (sort (get-amounts-map balance) #'compare-amounts-visually))
+	  (or (get-amounts-map balance)
+	      (sort (get-amounts-map balance) #'compare-amounts-visually)))
 	 (amount-count (length amounts)))
     (mapc #'(lambda (amount)
-	      (print-value amount
+	      (print-value (cdr amount)
 			   :width (if (or first (null latter-width))
 				      width latter-width)
 			   :output-stream output-stream
