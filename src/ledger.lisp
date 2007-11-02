@@ -2,10 +2,6 @@
 
 (declaim (optimize (safety 3) (debug 3)))
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (require :cambl)
-  (require :cl-ppcre))
-
 (defpackage :ledger
   (:use :common-lisp :cambl :cl-ppcre)
   (:export binder
@@ -31,7 +27,7 @@
   (effective-date nil  :type (or datetime null))
   (status 'uncleared   :type item-status)
   account
-  (amount nil	       :type amount)
+  (amount nil	       :type (or amount null))
   (note nil	       :type (or string null))
   (tags nil)
   (stream-position nil :type (or integer null))
@@ -112,8 +108,8 @@
   (cl-ppcre:create-scanner
    (format nil (concatenate 'string
 			    "^\\s+(?:(\\*|!)\\s*)?([\\[(])?(.+?)([\\])])?"
-			    "~A(?:(.+?)(?:(@@?)\\s*(.+?))?)~A$")
-	   *spacing-regexp* *comment-regexp*)))
+			    "(?:~A(?:([^; ~C].*?)(?:(@@?)\\s*(.+?))?))?~A?$")
+	   *spacing-regexp* #\Tab *comment-regexp*)))
 
 (defun read-transaction (entry in)
   (declare (type stream in))
@@ -133,7 +129,7 @@
 	    ;;(cost-specifier (aref groups 5))
 	    ;;(cost-expr (aref groups 6))
 	    (note (aref groups 7)))
-	(let ((virtual-p (and (string/= open-bracket "")
+	(let ((virtual-p (and open-bracket
 			      (string= open-bracket close-bracket))))
 	  (make-transaction
 	   :entry entry
@@ -147,14 +143,15 @@
 			  'uncleared))
 	   :account (find-account (entry-journal entry) account-name
 				  :create-if-not-exists-p t)
-	   :amount (and (string/= amount-expr "")
+	   :amount (and amount-expr
+			(not (string= amount-expr ""))
 			(cambl:amount amount-expr))
 	   :note note
 	   ;;:tags
 	   :stream-position beg-pos
 	   :virtual-p virtual-p
 	   :must-balance-p (and virtual-p
-				(zerop (string/= open-bracket "[")))))))))
+				(string= open-bracket "["))))))))
 
 (defmethod add-transaction ((entry entry) (transaction transaction))
   (pushend transaction (entry-transactions entry)))
@@ -289,6 +286,8 @@ if there were an empty string between them."
 		 (add-entry journal entry))
 	      (setq bolp t))
 	     (t
+	      (format t "Unhandled directive: ~C~%" c)
+	      (read-line in nil)
 	      (setq bolp nil))))
     journal))
 

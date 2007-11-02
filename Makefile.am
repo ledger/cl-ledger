@@ -40,14 +40,14 @@ core: sbcl.ledger-core
 check: sbcl.ledger-core
 	$(SBCL) --core sbcl.ledger-core --noinform --noprint \
 	     --eval "(format t \"Running CAMBL unit tests...~%\")" \
-	     --eval "(compile-file \"src/cambl\" :print nil)" \
-	     --eval "(compile-file \"test/cambl-test\" :print nil)" \
+	     --load "src/cambl" \
+	     --load "test/cambl-test" \
 	     --eval "(quit)"
 
 server: sbcl.ledger-core
 	$(SBCL) --core sbcl.ledger-core --noinform --noprint \
-	     --eval "(compile-file \"src/cambl\" :print nil)" \
-	     --eval "(compile-file \"src/ledger\" :print nil)" \
+	     --load "src/cambl" \
+	     --load "src/ledger" \
 	     --load "src/ledger-server" \
 	     --eval "(format t \"Ledger server started at http://localhost:4242/~%\")" \
 	     --eval "(hunchentoot:start-server :port 4242)"

@@ -242,9 +242,6 @@
 
 (declaim (optimize (debug 3) (safety 3) (speed 0) (space 0)))
 
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (require :rbt-trees-struct))
-
 (defpackage :cambl
   (:use :cl :rbt)
   (:export *european-style*
@@ -717,7 +714,8 @@
 	 (if (digit-char-p c)
 	     (progn
 	       (when last-special
-		 (write-char last-special buf)
+		 (if (char= last-special #\.)
+		     (write-char last-special buf))
 		 (setq last-special nil))
 	       (write-char c buf))
 	     (if (and (null last-special)
@@ -1639,7 +1637,7 @@
 		  commodity
 		  (commodity-annotated-p commodity))
 	     (format-commodity-annotation (commodity-annotation commodity)
-					  :buffer output-stream))))))
+					  :output-stream buffer))))))
   (values))
 
 (defun hash-table-values (hash)
@@ -1654,8 +1652,8 @@
   (declare (type amount right))
   (let ((left-commodity (amount-commodity left))
 	(right-commodity (amount-commodity right)))
-    (if (commodity-equalp left-commodity
-			  right-commodity)
+    (if (commodity-equal left-commodity
+			 right-commodity)
 	(value-lessp* left right)
 	(commodity-lessp left-commodity
 			 right-commodity))))
@@ -2429,7 +2427,8 @@
   (with-output-to-string (text)
     (loop
        for c = (read-char in nil)
-       while (or (and c (char= char c))
+       while (if c
+		 (char/= char c)
 		 (if error-message
 		     (error 'amount-error :msg error-message)))
        do (write-char c text))))
