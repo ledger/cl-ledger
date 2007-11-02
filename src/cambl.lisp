@@ -1870,10 +1870,9 @@
 	(if (slot-boundp commodity 'qualified-name)
 	    (commodity-qualified-name commodity)
 	    (let ((symbol (get-symbol (get-basic-commodity commodity))))
-	      (if symbol
-		  (progn
-		    (assert (not (commodity-symbol-needs-quoting-p symbol)))
-		    (commodity-symbol-name symbol))))))))
+	      (when symbol
+		(assert (not (commodity-symbol-needs-quoting-p symbol)))
+		(commodity-symbol-name symbol)))))))
 
 (defmethod display-precision ((commodity commodity))
   (get-display-precision (get-basic-commodity commodity)))
