@@ -400,9 +400,9 @@
 
 (defstruct commodity-pool
   (by-name-map (make-hash-table :test 'equal) :type hash-table)
-;;  (by-serial-list '() :type list)
-;;  (next-serial-list-index 0 :type integer)
-;;  (last-serial-list-cell nil :type (or cons null))
+  ;;  (by-serial-list '() :type list)
+  ;;  (next-serial-list-index 0 :type integer)
+  ;;  (last-serial-list-cell nil :type (or cons null))
   (default-commodity nil))
 
 (defparameter *default-commodity-pool* (make-commodity-pool))
@@ -418,8 +418,8 @@
 		    :type basic-commodity)
    (commodity-pool :accessor get-commodity-pool :initarg :commodity-pool
 		   :type commodity-pool)
-;;   (serial-number :accessor commodity-serial-number :initarg :serial-number
-;;		  :type fixnum)
+   ;;   (serial-number :accessor commodity-serial-number :initarg :serial-number
+   ;;		  :type fixnum)
    (qualified-name :accessor commodity-qualified-name :initarg :qualified-name
 		   :type (or string null))
    ;; This is set automatically by initialize-instance whenever an
@@ -510,12 +510,11 @@
 
 (defmethod print-object ((balance balance) stream)
   (print-unreadable-object (balance stream :type t)
-    (maphash #'(lambda (commodity amount)
-		 (declare (ignore commodity))
-		 (terpri stream)
-		 (princ "     " stream)
-		 (princ amount stream))
-	     (get-amounts-map balance))))
+    (mapc #'(lambda (entry)
+	      (terpri stream)
+	      (princ "     " stream)
+	      (princ (cdr entry) stream))
+	  (get-amounts-map balance))))
 
 ;;;_ + COST-BALANCE
 
@@ -934,11 +933,10 @@
 (defmethod value-zerop ((balance balance))
   (the boolean
     (block nil
-      (maphash #'(lambda (key value)
-		   (declare (ignore key))
-		   (unless (value-zerop value)
-		     (return nil)))
-	       (get-amounts-map balance))
+      (mapc #'(lambda (entry)
+		(unless (value-zerop (cdr entry))
+		  (return nil)))
+	    (get-amounts-map balance))
       t)))
 
 (defmethod value-zerop* ((amount amount))
@@ -946,11 +944,10 @@
 (defmethod value-zerop* ((balance balance))
   (the boolean
     (block nil
-      (maphash #'(lambda (key value)
-		   (declare (ignore key))
-		   (unless (value-zerop* value)
-		     (return nil)))
-	       (get-amounts-map balance))
+      (mapc #'(lambda (entry)
+		(unless (value-zerop* (cdr entry))
+		  (return nil)))
+	    (get-amounts-map balance))
       t)))
 
 (declaim (inline value-minusp value-minusp*))
@@ -1026,11 +1023,11 @@
   (let ((amounts-map (get-amounts-map right)))
     (if (value-zerop* left)
 	(or (null amounts-map)
-	    (cl:zerop (hash-table-count amounts-map)))
+	    (cl:zerop (length amounts-map)))
 	(if (and amounts-map
-		 (= 1 (hash-table-count amounts-map)))
-	    (let ((amount-value (gethash (amount-commodity left)
-					 amounts-map)))
+		 (= 1 (length amounts-map)))
+	    (let ((amount-value (cdr (assoc (amount-commodity left)
+					    amounts-map))))
 	      (if amount-value
 		  (funcall test-func amount-value left)))))))
 
@@ -1038,16 +1035,16 @@
   (let ((left-amounts-map (get-amounts-map left))
 	(right-amounts-map (get-amounts-map right)))
     (the boolean
-      (when (= (hash-table-count left-amounts-map)
-	       (hash-table-count right-amounts-map))
+      (when (= (length left-amounts-map)
+	       (length right-amounts-map))
 	(block nil
-	  (maphash
-	   #'(lambda (key value)
+	  (mapc
+	   #'(lambda (entry)
 	       (let ((right-value
-		      (gethash key right-amounts-map)))
+		      (cdr (assoc (car entry) right-amounts-map))))
 		 (unless right-value
 		   (return nil))
-		 (unless (funcall test-func value right-value)
+		 (unless (funcall test-func (cdr entry) right-value)
 		   (return nil))))
 	   left-amounts-map)
 	  t)))))
@@ -1159,11 +1156,9 @@
 
 (defmethod value-abs ((balance balance))
   (let ((value-balance (make-instance 'balance)))
-    (maphash #'(lambda (commodity amount)
-		 (declare (ignore commodity))
-		 (add* value-balance
-		       (value-abs amount)))
-	     (get-amounts-map balance))
+    (mapc #'(lambda (entry)
+	      (add* value-balance (value-abs (cdr entry))))
+	  (get-amounts-map balance))
     value-balance))
 
 (defmethod value-round ((amount amount) &optional precision)
@@ -1214,11 +1209,9 @@
 
 (defmethod negate* ((balance balance))
   (let ((value-balance (make-instance 'balance)))
-    (maphash #'(lambda (commodity amount)
-		 (declare (ignore commodity))
-		 (add* value-balance
-		       (negate amount)))
-	     (get-amounts-map balance))
+    (mapc #'(lambda (entry)
+	      (add* value-balance (negate (cdr entry))))
+	  (get-amounts-map balance))
     value-balance))
 
 ;;;_  + Binary math operators
@@ -1286,25 +1279,22 @@
   (add* (copy-balance left) right))
 (defmethod add* ((left balance) (right amount))
   (unless (value-zerop* right)
-    (unless (get-amounts-map left)
-      (setf (get-amounts-map left) (make-hash-table)))
     (let* ((amounts-map (get-amounts-map left))
-	   (current-amount (gethash (amount-commodity right)
-				    amounts-map)))
+	   (current-amount (cdr (assoc (amount-commodity right)
+				       amounts-map))))
       (if current-amount
 	  (add* current-amount right)	; modifies current-amount directly
-	  (setf (gethash (amount-commodity right) amounts-map)
-		right))))
+	  (push (cons (amount-commodity right) right)
+		(get-amounts-map left)))))
   left)
 
 
 (defmethod add ((left balance) (right balance))
   (add* (copy-balance left) right))
 (defmethod add* ((left balance) (right balance))
-  (maphash #'(lambda (commodity amount)
-	       (declare (ignore commodity))
-	       (add* left amount))
-	   (get-amounts-map right)))
+  (mapc #'(lambda (entry)
+	    (add* left (cdr entry)))
+	(get-amounts-map right)))
 
 ;;;_   : Subtraction
 
@@ -1358,25 +1348,22 @@
   (subtract* (copy-balance left) right))
 (defmethod subtract* ((left balance) (right amount))
   (unless (value-zerop* right)
-    (unless (get-amounts-map left)
-      (setf (get-amounts-map left) (make-hash-table)))
     (let* ((amounts-map (get-amounts-map left))
-	   (current-amount (gethash (amount-commodity right)
-				    amounts-map)))
+	   (current-amount (cdr (assoc (amount-commodity right)
+				       amounts-map))))
       (if current-amount
-	  (subtract* current-amount right)	; modifies current-amount directly
-	  (setf (gethash (amount-commodity right) amounts-map)
-		(negate right)))))
+	  (subtract* current-amount right) ; modifies current-amount directly
+	  (push (cons (amount-commodity right) (negate right))
+		(get-amounts-map left)))))
   left)
 
 
 (defmethod subtract ((left balance) (right balance))
   (subtract* (copy-balance left) right))
 (defmethod subtract* ((left balance) (right balance))
-  (maphash #'(lambda (commodity amount)
-	       (declare (ignore commodity))
-	       (subtract* left amount))
-	   (get-amounts-map right)))
+  (mapc #'(lambda (entry)
+	    (subtract* left (cdr entry)))
+	(get-amounts-map right)))
 
 ;;;_   : Multiplication
 
@@ -1441,10 +1428,9 @@
 	(t
 	 ;; Multiplying by an amount causes all the balance's amounts to be
 	 ;; multiplied by the same factor.
-	 (maphash #'(lambda (commodity amount)
-		      (declare (ignore commodity))
-		      (multiply* amount right))
-		  (get-amounts-map left))
+	 (mapc #'(lambda (entry)
+		   (multiply* (cdr entry) right))
+	       (get-amounts-map left))
 	 left)))
 
 (defmethod multiply ((left amount) (right balance))
@@ -1511,10 +1497,9 @@
 	(t
 	 ;; Multiplying by an amount causes all the balance's amounts to be
 	 ;; multiplied by the same factor.
-	 (maphash #'(lambda (commodity amount)
-		      (declare (ignore commodity))
-		      (divide* amount right))
-		  (get-amounts-map left))
+	 (mapc #'(lambda (entry)
+		   (divide* (cdr entry) right))
+	       (get-amounts-map left))
 	 left)))
 
 (defmethod divide ((left amount) (right balance))
@@ -1543,15 +1528,14 @@
   (block nil
     (let ((amounts-map (get-amounts-map balance)))
       (if (or (null amounts-map)
-	      (cl:zerop (hash-table-count amounts-map)))
+	      (cl:zerop (length amounts-map)))
 	  0
-	  (if (= 1 (hash-table-count amounts-map))
+	  (if (= 1 (length amounts-map))
 	      (prog1
 		  0
-		(maphash #'(lambda (commodity amount)
-			     (declare (ignore commodity))
-			     (return (optimize-value amount)))
-			 amounts-map))
+		(mapc #'(lambda (entry)
+			  (return (optimize-value (cdr entry))))
+		      amounts-map))
 	      balance)))))
 
 ;;;_  + Print and format AMOUNT and BALANCE
@@ -1640,23 +1624,12 @@
 					  :output-stream buffer))))))
   (values))
 
-(defun hash-table-values (hash)
-  (let (tmp)
-    (maphash #'(lambda (key value)
-		 (declare (ignore key))
-		 (push value tmp)) hash)
-    tmp))
-
 (defun compare-amounts-visually (left right)
-  (declare (type amount left))
-  (declare (type amount right))
-  (let ((left-commodity (amount-commodity left))
-	(right-commodity (amount-commodity right)))
-    (if (commodity-equal left-commodity
-			 right-commodity)
-	(value-lessp* left right)
-	(commodity-lessp left-commodity
-			 right-commodity))))
+  (declare (type (cons (or commodity null) amount) left))
+  (declare (type (cons (or commodity null) amount) right))
+  (if (commodity-equal (car left) (car right))
+      (value-lessp* (cdr left) (cdr right))
+      (commodity-lessp (car left) (cdr left))))
 
 (defmethod print-value ((balance balance) &key
 			(output-stream *standard-output*)
@@ -1686,8 +1659,7 @@
   (declare (type (or fixnum null) latter-width))
   (let* ((first t)
 	 (amounts
-	  (sort (hash-table-values (get-amounts-map balance))
-		#'compare-amounts-visually))
+	  (sort (get-amounts-map balance) #'compare-amounts-visually))
 	 (amount-count (length amounts)))
     (mapc #'(lambda (amount)
 	      (print-value amount
@@ -1739,15 +1711,15 @@
 ;;;_  + Find AMOUNT of COMMODITY in a BALANCE
 
 (defmethod amount-in-balance ((balance balance) (commodity commodity))
-  (or (gethash commodity (get-amounts-map balance))
+  (or (assoc commodity (get-amounts-map balance))
       (unless (and *keep-annotation-prices*
 		   *keep-annotation-dates*
 		   *keep-annotation-tags*)
-	(gethash commodity
-		 (strip-annotations (get-amounts-map balance)
-				    :keep-price *keep-annotation-prices*
-				    :keep-date  *keep-annotation-dates*
-				    :keep-tag   *keep-annotation-tags*)))))
+	(cdr (assoc commodity
+		    (strip-annotations (get-amounts-map balance)
+				       :keep-price *keep-annotation-prices*
+				       :keep-date  *keep-annotation-dates*
+				       :keep-tag   *keep-annotation-tags*))))))
 
 ;;;_ * COMMODITY
 
@@ -2087,11 +2059,9 @@
 
 (defmethod market-value ((balance balance) &optional datetime)
   (let ((value-balance (make-instance 'balance)))
-    (maphash #'(lambda (commodity amount)
-		 (declare (ignore commodity))
-		 (add* value-balance
-		       (market-value amount datetime)))
-	     (get-amounts-map balance))
+    (mapc #'(lambda (entry)
+	      (add* value-balance (market-value (cdr entry) datetime)))
+	  (get-amounts-map balance))
     value-balance))
 
 ;;;_ * AMOUNT and COMMODITY
@@ -2282,15 +2252,15 @@
 	  (setf (commodity-qualified-name commodity)
 		(concatenate 'string "\"" symbol-name "\"")))
       
-;;      (setf (commodity-pool-next-serial-list-index pool)
-;;	    (1+ (commodity-pool-next-serial-list-index pool)))
-;;
-;;      (setf (commodity-serial-number commodity)
-;;	    (commodity-pool-next-serial-list-index pool))
-;;
-;;      (pushend (cons (commodity-serial-number commodity) commodity)
-;;	       (commodity-pool-by-serial-list pool)
-;;	       (commodity-pool-last-serial-list-cell pool))
+      ;;      (setf (commodity-pool-next-serial-list-index pool)
+      ;;	    (1+ (commodity-pool-next-serial-list-index pool)))
+      ;;
+      ;;      (setf (commodity-serial-number commodity)
+      ;;	    (commodity-pool-next-serial-list-index pool))
+      ;;
+      ;;      (pushend (cons (commodity-serial-number commodity) commodity)
+      ;;	       (commodity-pool-by-serial-list pool)
+      ;;	       (commodity-pool-last-serial-list-cell pool))
 
       (let ((names-map (commodity-pool-by-name-map pool)))
 	(assert (not (gethash symbol-name names-map)))
@@ -2363,13 +2333,13 @@
 			  :qualified-name qualified-name))
 	  (pool (get-commodity-pool commodity)))
 
-;;      (let ((commodities-by-serial-list
-;;	     (commodity-pool-by-serial-list pool)))
-;;	(setf (commodity-serial-number commodity)
-;;	      (1+ (caar (last commodities-by-serial-list))))
-;;	(nconc commodities-by-serial-list
-;;	       (list (cons (commodity-serial-number commodity)
-;;			   annotated-commodity))))
+      ;;      (let ((commodities-by-serial-list
+      ;;	     (commodity-pool-by-serial-list pool)))
+      ;;	(setf (commodity-serial-number commodity)
+      ;;	      (1+ (caar (last commodities-by-serial-list))))
+      ;;	(nconc commodities-by-serial-list
+      ;;	       (list (cons (commodity-serial-number commodity)
+      ;;			   annotated-commodity))))
 
       (let ((names-map (commodity-pool-by-name-map pool)))
 	(assert (not (gethash qualified-name names-map)))
@@ -2661,14 +2631,13 @@
     (if (and keep-price keep-date keep-tag)
 	balance
 	(let ((stripped-balance (make-instance 'balance)))
-	  (maphash #'(lambda (commodity amount)
-		       (declare (ignore commodity))
-		       (add* stripped-balance
-			     (strip-annotations amount
-						:keep-price keep-price
-						:keep-date  keep-date
-						:keep-tag   keep-tag)))
-		   (get-amounts-map balance))
+	  (mapc #'(lambda (entry)
+		    (add* stripped-balance
+			  (strip-annotations (cdr entry)
+					     :keep-price keep-price
+					     :keep-date  keep-date
+					     :keep-tag   keep-tag)))
+		(get-amounts-map balance))
 	  stripped-balance))))
 
 ;; cambl.lisp ends here
