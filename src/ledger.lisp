@@ -32,7 +32,8 @@
   (tags nil)
   (stream-position nil :type (or integer null))
   (virtual-p nil       :type boolean)
-  (must-balance-p t    :type boolean))
+  (must-balance-p t    :type boolean)
+  data)
 
 (defun print-transaction (transaction stream depth)
   (declare (ignore depth))
@@ -54,7 +55,8 @@
    (comment	   :accessor entry-note		   :initarg :note
 		   :initform nil :type (or string null))
    (transactions   :accessor entry-transactions	   :initarg :transactions
-		   :initform nil)))
+		   :initform nil)
+   data))
 
 (defclass account ()
   ((parent         :accessor account-parent	   :initarg :parent
@@ -73,7 +75,8 @@
 		   :initform nil)
    (last-entry-cell :accessor journal-last-entry-cell :initform nil)
    (source-path	   :accessor journal-source-path   :initarg :source-path
-		   :type pathname)))
+		   :type pathname)
+   data))
 
 (defclass binder ()
   ((commodity-pool :accessor binder-commodity-pool :initarg :commodity-pool
@@ -81,7 +84,8 @@
    (root-account   :accessor binder-root-account   :initarg :root-account
 		   :initform (make-instance 'account :name "") :type account)
    (journals	   :accessor binder-journals	   :initarg :journals
-		   :initform nil)))
+		   :initform nil)
+   data))
 
 (defgeneric add-transaction (item transaction))
 (defgeneric add-entry (journal entry))
