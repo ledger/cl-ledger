@@ -1290,8 +1290,14 @@
 				       amounts-map))))
       (if current-amount
 	  (add* current-amount right)	; modifies current-amount directly
-	  (push (cons (amount-commodity right) right)
-		(get-amounts-map left)))))
+	  (progn
+	    (push (cons (amount-commodity right) right)
+		  (get-amounts-map left))
+	    ;; This is where the commodities need to get resorted, since we
+	    ;; just pushed a new one on
+	    (setf (get-amounts-map left)
+		  (sort (get-amounts-map left)
+			#'compare-amounts-visually))))))
   left)
 
 
@@ -1358,10 +1364,23 @@
 	   (current-amount (cdr (assoc (amount-commodity right)
 				       amounts-map))))
       (if current-amount
-	  (subtract* current-amount right) ; modifies current-amount directly
-	  (push (cons (amount-commodity right) (negate right))
-		(get-amounts-map left)))))
-  left)
+	  (progn
+	    ;; modify current-amount directly
+	    (subtract* current-amount right)
+	    ;; if the result is "true zero", drop this commodity from the
+	    ;; balance altogether
+	    (if (value-zerop* current-amount)
+		(setf (get-amounts-map left)
+		      (delete (amount-commodity right) amounts-map)))
+	    ;; if the amounts map is now only one element long, return just
+	    ;; the amount, since this isn't a balance anymore
+	    (if (cdr amounts-map)
+		left
+		current-amount))
+	  (progn
+	    (push (cons (amount-commodity right) (negate right))
+		  (get-amounts-map left))
+	    left)))))
 
 
 (defmethod subtract ((left balance) (right balance))
@@ -1664,9 +1683,7 @@
   (declare (type boolean full-precision-p))
   (declare (type (or fixnum null) latter-width))
   (let* ((first t)
-	 (amounts
-	  (or (get-amounts-map balance)
-	      (sort (get-amounts-map balance) #'compare-amounts-visually)))
+	 (amounts (get-amounts-map balance))
 	 (amount-count (length amounts)))
     (mapc #'(lambda (amount)
 	      (print-value (cdr amount)
