@@ -19,7 +19,7 @@
 	(dolist (xact (entry-transactions entry))
 	  (let ((amt (xact-amount xact)))
 	    (if amt
-		(setq running-total (add* running-total amt))
+		(setq running-total (add running-total amt))
 		(error "Running `calculate-running-totals' on non-normalized data"))
 	    (let ((total (assoc :running-total (xact-data xact))))
 	      (if total

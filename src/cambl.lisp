@@ -917,8 +917,14 @@
 (defmethod copy-value ((amount amount))
   (copy-amount amount))
 
+(declaim (inline copy-balance))
+
 (defun copy-balance (balance)
-  balance)
+  (let ((tmp (make-instance 'balance)))
+    (mapc #'(lambda (entry)
+	      (add* tmp (copy-amount (cdr entry))))
+	  (get-amounts-map balance))
+    tmp))
 
 (defmethod copy-value ((balance balance))
   (copy-balance balance))

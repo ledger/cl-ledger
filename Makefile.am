@@ -48,6 +48,8 @@ server: sbcl.ledger-core
 	$(SBCL) --core sbcl.ledger-core --noinform --noprint \
 	     --load "src/cambl" \
 	     --load "src/ledger" \
+	     --load "src/normalize" \
+	     --load "src/totals" \
 	     --load "src/ledger-server" \
 	     --eval "(format t \"Ledger server started at http://localhost:4242/~%\")" \
 	     --eval "(hunchentoot:start-server :port 4242)"

@@ -12,7 +12,8 @@
 	   entry-payee
 	   entry-transactions
 	   transaction
-	   xact-amount))
+	   xact-amount
+	   xact-data))
 
 (in-package :ledger)
 
