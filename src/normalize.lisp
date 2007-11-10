@@ -8,7 +8,7 @@
 
 (in-package :ledger)
 
-(defun normalize (binder)
+(defun normalize-binder (binder)
   (let ((zero-amount (integer-to-amount 0)))
     (dolist (journal (binder-journals binder))
       (dolist (entry (journal-entries journal))
@@ -18,4 +18,4 @@
 		(setf (xact-amount xact) zero-amount)))))))
   binder)
 
-(export 'normalize)
+(export 'normalize-binder)

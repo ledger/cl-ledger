@@ -12,7 +12,7 @@
 
 (in-package :ledger)
 
-(defun calculate-running-totals (binder)
+(defun calculate-totals (binder)
   (let ((running-total (integer-to-amount 0)))
     (dolist (journal (binder-journals binder))
       (dolist (entry (journal-entries journal))
@@ -28,4 +28,4 @@
 			(xact-data xact)))))))))
   binder)
 
-(export 'calculate-running-totals)
+(export 'calculate-totals)

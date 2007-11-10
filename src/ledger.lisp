@@ -1,6 +1,7 @@
 ;; ledger.lisp
 
-(declaim (optimize (safety 3) (debug 3)))
+;;(declaim (optimize (safety 3) (debug 3)))
+(declaim (optimize (debug 0) (safety 1) (speed 3) (space 1)))
 
 (defpackage :ledger
   (:use :common-lisp :cambl :cl-ppcre)
@@ -41,6 +42,11 @@
   (print-unreadable-object (transaction stream :type t)
     (format stream "")))
 
+(declaim (inline xact-value))
+
+(defun xact-value (key xact)
+  (cdr (assoc key (xact-data xact))))
+
 (defclass entry ()
   ((journal        :accessor entry-journal	   :initarg :journal)
    (date	   :accessor entry-date		   :initarg :date
@@ -65,6 +71,8 @@
    (children       :accessor account-children	   :initarg :children
 		   :initform nil :type (or hash-table null))
    (name	   :accessor account-name	   :initarg :name
+		   :type string)
+   (fullname	   :accessor account-fullname	   :initarg :fullname
 		   :type string)
    (transactions   :accessor account-transactions  :initarg :transactions
 		   :initform nil)
@@ -91,7 +99,6 @@
 (defgeneric add-transaction (item transaction))
 (defgeneric add-entry (journal entry))
 (defgeneric add-journal (binder journal))
-(defgeneric find-child-account (account account-name &key create-if-not-exists-p))
 (defgeneric find-account (item account-path &key create-if-not-exists-p))
 
 ;; Textual journal parser
@@ -182,8 +189,8 @@ if there were an empty string between them."
      collect (subseq string i j)
      while j))
 
-(defmethod find-child-account ((account account) (account-name string)
-			       &key (create-if-not-exists-p nil))
+(defun find-child-account (account account-name fullpath
+			   &key (create-if-not-exists-p nil))
   (the (or account null)
     (let ((accounts-map (account-children account)))
       (or (and accounts-map
@@ -194,22 +201,25 @@ if there were an empty string between them."
 		    (setq accounts-map (make-hash-table :test #'equal))))
 	    (setf (gethash account-name accounts-map)
 		  (make-instance 'account :parent account
-				 :name account-name)))))))
+				 :name account-name
+				 :fullname fullpath)))))))
 
 (defmethod find-account ((binder binder) (account-path string)
 			 &key (create-if-not-exists-p nil))
   (the (or account null)
-    (labels ((traverse-accounts (account path-elements)
+    (labels ((traverse-accounts (account path-elements fullpath)
 	       (let ((child-account
-		      (find-child-account account (car path-elements)
+		      (find-child-account account (car path-elements) fullpath
 					  :create-if-not-exists-p
 					  create-if-not-exists-p)))
 		 (if child-account
 		     (if (cdr path-elements)
-			 (traverse-accounts child-account (cdr path-elements))
+			 (traverse-accounts child-account (cdr path-elements)
+					    fullpath)
 			 child-account)))))
       (traverse-accounts (binder-root-account binder)
-			 (split-by-colon account-path)))))
+			 (split-by-colon account-path)
+			 account-path))))
 
 (defmethod find-account ((journal journal) (account-path string)
 			 &key (create-if-not-exists-p nil))
