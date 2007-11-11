@@ -1,6 +1,6 @@
 ;; ledger.lisp
 
-(declaim (optimize (safety 3) (debug 3) (speed 0) (space 0)))
+(declaim (optimize (safety 3) (debug 3) (speed 1) (space 0)))
 
 (defpackage :ledger
   (:use :common-lisp :cambl :cl-ppcre)

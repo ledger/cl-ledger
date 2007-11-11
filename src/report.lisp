@@ -1,6 +1,6 @@
 ;; register.lisp
 
-(declaim (optimize (safety 3) (debug 3) (speed 0) (space 0)))
+(declaim (optimize (safety 3) (debug 3) (speed 1) (space 0)))
 
 (in-package :ledger)
 
@@ -41,8 +41,13 @@
       binder)))
 
 (defun register (&rest args)
-  (let ((filter-keyword (or (member :account args)
-			    (member :payee args)))
+  (let ((filter-keyword
+	 (car (sort (list (member :account args)
+			  (member :payee args)
+			  (member :note args))
+		    #'(lambda (left right)
+			(> (length left)
+			   (length right))))))
 	dont-normalize)
     (when filter-keyword
       (rplacd filter-keyword

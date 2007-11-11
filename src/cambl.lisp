@@ -249,7 +249,7 @@
 
 ;;;_* Package
 
-(declaim (optimize (debug 3) (safety 3) (speed 0) (space 0)))
+(declaim (optimize (debug 3) (safety 3) (speed 1) (space 0)))
 
 (defpackage :cambl
   (:use :cl :rbt)
@@ -389,7 +389,7 @@
 ;;;_ - BASIC-COMMODITY
 
 (defstruct (basic-commodity (:conc-name get-))
-  (symbol nil :type commodity-symbol)
+  symbol
   (description nil :type (or string null))
   (comment nil :type (or string null))
   (smaller-unit-equivalence nil)	; (:type amount)
@@ -402,8 +402,8 @@
   (last-lookup nil :type (or datetime null)))
 
 (defstruct pricing-entry
-  (moment nil :type datetime)
-  (price nil))				; (:type amount)
+  moment
+  price)				; (:type amount)
 
 ;;;_ - COMMODITY-POOL
 
@@ -592,7 +592,7 @@
 
 (defgeneric commodity-annotated-p (item))
 (defgeneric commodity-annotation (item))
-(defgeneric commodity-annotation-equal (item item))
+(defgeneric commodity-annotation-equal (left-item right-item))
 (defgeneric annotate-commodity (item annotation))
 (defgeneric strip-annotations (any-item &key keep-price keep-date keep-tag))
 
@@ -619,28 +619,24 @@
 
 ;;;_* Constants
 
-(defmacro define-array-constant (name value &optional doc)
-  `(defconstant ,name (if (boundp ',name) (symbol-value ',name) ,value)
-     ,@(when doc (list doc))))
-
-(define-array-constant +invalid-symbol-chars+
-    #(#|        0   1   2   3   4   5   6   7   8   9   a   b   c   d   e   f |#
-      #| 00 |# nil nil nil nil nil nil nil nil nil  t   t  nil nil  t  nil nil
-      #| 10 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-      #| 20 |#  t   t   t  nil nil nil  t  nil  t   t   t   t   t   t   t   t 
-      #| 30 |#  t   t   t   t   t   t   t   t   t   t   t   t   t   t   t   t 
-      #| 40 |#  t  nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-      #| 50 |# nil nil nil nil nil nil nil nil nil nil nil  t  nil  t   t  nil
-      #| 60 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-      #| 70 |# nil nil nil nil nil nil nil nil nil nil nil  t  nil  t   t  nil
-      #| 80 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-      #| 90 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-      #| a0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-      #| b0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-      #| c0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-      #| d0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-      #| e0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
-      #| f0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil)
+(defparameter *invalid-symbol-chars*
+  #(#|        0   1   2   3   4   5   6   7   8   9   a   b   c   d   e   f |#
+    #| 00 |# nil nil nil nil nil nil nil nil nil  t   t  nil nil  t  nil nil
+    #| 10 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| 20 |#  t   t   t  nil nil nil  t  nil  t   t   t   t   t   t   t   t 
+    #| 30 |#  t   t   t   t   t   t   t   t   t   t   t   t   t   t   t   t 
+    #| 40 |#  t  nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| 50 |# nil nil nil nil nil nil nil nil nil nil nil  t  nil  t   t  nil
+    #| 60 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| 70 |# nil nil nil nil nil nil nil nil nil nil nil  t  nil  t   t  nil
+    #| 80 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| 90 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| a0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| b0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| c0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| d0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| e0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil
+    #| f0 |# nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil nil)
   "The invalid commodity symbol characters are:
      Space Tab Newline Return
      0-9 . , ; - + * / ^ ? : & | ! = \"
@@ -1801,7 +1797,7 @@
   (declare (type character c))
   (let ((code (char-code c)))
     (and (< code 256)
-	 (aref +invalid-symbol-chars+ code))))
+	 (aref *invalid-symbol-chars* code))))
 
 (declaim (inline symbol-name-needs-quoting-p))
 
@@ -1823,7 +1819,7 @@
   "Parse a commodity symbol from the input stream IN.
   This is the correct entry point for creating a new commodity symbol.
 
-  A commodity contain any character not found in `+invalid-symbol-chars+'.
+  A commodity contain any character not found in `*invalid-symbol-chars*'.
   To include such characters in a symbol name -- except for #\\\", which may
   never appear in a symbol name -- surround the commodity name with double
   quotes.  It is an error if EOF is reached without reading the ending double
@@ -2034,7 +2030,8 @@
 	(multiple-value-bind (new-root node-inserted-or-found item-already-in-p)
 	    (rbt:insert-item pricing-entry history :key 'pricing-entry-moment)
 	  (if item-already-in-p
-	      (setf (pricing-entry-price node-inserted-or-found) price))
+	      (setf (pricing-entry-price (rbt:node-item node-inserted-or-found))
+		    price))
 	  (setf (get-price-history base) new-root)))
       price)))
 
