@@ -29,3 +29,5 @@
   binder)
 
 (export 'calculate-totals)
+
+(provide 'totals)

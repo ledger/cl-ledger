@@ -25,4 +25,6 @@
 
 (export 'destructively-filter)
 
+(provide 'filter)
+
 ;; filter.lisp ends here

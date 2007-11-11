@@ -25,4 +25,6 @@
 
 (export 'register-report)
 
+(provide 'register)
+
 ;; register.lisp ends here

@@ -4,6 +4,11 @@
 
 (in-package :ledger)
 
+(require 'normalize)
+(require 'totals)
+(require 'filter)
+(require 'register)
+
 (defun report (&rest args)
   (let (binder-args keyword-args)
     (loop
@@ -22,27 +27,38 @@
 	 while keyword-args
 	 do
 	 (if (functionp (car keyword-args))
-	     (let ((function (car keyword-args))
-		   keywords)
-	       (setf keyword-args (cdr keyword-args))
-	       (loop
-		  while keyword-args
-		  until (functionp (car keyword-args))
-		  do
-		  (push (car keyword-args) keywords)
-		  (setf keyword-args (cdr keyword-args)))
-	       (setf binder (apply function
-				   (append (list binder) keywords))))
-	     (setf keyword-args (cdr keyword-args)))))))
+	     (setf binder
+		   (apply (car keyword-args)
+			  (append (list binder)
+				  (loop
+				     do (setf keyword-args (cdr keyword-args))
+				     while (and keyword-args
+						(not (functionp (car keyword-args))))
+				     collect (car keyword-args)))))
+	     (setf keyword-args (cdr keyword-args))))
+      binder)))
 
 (defun register (&rest args)
-  (apply #'report
-	 (append args
-		 (list #'normalize-binder
-		       #'calculate-totals
-		       #'register-report))))
+  (let ((filter-keyword (or (member :account args)
+			    (member :payee args)))
+	dont-normalize)
+    (when filter-keyword
+      (rplacd filter-keyword
+	      (append (list #'destructively-filter)
+		      (cons (car filter-keyword)
+			    (cdr filter-keyword))))
+      (rplaca filter-keyword #'normalize-binder)
+      (setf dont-normalize t))
+    (apply #'report
+	   (append args
+		   (unless dont-normalize
+		     (list #'normalize-binder))
+		   (list #'calculate-totals
+			 #'register-report)))))
 
 (export 'report)
 (export 'register)
+
+(provide 'report)
 
 ;; register.lisp ends here

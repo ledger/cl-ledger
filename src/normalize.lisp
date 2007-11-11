@@ -19,3 +19,5 @@
   binder)
 
 (export 'normalize-binder)
+
+(provide 'normalize)
