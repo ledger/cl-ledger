@@ -1,7 +1,6 @@
 ;; ledger.lisp
 
-;;(declaim (optimize (safety 3) (debug 3)))
-(declaim (optimize (debug 0) (safety 1) (speed 3) (space 1)))
+(declaim (optimize (safety 3) (debug 3) (speed 0) (space 0)))
 
 (defpackage :ledger
   (:use :common-lisp :cambl :cl-ppcre)
@@ -14,7 +13,10 @@
 	   entry-transactions
 	   transaction
 	   xact-amount
-	   xact-data))
+	   xact-data
+
+	   map-transactions
+	   do-transactions))
 
 (in-package :ledger)
 
@@ -93,6 +95,8 @@
    (root-account   :accessor binder-root-account   :initarg :root-account
 		   :initform (make-instance 'account :name "") :type account)
    (journals	   :accessor binder-journals	   :initarg :journals
+		   :initform nil)
+   (transactions   :accessor binder-transactions   :initarg :transactions
 		   :initform nil)
    data))
 
@@ -325,5 +329,26 @@ The result is of type JOURNAL."
 	    (t
 	     (error "unknown"))))
     binder))
+
+(defgeneric map-transactions (callable object))
+
+(defmethod map-transactions (callable (binder binder))
+  (let ((xacts (binder-transactions binder)))
+    (if xacts
+	(mapc callable xacts)
+	(dolist (journal (binder-journals binder))
+	  (dolist (entry (journal-entries journal))
+	    (mapc callable (entry-transactions entry)))))))
+
+(defmethod map-transactions (callable (account account))
+  (mapc callable (account-transactions account)))
+
+(defmethod map-transactions (callable (entry entry))
+  (mapc callable (entry-transactions entry)))
+
+(defmacro do-transactions ((var object &optional (result nil)) &body body)
+  `(block nil
+     (map-transactions #'(lambda (,var) ,@body) ,object)
+     ,result))
 
 ;; ledger.lisp ends here

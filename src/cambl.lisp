@@ -249,8 +249,7 @@
 
 ;;;_* Package
 
-;;(declaim (optimize (debug 3) (safety 3) (speed 0) (space 0)))
-(declaim (optimize (debug 0) (safety 1) (speed 3) (space 1)))
+(declaim (optimize (debug 3) (safety 3) (speed 0) (space 0)))
 
 (defpackage :cambl
   (:use :cl :rbt)
@@ -1012,10 +1011,9 @@
 
 (defun compare (left right)
   (verify-amounts left right "Comparing")
-  (the integer
-    (let ((left-rounded (value-round left))
-	  (right-rounded (value-round right)))
-      (compare* left-rounded right-rounded))))
+  (let ((left-rounded (value-round left))
+	(right-rounded (value-round right)))
+    (compare* left-rounded right-rounded)))
 
 (defun compare* (left right)
   (verify-amounts left right "Exactly comparing")
@@ -1913,9 +1911,7 @@
     (get-display-precision (get-basic-commodity
 			    (get-referent-commodity annotated-commodity)))))
 (defmethod display-precision ((amount amount))
-  (declare (type amount amount))
-  (the fixnum
-    (display-precision (amount-commodity amount))))
+  (display-precision (amount-commodity amount)))
 
 ;;;_  + Commodity equality
 
