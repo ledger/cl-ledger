@@ -9,33 +9,35 @@
 (require 'filter)
 (require 'register)
 
+(defmacro while (test-form &body body)
+  `(do () ((not ,test-form))
+     ,@body))
+
 (defun report (&rest args)
   (let (binder-args keyword-args)
-    (loop
-       for arg = args then (cdr arg)
-       for value = (car arg)
-       while arg
-       do (if (or (typep value 'binder)
-		  (typep value 'string)
-		  (typep value 'pathname))
-	      (push value binder-args)
-	      (progn
-		(setf keyword-args arg)
-		(return))))
+    (do* ((arg args (cdr arg))
+	  (value (car arg) (car arg)))
+	 ((null arg))
+      (if (or (typep value 'binder)
+	      (typep value 'string)
+	      (typep value 'pathname))
+	  (push value binder-args)
+	  (progn
+	    (setf keyword-args arg)
+	    (return))))
     (let ((binder (apply #'binder binder-args)))
-      (loop
-	 while keyword-args
-	 do
-	 (if (functionp (car keyword-args))
-	     (setf binder
-		   (apply (car keyword-args)
-			  (append (list binder)
-				  (loop
-				     do (setf keyword-args (cdr keyword-args))
-				     while (and keyword-args
-						(not (functionp (car keyword-args))))
-				     collect (car keyword-args)))))
-	     (setf keyword-args (cdr keyword-args))))
+      (while keyword-args
+	(if (functionp (car keyword-args))
+	    (setf binder
+		  (apply (car keyword-args)
+			 (append
+			  (list binder)
+			  (loop
+			     do (setf keyword-args (cdr keyword-args))
+			     while (and keyword-args
+					(not (functionp (car keyword-args))))
+			     collect (car keyword-args)))))
+	    (setf keyword-args (cdr keyword-args))))
       binder)))
 
 (defun register (&rest args)
