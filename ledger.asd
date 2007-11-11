@@ -46,4 +46,10 @@ for diagnostic output.")
   :serial t
   :version #.*ledger-version*
   :depends-on (:cambl)
-  :components ((:file "src/ledger")))
+  :components ((:file "src/ledger")
+	       (:file "src/normalize")
+	       (:file "src/totals")
+	       (:file "src/filter")
+	       (:file "src/register")
+	       (:file "src/report")
+	       (:file "src/valexpr")))

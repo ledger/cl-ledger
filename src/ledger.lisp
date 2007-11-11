@@ -351,4 +351,16 @@ The result is of type JOURNAL."
      (map-transactions #'(lambda (,var) ,@body) ,object)
      ,result))
 
+(defun xact-cleared-p (xact)
+  (declare (type transaction xact))
+  (eq (xact-status xact) 'cleared))
+
+(defun xact-pending-p (xact)
+  (declare (type transaction xact))
+  (eq (xact-status xact) 'pending))
+
+(defun xact-uncleared-p (xact)
+  (declare (type transaction xact))
+  (eq (xact-status xact) 'uncleared))
+
 ;; ledger.lisp ends here
