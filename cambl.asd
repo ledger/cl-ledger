@@ -45,5 +45,5 @@ for diagnostic output.")
 (asdf:defsystem :cambl
   :serial t
   :version #.*cambl-version*
-  :depends-on (:rbt-trees-struct)
+  :depends-on (:rbt-trees-struct :local-time)
   :components ((:file "src/cambl")))

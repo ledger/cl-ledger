@@ -29,9 +29,12 @@
 			     (payee nil)
 			     (note nil)
 			     (expr nil))
-  (let ((account-scanner (and account (cl-ppcre:create-scanner account)))
-	(payee-scanner (and payee (cl-ppcre:create-scanner payee)))
-	(note-scanner (and note (cl-ppcre:create-scanner note)))
+  (let ((account-scanner
+	 (and account (cl-ppcre:create-scanner account :case-insensitive-mode t)))
+	(payee-scanner
+	 (and payee (cl-ppcre:create-scanner payee :case-insensitive-mode t)))
+	(note-scanner
+	 (and note (cl-ppcre:create-scanner note :case-insensitive-mode t)))
 	(expr-closure (and expr (parse-value-expr expr))))
     (when (or account-scanner
 	      payee-scanner

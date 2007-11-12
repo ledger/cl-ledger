@@ -30,7 +30,7 @@
 	name
 	(cond
 	  ((eq elision-style 'leading)
-	   (concatenate 'string ".." (subseq name (- len width))))
+	   (concatenate 'string ".." (subseq name (- len (- width 2)))))
 
 	  ((eq elision-style 'middle)
 	   (concatenate 'string (subseq name 0 (1- (/ width 2))) ".."
@@ -68,20 +68,22 @@
 (defun register-report (binder &key (output-stream *standard-output*))
   (declare (type binder binder))
   (declare (type stream output-stream))
-  (do-transactions (xact binder)
-    (format output-stream "~10A ~20A ~22A ~A ~A~%"
-	    "DATE"
-	    (abbreviate-string (entry-payee (xact-entry xact)) 20)
-	    (abbreviate-string (account-fullname (xact-account xact)) 22
-			       :account-p t)
-	    (format-value (xact-amount xact)
-			  :width 12 :latter-width 67)
-	    (let ((running-total (xact-value :running-total xact)))
-	      (if running-total
-		  (format-value running-total
-				:width 12 :latter-width 80)
-		  ""))))
-  (values))
+  (let ((count 0))
+   (do-transactions (xact binder)
+     (format output-stream "~10A ~20A ~22A ~A ~A~%"
+	     "DATE"
+	     (abbreviate-string (entry-payee (xact-entry xact)) 20)
+	     (abbreviate-string (account-fullname (xact-account xact)) 22
+				:account-p t)
+	     (format-value (xact-amount xact)
+			   :width 12 :latter-width 67)
+	     (let ((running-total (xact-value :running-total xact)))
+	       (if running-total
+		   (format-value running-total
+				 :width 12 :latter-width 80)
+		   "")))
+     (incf count))
+   count))
 
 (export 'register-report)
 

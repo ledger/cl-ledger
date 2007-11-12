@@ -56,6 +56,22 @@
 	      (digit-char-p c))
 	  (cambl:integer-to-amount (read in)))
 
+	 ((char= c #\/)
+	  (read-char in)
+	  `(let ((match
+		  (cl-ppcre:scan
+		   ,(cl-ppcre:create-scanner
+		     (cambl::read-until in #\/
+					"Regular expression lacks closing slash")
+		     :case-insensitive-mode t)
+		   (account-fullname (xact-account xact)))))
+	     ;; If just `match' were used here, the result might be 0 if the
+	     ;; match occurred at the beginning of the string -- which
+	     ;; `value-truth' (applied to the result in filter.lisp) would
+	     ;; interpret as FALSE.  By returning T or NIL here, `value-truth'
+	     ;; will always do the right thing.
+	     (not (null match))))
+
 	 ((char= c #\()
 	  (read-char in)
 	  (read-value-expr in :nested-p t))
@@ -127,7 +143,7 @@
 		  ((member symbol '(|U| |abs|) :test #'eq)
 		   'value-abs)
 		  ((eq symbol '|round|)
-		   #'value-round)
+		   'value-round)
 		  ((member symbol '(|S| |quant| |quantity|) :test #'eq)
 		   '(amount-quantity (xact-amount xact)))
 		  ((member symbol '(|comm| |commodity|) :test #'eq)
@@ -159,7 +175,22 @@
 		sexp))))))))
 
 (defun read-unary-expr (in)
-  (read-value-term in))
+  (let ((c (peek-char t in nil)))
+    (when c
+      (cond
+	((char= c #\!)
+	 (read-char in)
+	 (list 'not
+	       (list 'value-truth
+		     (or (read-value-term in)
+			 (error "'!' operator not followed by argument")))))
+	((char= c #\-)
+	 (read-char in)
+	 (list 'negate
+	       (or (read-value-term in)
+		   (error "'-' unary operator not followed by argument"))))
+	(t
+	 (read-value-term in))))))
 
 (defun read-mul-expr (in)
   (let ((sexp (read-unary-expr in)))
@@ -301,10 +332,10 @@
     sexp))
 
 (defun read-value-expr (in &key
-			 (observe-properties-p nil)
-			 (reduce-to-smallest-units-p nil)
-			 (pool *default-commodity-pool*)
-			 (nested-p nil))
+			(observe-properties-p nil)
+			(reduce-to-smallest-units-p nil)
+			(pool *default-commodity-pool*)
+			(nested-p nil))
   (let ((*value-expr-observe-properties-p*
 	 (if nested-p
 	     *value-expr-observe-properties-p*

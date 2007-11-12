@@ -15,6 +15,8 @@
 	   xact-amount
 	   xact-data
 
+	   *default-account*
+
 	   map-transactions
 	   do-transactions))
 
@@ -22,6 +24,13 @@
 
 (deftype item-status ()
   '(member uncleared pending cleared))
+
+(defstruct (item-position)
+  begin-position
+  end-position
+  begin-line
+  end-line
+  source-pathname)
 
 (defstruct (transaction
 	     (:conc-name xact-)
@@ -37,6 +46,7 @@
   (stream-position nil :type (or integer null))
   (virtual-p nil       :type boolean)
   (must-balance-p t    :type boolean)
+  position
   data)
 
 (defun print-transaction (transaction stream depth)
@@ -60,12 +70,21 @@
    (entry-code	   :accessor entry-code		   :initarg :code
 		   :initform nil :type (or string null))
    (payee	   :accessor entry-payee	   :initarg :payee
-		   :type string)
+		   :initform nil :type (or string null))
    (comment	   :accessor entry-note		   :initarg :note
 		   :initform nil :type (or string null))
    (transactions   :accessor entry-transactions	   :initarg :transactions
 		   :initform nil)
+   position
    data))
+
+(defclass periodic-entry (entry)
+  ((period         :accessor entry-period	   :initarg :period
+		   :initform nil)))
+
+(defclass automated-entry (entry)
+  ((predicate      :accessor entry-predicate	   :initarg :predicate
+		   :type function)))
 
 (defclass account ()
   ((parent         :accessor account-parent	   :initarg :parent
@@ -106,6 +125,8 @@
 (defgeneric find-account (item account-path &key create-if-not-exists-p))
 
 ;; Textual journal parser
+
+(defvar *default-account* nil)
 
 (defvar *date-regexp* "[0-9]{4}[-./][0-9]{2}[-./][0-9]{2}")
 
@@ -288,6 +309,36 @@ if there were an empty string between them."
 	     (add-transaction (xact-account transaction) transaction))
 	  entry)))))
 
+(defun read-periodic-entry (journal in)
+  (declare (type journal journal))
+  (declare (type stream in))
+  ;;(format t "read-plain-entry~%")
+  (let ((period-string (read-line in nil)))
+    (let ((entry
+	   (make-instance 'periodic-entry
+			  :journal journal
+			  :period period-string))) ; jww (2007-11-12): NYI
+      (loop
+	 for transaction = (read-transaction entry in)
+	 while transaction do
+	 (add-transaction entry transaction)
+	 (add-transaction (xact-account transaction) transaction))
+      entry)))
+
+(defun read-automated-entry (journal in)
+  (declare (type journal journal))
+  (declare (type stream in))
+  (let ((entry
+	 (make-instance 'automated-entry
+			:journal journal
+			:predicate (parse-value-expr (read-line in)))))
+    (loop
+       for transaction = (read-transaction entry in)
+       while transaction do
+       (add-transaction entry transaction)
+       (add-transaction (xact-account transaction) transaction))
+    entry))
+
 (defun read-textual-journal (binder in)
   (declare (type stream in))
   (let ((bolp t)
@@ -302,15 +353,33 @@ if there were an empty string between them."
 	     ((or (char-equal c #\Newline)
 		  (char-equal c #\Return))
 	      (setf bolp t))
+	     ((and bolp (char= c #\A))
+	      (peek-char t in)
+	      (setf *default-account*
+		    (find-account binder (read-line in)
+				  :create-if-not-exists-p t)))
+	     ((and bolp (char= c #\D))
+	      (peek-char t in)
+	      (cambl:read-amount in))
+	     ((and bolp (char= c #\N))
+	      (peek-char t in)
+	      (let ((commodity
+		     (cambl:find-commodity (read-line in)
+					   :create-if-not-exists-p t)))
+		(setf (cambl::get-no-market-price-p
+		       (cambl::commodity-base commodity)) t)))
+	     ((and bolp (char= c #\~))
+	      (add-entry journal (read-periodic-entry journal in))
+	      (setf bolp t))
+	     ((and bolp (char= c #\=))
+	      (add-entry journal (read-automated-entry journal in))
+	      (setf bolp t))
 	     ((and bolp (digit-char-p c))
 	      (unread-char c in)
-	      (loop
-		 for entry = (read-plain-entry journal in)
-		 while entry do
-		 (add-entry journal entry))
+	      (add-entry journal (read-plain-entry journal in))
 	      (setf bolp t))
 	     (t
-	      (format t "Unhandled directive: ~C~%" c)
+	      (format t "Unhandled directive (pos ~D): ~C~%" (file-position in) c)
 	      (read-line in nil)
 	      (setf bolp nil))))
     journal))
