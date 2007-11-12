@@ -254,8 +254,12 @@
 (defpackage :cambl
   (:use :cl :rbt)
   (:export *european-style*
-	   datetime
 	   pushend
+
+	   datetime
+	   *input-time-format*
+	   *output-time-format*
+	   parse-datetime
 
 	   amount
 	   amount*
@@ -652,6 +656,9 @@
   The default is US style, which is 1,000.00.  Note that thousand markers are
   only used if the commodity's own `thousand-marks-p' accessor returns T.")
 
+(defvar *input-time-format* "%Y/%m/%d%| %H:%M:%S")
+(defvar *output-time-format* *input-time-format*)
+
 (defvar *extra-precision* 6
   "Specify the amount of \"extra\" to be added during amount division.")
 
@@ -668,6 +675,179 @@
 ;;  parse_conversion("1.0h", "60m");
 
 ;;;_* Functions
+
+;;;_ * DATETIME
+
+(defun read-integer (in &optional length skip-whitespace-p)
+  (parse-integer
+   (with-output-to-string (out)
+     (loop
+	for c = (peek-char nil in nil)
+	while (and c (or (digit-char-p c)
+			 (and skip-whitespace-p
+			      (char= c #\Space)))
+		   (or (null length)
+		       (>= (decf length) 0)))
+	do (write-char (read-char in) out)))))
+
+(defun read-datetime (in str)
+  (let ((year (nth-value 5 (get-decoded-time)))
+	(month 1) (day 1) (hour 0) (minute 0) (second 0))
+    (loop
+       for c = (read-char in nil)
+       while c
+       for next = (peek-char nil str)
+       do
+       (if (char= c #\%) ; specifier
+	   (progn
+	     (setf c (read-char in))
+	     (cond
+	       ((char= c #\%)
+		(if (char= c next)
+		    (read-char str)
+		    (error "Expected '%', got '~C'" next)))
+
+	       ((char= c #\A))		; full weekday name
+	       ((char= c #\a))		; abbreviated weekday name
+
+	       ((char= c #\B))		; full month name
+	       ((or (char= c #\b)	; abbreviated month name
+		    (char= c #\h)))	; same as %b
+
+	       ((char= c #\C) ; century, zero prefix
+		(setf year (* 100 (read-integer str 2))))
+
+	       ;;((char= c #\c))	; national representation of date/time
+
+	       ((char= c #\D) ; equiv: %m/%d/%y
+		(let ((date (read-datetime (make-string-input-stream "%m/%d/%y")
+					   str)))
+		  (setf year (nth 5 date)
+			month (nth 4 date)
+			day (nth 3 date))))
+
+	       ((char= c #\d)
+		(setf day (read-integer str 2))
+		;; jww (2007-11-12): Check valid
+		)
+
+	       ;;((char= c #\E))	; POSIX locale extensions
+	       ;;((char= c #\O))
+
+	       ((char= c #\e) ; day of month, space prefix
+		(setf day (read-integer str 2 t)))
+
+	       ((char= c #\F) ; equiv: %Y-%m-%d
+		(let ((date (read-datetime (make-string-input-stream "%Y-%m-%d")
+					   str)))
+		  (setf year (nth 5 date)
+			month (nth 4 date)
+			day (nth 3 date))))
+
+	       ((char= c #\G)) ; year as a decimal number with century
+	       ((char= c #\g)) ; same as %G, without century
+
+	       ((or (char= c #\H)
+		    (char= c #\I)) ; hour on the 12-hour clock
+		(setf hour (read-integer str 2))
+		(if (> hour 59)
+		    (error "Hours exceed maximum range: ~D" hour)))
+
+	       ((or (char= c #\k)	; hour, space prefix
+		    (char= c #\l))	; 12-hour hour, space prefix
+		(setf hour (read-integer str 2 t)))
+
+	       ((char= c #\j)) ; day of the year as a decimal
+
+	       ((char= c #\M)
+		(setf minute (read-integer str 2))
+		(if (> minute 59)
+		    (error "Minutes exceed maximum range: ~D" minute)))
+
+	       ((char= c #\m)
+		(setf month (read-integer str 2))
+		;; jww (2007-11-12): Check validity
+		(if (or (< month 1)
+			(> month 12))
+		    (error "Month exceeds possible range: ~D" month)))
+
+	       ((char= c #\p)) ; national AM/PM, as appropriate
+
+	       ((char= c #\R) ; equiv: %H:%M
+		(let ((date (read-datetime (make-string-input-stream "%H:%M")
+					   str)))
+		  (setf hour (nth 2 date)
+			minute (nth 1 date))))
+
+	       ((char= c #\r) ; equiv: %I:%M:%S %p
+		(let ((date (read-datetime (make-string-input-stream "%I:%M:%S %p")
+					   str)))
+		  (setf hour (nth 2 date)
+			minute (nth 1 date)
+			second (nth 0 date))))
+
+	       ((char= c #\S)
+		(setf second (read-integer str 2))
+		(if (> second 59)
+		    (error "Seconds exceed maximum range: ~D" second)))
+
+	       ((char= c #\s)) ; seconds since Epoch, UTC (unix time)
+
+	       ((char= c #\T) ; equiv: %H:%M:%S
+		(let ((date (read-datetime (make-string-input-stream "%H:%M:%S")
+					   str)))
+		  (setf hour (nth 2 date)
+			minute (nth 1 date)
+			second (nth 0 date))))
+
+	       ((char= c #\t) ; tab
+		(unless (char= #\Tab (read-char str))
+		  (error "Expected a tab character, got '~C'" next)))
+
+	       ((char= c #\U))		; week number of the year (Sun) 00-53
+	       ((char= c #\u))		; weekday as a decimal (Mon) 1-7
+	       ((char= c #\V))		; week of the year 1-53 (*)
+
+	       ((char= c #\v) ; equiv: %e-%b-%Y
+		(let ((date (read-datetime (make-string-input-stream "%e-%b-%Y")
+					   str)))
+		  (setf year (nth 5 date)
+			month (nth 4 date)
+			day (nth 3 date))))
+
+	       ((char= c #\W))		; week number of the year (Mon) 00-53
+	       ((char= c #\w))		; weekday as a decimal (Sun) 0-6
+	       ;;((char= c #\X))	; national representation of the time
+	       ;;((char= c #\x))	; national representation of the date
+
+	       ((char= c #\Y)
+		(setf year (read-integer str 4)))
+
+	       ((char= c #\y)
+		(setf year (read-integer str 2))
+		(if (< year 70)
+		    (incf year 2000)
+		    (incf year 1900)))
+
+	       ((char= c #\Z))		; time zone name
+	       ((char= c #\z))		; time zone offset from UTC
+	       ;;((char= c #\+))	; national representation of date/time
+
+	       ((char= c #\|) ; abort if string is ended
+		(if (null next)
+		    (return)))))
+
+	   (if (char= c next)
+	       (read-char str)
+	       (error "Expected '~C', got '~C'" c next))))
+    (list second minute hour day month year)))
+
+(declaim (inline parse-datetime))
+
+(defun parse-datetime (format string)
+  (with-input-from-string (in format)
+    (with-input-from-string (str string)
+      (read-datetime in str))))
 
 ;;;_ * BASIC-COMMODITY
 
@@ -2533,9 +2713,7 @@
 	  (read-char in)
 	  (let* ((date-string
 		  (read-until in #\] "Commodity date lacks closing bracket"))
-		 (tmp-date (or (get-universal-time)
-			       ;;(parse-datetime date-string)
-			       )))
+		 (tmp-date (parse-datetime *input-time-format* date-string)))
 	    (setf (annotation-date annotation) tmp-date)))
 
 	 ((char= c #\()
