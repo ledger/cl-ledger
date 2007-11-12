@@ -734,7 +734,8 @@
 	 (if (digit-char-p c)
 	     (progn
 	       (when last-special
-		 (if (char= last-special #\.)
+		 (if (or (char= last-special #\.)
+			 (char= last-special #\,))
 		     (write-char last-special buf))
 		 (setq last-special nil))
 	       (write-char c buf))
@@ -1462,7 +1463,6 @@
   (setf (amount-precision left)
 	(+ (amount-precision left)
 	   (amount-precision right)))
-
   (set-amount-commodity-and-round* left right))
 
 (defmethod multiply ((left balance) (right amount))

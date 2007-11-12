@@ -14,8 +14,12 @@
       (dolist (entry (journal-entries journal))
 	(dolist (xact (entry-transactions entry))
 	  (let ((amt (xact-amount xact)))
-	    (if (null amt)
-		(setf (xact-amount xact) zero-amount)))))))
+	    (cond
+	      ((null amt)
+	       (setf (xact-amount xact) zero-amount))
+	      ((listp amt)
+	       (setf (xact-amount xact)
+		     (eval (xact-amount xact))))))))))
   binder)
 
 (export 'normalize-binder)

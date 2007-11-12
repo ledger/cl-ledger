@@ -31,7 +31,7 @@
   (effective-date nil  :type (or datetime null))
   (status 'uncleared   :type item-status)
   account
-  (amount nil	       :type (or amount null))
+  (amount nil	       :type (or amount list null))
   (note nil	       :type (or string null))
   (tags nil)
   (stream-position nil :type (or integer null))
@@ -144,7 +144,14 @@
 	    (amount-expr (aref groups 4))
 	    ;;(cost-specifier (aref groups 5))
 	    ;;(cost-expr (aref groups 6))
-	    (note (aref groups 7)))
+	    (note (aref groups 7))
+	    amount)
+	(when (and amount-expr (string/= amount-expr ""))
+	  (with-input-from-string (in amount-expr)
+	    (setq amount (cambl:read-amount in))
+	    (when (peek-char t in nil)
+	      (file-position in 0)
+	      (setq amount (read-value-expr in)))))
 	(let ((virtual-p (and open-bracket
 			      (string= open-bracket close-bracket))))
 	  (make-transaction
@@ -159,9 +166,7 @@
 			  'uncleared))
 	   :account (find-account (entry-journal entry) account-name
 				  :create-if-not-exists-p t)
-	   :amount (and amount-expr
-			(not (string= amount-expr ""))
-			(cambl:amount amount-expr))
+	   :amount amount
 	   :note note
 	   ;;:tags
 	   :stream-position beg-pos
