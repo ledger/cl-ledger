@@ -188,13 +188,13 @@
 (defmethod add-journal ((binder binder) (journal journal))
   (pushend journal (binder-journals binder)))
 
-(defun split-by-colon (string)
+(defun split-string-at-char (string char)
   "Returns a list of substrings of string
 divided by ONE colon each.
 Note: Two consecutive colons will be seen as
 if there were an empty string between them."
   (loop for i = 0 then (1+ j)
-     as j = (position #\: string :start i)
+     as j = (position char string :start i)
      collect (subseq string i j)
      while j))
 
@@ -227,7 +227,7 @@ if there were an empty string between them."
 					    fullpath)
 			 child-account)))))
       (traverse-accounts (binder-root-account binder)
-			 (split-by-colon account-path)
+			 (split-string-at-char account-path #\:)
 			 account-path))))
 
 (defmethod find-account ((journal journal) (account-path string)

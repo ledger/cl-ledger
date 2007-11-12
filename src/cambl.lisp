@@ -2496,7 +2496,7 @@
     (loop
        for c = (peek-char t in nil) while c do
        (cond
-	 ((char= #\{ c)
+	 ((char= c #\{)
 	  (if (annotation-price annotation)
 	      (error 'amount-error :msg
 		     "Commodity annotation specifies more than one price"))
@@ -2522,7 +2522,7 @@
 
 	    (setf (annotation-price annotation) tmp-amount)))
 
-	 ((char= #\[ c)
+	 ((char= c #\[)
 	  (if (annotation-date annotation)
 	      (error 'amount-error :msg
 		     "Commodity annotation specifies more than one date"))
@@ -2531,13 +2531,14 @@
 	  ;; Date/Time library for Common Lisp.
 
 	  (read-char in)
-	  ;;(let* ((date-string
-	  ;;	    (read-until in #\] "Commodity date lacks closing bracket"))
-	  ;;	   (tmp-date (parse-datetime date-string)))
-	  ;;  (setf (annotation-date annotation) tmp-date))
-	  )
+	  (let* ((date-string
+		  (read-until in #\] "Commodity date lacks closing bracket"))
+		 (tmp-date (or (get-universal-time)
+			       ;;(parse-datetime date-string)
+			       )))
+	    (setf (annotation-date annotation) tmp-date)))
 
-	 ((char= #\( c)
+	 ((char= c #\()
 	  (if (annotation-tag annotation)
 	      (error 'amount-error :msg
 		     "Commodity annotation specifies more than one tag"))
