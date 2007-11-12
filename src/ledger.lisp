@@ -31,7 +31,7 @@
   (effective-date nil  :type (or datetime null))
   (status 'uncleared   :type item-status)
   account
-  (amount nil	       :type (or amount list null))
+  (amount nil	       :type (or amount function null))
   (note nil	       :type (or string null))
   (tags nil)
   (stream-position nil :type (or integer null))
@@ -148,10 +148,10 @@
 	    amount)
 	(when (and amount-expr (string/= amount-expr ""))
 	  (with-input-from-string (in amount-expr)
-	    (setq amount (cambl:read-amount in))
+	    (setf amount (cambl:read-amount in))
 	    (when (peek-char t in nil)
 	      (file-position in 0)
-	      (setq amount (read-value-expr in)))))
+	      (setf amount (read-value-expr in)))))
 	(let ((virtual-p (and open-bracket
 			      (string= open-bracket close-bracket))))
 	  (make-transaction
@@ -207,7 +207,7 @@ if there were an empty string between them."
 	  (when create-if-not-exists-p
 	    (unless accounts-map
 	      (setf (account-children account)
-		    (setq accounts-map (make-hash-table :test #'equal))))
+		    (setf accounts-map (make-hash-table :test #'equal))))
 	    (setf (gethash account-name accounts-map)
 		  (make-instance 'account :parent account
 				 :name account-name
@@ -298,21 +298,21 @@ if there were an empty string between them."
        (cond ((char-equal c #\;)
 	      ;; comma begins a comment; gobble up the rest of the line
 	      (read-line in nil)
-	      (setq bolp t))
+	      (setf bolp t))
 	     ((or (char-equal c #\Newline)
 		  (char-equal c #\Return))
-	      (setq bolp t))
+	      (setf bolp t))
 	     ((and bolp (digit-char-p c))
 	      (unread-char c in)
 	      (loop
 		 for entry = (read-plain-entry journal in)
 		 while entry do
 		 (add-entry journal entry))
-	      (setq bolp t))
+	      (setf bolp t))
 	     (t
 	      (format t "Unhandled directive: ~C~%" c)
 	      (read-line in nil)
-	      (setq bolp nil))))
+	      (setf bolp nil))))
     journal))
 
 (defun read-journal-file (binder path)

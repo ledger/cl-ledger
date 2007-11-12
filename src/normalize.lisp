@@ -17,9 +17,9 @@
 	    (cond
 	      ((null amt)
 	       (setf (xact-amount xact) zero-amount))
-	      ((listp amt)
+	      ((functionp amt)
 	       (setf (xact-amount xact)
-		     (eval (xact-amount xact))))))))))
+		     (funcall (xact-amount xact) xact)))))))))
   binder)
 
 (export 'normalize-binder)

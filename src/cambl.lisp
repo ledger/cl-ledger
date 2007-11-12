@@ -206,7 +206,7 @@
 ;; two high internal precision amounts together, you'll get a new amount with
 ;; a very high internal precision, but which still displays as expected:
 ;;
-;;   (setq *tmp* (cambl:divide  (cambl:amount "$100.00")
+;;   (setf *tmp* (cambl:divide  (cambl:amount "$100.00")
 ;;                              (cambl:amount "50000000")))
 ;;
 ;;   (cambl:format-value *tmp* :full-precision-p t) =>
@@ -280,6 +280,9 @@
 	   value-minusp*
 	   value-plusp
 	   value-plusp*
+
+	   value-truth
+	   value-truth*
 
 	   compare
 	   compare*
@@ -671,15 +674,15 @@
 (defun apply-base-commodity* (function commodity &rest args)
   (declare (type function function))
   (if (typep commodity 'annotated-commodity)
-      (setq commodity (get-referent-commodity commodity)))
+      (setf commodity (get-referent-commodity commodity)))
   (apply function (get-basic-commodity commodity) args))
 
 (defun apply-base-commodity (function amount-or-commodity &rest args)
   (declare (type function function))
   (if (typep amount-or-commodity 'amount)
-      (setq amount-or-commodity (amount-commodity amount-or-commodity)))
+      (setf amount-or-commodity (amount-commodity amount-or-commodity)))
   (if (typep amount-or-commodity 'annotated-commodity)
-      (setq amount-or-commodity (get-referent-commodity amount-or-commodity)))
+      (setf amount-or-commodity (get-referent-commodity amount-or-commodity)))
   (apply function (get-basic-commodity amount-or-commodity) args))
 
 ;;;_ * AMOUNT, BALANCE and COST-BALANCE
@@ -737,13 +740,13 @@
 		 (if (or (char= last-special #\.)
 			 (char= last-special #\,))
 		     (write-char last-special buf))
-		 (setq last-special nil))
+		 (setf last-special nil))
 	       (write-char c buf))
 	     (if (and (null last-special)
 		      (or (char= c #\-)
 			  (char= c #\.)
 			  (char= c #\,)))
-		 (setq last-special c)
+		 (setf last-special c)
 		 (progn
 		   (unread-char c in)
 		   (return)))))
@@ -789,32 +792,32 @@
 	       amount)
 
     (when (char= #\- (peek-char-in-line in t))
-      (setq negative-p t)
+      (setf negative-p t)
       (read-char in))
 
     (if (digit-char-p (peek-char-in-line in t))
 	(progn
-	  (setq quantity (read-amount-quantity in))
+	  (setf quantity (read-amount-quantity in))
 	  (assert quantity)
 
 	  (let ((c (peek-char-in-line in)))
 	    (if (and (characterp c)
 		     (char= #\Space c))
-		(setq connected-p nil))
+		(setf connected-p nil))
 	    (let ((n (peek-char-in-line in t)))
 	      (when (and (characterp n)
 			 (not (char= #\Newline n)))
-		(setq symbol (read-commodity-symbol in))
+		(setf symbol (read-commodity-symbol in))
 		(if symbol
-		    (setq prefixed-p nil))))))
+		    (setf prefixed-p nil))))))
 	(progn
-	  (setq symbol (read-commodity-symbol in))
+	  (setf symbol (read-commodity-symbol in))
 	  (if (char= #\Space (peek-char nil in))
-	      (setq connected-p nil))
+	      (setf connected-p nil))
 	  (let ((n (peek-char-in-line in t)))
 	    (if (and (characterp n)
 		     (not (char= #\Newline n)))
-		(setq quantity (read-amount-quantity in))
+		(setf quantity (read-amount-quantity in))
 		(error 'amount-error :msg
 		       "No quantity specified for amount")))))
 
@@ -823,7 +826,7 @@
 	       (or (char= c #\{)
 		   (char= c #\[)
 		   (char= c #\()))
-	  (setq details (read-commodity-annotation in))))
+	  (setf details (read-commodity-annotation in))))
 
     ;; Now that we have the full commodity symbol, create the commodity object
     ;; it refers to
@@ -838,13 +841,13 @@
 
       ;; Determine the precision of the amount, based on the usage of
       ;; comma or period.
-      (setq amount (make-amount :commodity commodity))
+      (setf amount (make-amount :commodity commodity))
 
       (let ((last-comma (position #\, quantity :from-end t))
 	    (last-period (position #\. quantity :from-end t)))
 	(if (or (and *european-style* last-period)
 		(and (not *european-style*) last-comma))
-	    (setq thousand-marks-p t))
+	    (setf thousand-marks-p t))
 	(cond ((and last-comma last-period)
 	       (setf (amount-precision amount)
 		     (- (length quantity) (if (> last-comma last-period)
@@ -992,19 +995,44 @@
 (defun value-plusp* (amount)
   (cl:plusp (amount-quantity amount)))
 
+(defun value-basic-truth (result zerop-test-func)
+  (cond
+    ((or (typep result 'cambl:amount)
+	 (typep result 'cambl:balance))
+     (not (funcall zerop-test-func result)))
+    ((typep result 'integer)
+     (not (zerop result)))
+    ((typep result 'string)
+     (> (length result) 0))
+    ((typep result 'cambl:datetime)
+     ;; jww (2007-11-11): NYI
+     nil)
+    ((typep result 'boolean)
+     result)
+    (t
+     (error "Cannot determine truth of '~S'" result))))
+
+(defun value-truth (result)
+  (value-basic-truth result #'value-zerop))
+
+(defun value-truth* (result)
+  (value-basic-truth result #'value-zerop*))
+
 ;;;_  + AMOUNT comparison (return sort order of value)
 
 (defun verify-amounts (left right capitalized-gerund)
   (declare (type amount left))
   (declare (type amount right))
-
-  (unless (commodity-equal (amount-commodity left)
-			   (amount-commodity right))
-    (error 'amount-error :msg
-	   (format nil "~A amounts with different commodities: ~A != ~A"
-		   capitalized-gerund
-		   (commodity-name left)
-		   (commodity-name right)))))
+  (let ((left-commodity (amount-commodity left))
+	(right-commodity (amount-commodity right)))
+    (unless (or (null left-commodity)
+		(null right-commodity)
+		(commodity-equal left-commodity right-commodity))
+      (error 'amount-error :msg
+	     (format nil "~A amounts with different commodities: ~A != ~A"
+		     capitalized-gerund
+		     (commodity-name left)
+		     (commodity-name right))))))
 
 (defun compare (left right)
   (verify-amounts left right "Comparing")
@@ -1202,8 +1230,8 @@
   (unless precision
     (let ((commodity (amount-commodity amount)))
       (if commodity
-	  (setq precision (display-precision commodity))
-	  (setq precision 0))))
+	  (setf precision (display-precision commodity))
+	  (setf precision 0))))
 
   (let ((internal-precision (amount-precision amount)))
     (cond ((< precision internal-precision)
@@ -1435,7 +1463,7 @@
   (let ((commodity (amount-commodity left)))
     (unless commodity
       (setf (amount-commodity left)
-	    (setq commodity (amount-commodity right))))
+	    (setf commodity (amount-commodity right))))
 
     ;; If this amount has a commodity, and we're not dealing with plain
     ;; numbers, or internal numbers (which keep full precision at all
@@ -1634,12 +1662,12 @@
 	(truncate (amount-quantity amount)
 		  (expt 10 precision))
       (cond ((< display-precision precision)
-	     (setq remainder
+	     (setf remainder
 		   (nth-value 0 (truncate remainder
 					  (expt 10 (- precision
 						      display-precision))))))
 	    ((> display-precision precision)
-	     (setq remainder (* remainder
+	     (setf remainder (* remainder
 				(expt 10 (- display-precision
 					    precision))))))
 
@@ -1890,7 +1918,7 @@
 (defmethod commodity-name ((amount amount))
   (let ((commodity (amount-commodity amount)))
     (if (and commodity (get-annotated-p commodity))
-	(setq commodity (get-referent-commodity commodity)))
+	(setf commodity (get-referent-commodity commodity)))
     (if commodity
 	(if (slot-boundp commodity 'qualified-name)
 	    (commodity-qualified-name commodity)
@@ -1981,7 +2009,7 @@
 	  (if (and left-price (not right-price))
 	      (return nil))
 	  (if (and left-price right-price)
-	      (setq left-price (smallest-units left-price)
+	      (setf left-price (smallest-units left-price)
 		    right-price (smallest-units right-price))
 
 	      (if (commodity-equal (amount-commodity left-price)
@@ -2066,10 +2094,10 @@
 	     ;; If the current item meets the test, it may be the one we're
 	     ;; looking for.  However, there might be something closer to the
 	     ;; right -- though definitely not to the left.
-	     (setq last-found p p (rbt:right p)))
+	     (setf last-found p p (rbt:right p)))
 	   ;; If the current item does not meet the test, there might be a
 	   ;; candidate to the left -- but definitely not the right.
-	   (setq p (rbt:left p))))))
+	   (setf p (rbt:left p))))))
 
 (defun get-price-quote (symbol &optional datetime)
   (declare (type commodity-symbol symbol))
@@ -2090,10 +2118,10 @@
 	(if (null datetime)
 	    (progn
 	      (loop while (not (rbt:rbt-null (rbt:right history)))
-		 do (setq history (rbt:right history)))
+		 do (setf history (rbt:right history)))
 	      (assert history)
-	      (setq pricing-entry (rbt:node-item history)))
-	    (setq pricing-entry
+	      (setf pricing-entry (rbt:node-item history)))
+	    (setf pricing-entry
 		  (find-nearest datetime history
 				:key 'pricing-entry-moment)))
 	(assert pricing-entry)		; pricing entry
@@ -2152,7 +2180,7 @@
 			(get-smaller-unit-equivalence
 			 (commodity-base commodity))))
 	 ((null equiv-amount) amount)
-      (setq amount (multiply equiv-amount amount)))
+      (setf amount (multiply equiv-amount amount)))
     amount))
 
 (defmethod smallest-units ((balance balance))
@@ -2170,7 +2198,7 @@
       (let ((new-amount (multiply equiv-amount amount)))
 	(if (< (amount-to-integer new-amount) 1)
 	    (return amount)
-	    (setq amount new-amount))))))
+	    (setf amount new-amount))))))
 
 (defmethod larger-units ((balance balance))
   (assert balance))
@@ -2186,7 +2214,7 @@
 	      (get-smaller-unit-equivalence
 	       (commodity-base (amount-commodity amount)))))
 	    ((null equiv-amount))
-	  (setq new-amount (multiply equiv-amount new-amount))
+	  (setf new-amount (multiply equiv-amount new-amount))
 	  (if (commodity-equal (amount-commodity new-amount)
 			       commodity)
 	      (return new-amount))))
@@ -2197,7 +2225,7 @@
 	      (get-larger-unit-equivalence
 	       (commodity-base (amount-commodity new-amount)))))
 	    ((null equiv-amount))
-	  (setq new-amount (multiply equiv-amount new-amount))
+	  (setf new-amount (multiply equiv-amount new-amount))
 	  (if (commodity-equal (amount-commodity new-amount)
 			       commodity)
 	      (return new-amount))))
@@ -2271,7 +2299,7 @@
 ;; up.
 
 (defun reset-commodity-pool (&optional pool)
-  (setq *default-commodity-pool* (or pool (make-commodity-pool))))
+  (setf *default-commodity-pool* (or pool (make-commodity-pool))))
 
 ;;;_   : COMMODITY
 
@@ -2488,7 +2516,7 @@
 	      (if (and commodity
 		       (< (amount-precision tmp-amount)
 			  (display-precision commodity)))
-		  (setq tmp-amount
+		  (setf tmp-amount
 			(value-round* tmp-amount
 				      (display-precision commodity)))))
 
@@ -2571,7 +2599,7 @@
 	     "Cannot annotate an amount which has no commodity"))
     (let ((referent commodity))
       (if (get-annotated-p referent)
-	  (setq referent (get-referent-commodity referent)))
+	  (setf referent (get-referent-commodity referent)))
 
       (let ((annotated-commodity
 	     (find-annotated-commodity referent details

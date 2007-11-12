@@ -233,7 +233,7 @@
       in (list-directory ,(nth 1 var-and-dir))
       when (not (directory-pathname-p ,(nth 0 var-and-dir)))
       do (progn
-	   (setq ,(nth 0 var-and-dir)
+	   (setf ,(nth 0 var-and-dir)
 		 (file-namestring ,(nth 0 var-and-dir)))
 	   ,@body-forms)))
 

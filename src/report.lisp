@@ -4,10 +4,11 @@
 
 (in-package :ledger)
 
-(require 'normalize)
-(require 'totals)
-(require 'filter)
-(require 'register)
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (require 'normalize)
+  (require 'totals)
+  (require 'filter)
+  (require 'register))
 
 (defmacro while (test-form &body body)
   `(do () ((not ,test-form))
@@ -40,14 +41,26 @@
 	    (setf keyword-args (cdr keyword-args))))
       binder)))
 
+(defun longest (&rest items)
+  (let (current-length)
+    (reduce #'(lambda (left right)
+		(let ((left-len  (or current-length
+				     (length left)))
+		      (right-len (length right)))
+		  (if (< left-len right-len)
+		      (prog1
+			  right
+			(setf current-length right-len))
+		      (prog1
+			  left
+			(setf current-length left-len)))))
+	    items)))
+
 (defun register (&rest args)
   (let ((filter-keyword
-	 (car (sort (list (member :account args)
-			  (member :payee args)
-			  (member :note args))
-		    #'(lambda (left right)
-			(> (length left)
-			   (length right))))))
+	 (member-if
+	  #'(lambda (element)
+	      (member element '(:account :payee :note :expr))) args))
 	dont-normalize)
     (when filter-keyword
       (rplacd filter-keyword

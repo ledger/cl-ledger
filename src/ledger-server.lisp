@@ -34,7 +34,7 @@
                (:td (:input :type :submit :value "Register"))))))
         (when journal-path
           (let ((binder (binder journal-path)))
-            (setq binder (calculate-running-totals
+            (setf binder (calculate-running-totals
                           (normalize binder)))
             (dolist (journal (binder-journals binder))
               (htm
@@ -67,12 +67,12 @@
       (:p "This is the canonical hello message.")))))
 
 (progn
-  (setq *dispatch-table*
+  (setf *dispatch-table*
         (list #'dispatch-easy-handlers
               (create-prefix-dispatcher "/hello" #'hello-world)
               #'default-dispatcher))
 
-  (setq *show-lisp-errors-p* t
+  (setf *show-lisp-errors-p* t
         *show-lisp-backtraces-p* t))
 
 ;; ledger-server.lisp ends here
