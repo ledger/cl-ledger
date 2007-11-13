@@ -71,7 +71,7 @@
   (let ((count 0))
    (do-transactions (xact binder)
      (format output-stream "~10A ~20A ~22A ~A ~A~%"
-	     "DATE"
+	     (cambl:format-datetime (xact-date xact))
 	     (abbreviate-string (entry-payee (xact-entry xact)) 20)
 	     (abbreviate-string (account-fullname (xact-account xact)) 22
 				:account-p t)

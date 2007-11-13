@@ -252,7 +252,7 @@
 (declaim (optimize (debug 3) (safety 3) (speed 1) (space 0)))
 
 (defpackage :cambl
-  (:use :cl :rbt)
+  (:use :cl :rbt :local-time)
   (:export *european-style*
 	   pushend
 
@@ -260,6 +260,7 @@
 	   *input-time-format*
 	   *output-time-format*
 	   parse-datetime
+	   format-datetime
 
 	   amount
 	   amount*
@@ -383,7 +384,7 @@
 ;;;_* Types
 
 (deftype datetime ()
-  'integer)
+  'local-time:local-time)
 
 ;;;_ - COMMODITY-SYMBOL
 
@@ -690,13 +691,13 @@
 		       (>= (decf length) 0)))
 	do (write-char (read-char in) out)))))
 
-(defun read-datetime (in str)
+(defun read-datetime (str in)
   (let ((year (nth-value 5 (get-decoded-time)))
 	(month 1) (day 1) (hour 0) (minute 0) (second 0))
     (loop
        for c = (read-char in nil)
        while c
-       for next = (peek-char nil str)
+       for next = (peek-char nil str nil)
        do
        (if (char= c #\%) ; specifier
 	   (progn
@@ -730,12 +731,11 @@
 		(setf day (read-integer str 2))
 		;; jww (2007-11-12): Check valid
 		)
+	       ((char= c #\e) ; day of month, space prefix
+		(setf day (read-integer str 2 t)))
 
 	       ;;((char= c #\E))	; POSIX locale extensions
 	       ;;((char= c #\O))
-
-	       ((char= c #\e) ; day of month, space prefix
-		(setf day (read-integer str 2 t)))
 
 	       ((char= c #\F) ; equiv: %Y-%m-%d
 		(let ((date (read-datetime (make-string-input-stream "%Y-%m-%d")
@@ -840,14 +840,143 @@
 	   (if (char= c next)
 	       (read-char str)
 	       (error "Expected '~C', got '~C'" c next))))
-    (list second minute hour day month year)))
+    (list 0 second minute hour day month year)))
 
 (declaim (inline parse-datetime))
 
-(defun parse-datetime (format string)
+(defun parse-datetime-decoded (string &optional (format *input-time-format*))
   (with-input-from-string (in format)
     (with-input-from-string (str string)
-      (read-datetime in str))))
+      (read-datetime str in))))
+
+(defun parse-datetime (string &optional (format *input-time-format*))
+  (apply #'local-time:encode-local-time (parse-datetime-decoded string format)))
+
+(defun format-datetime (datetime &optional (format *output-time-format*))
+  (declare (type datetime datetime))
+  (declare (type string format))
+  (multiple-value-bind
+	(millisecond second minute hour day month year day-of-week
+		     daylight-p time-zone time-zone-abbrev)
+      (local-time:decode-local-time datetime)
+    (declare (ignore millisecond))
+    (with-output-to-string (out)
+      (with-input-from-string (in format)
+	(loop
+	   for c = (read-char in nil)
+	   while c
+	   do
+	   (if (char= c #\%)		; specifier
+	       (progn
+		 (setf c (read-char in))
+		 (cond
+		   ((char= c #\%)
+		    (write-char #\% out))
+
+		   ((char= c #\A))	; full weekday name
+		   ((char= c #\a))	; abbreviated weekday name
+
+		   ((char= c #\B))	; full month name
+		   ((or (char= c #\b)	; abbreviated month name
+			(char= c #\h)))	; same as %b
+
+		   ((char= c #\C)	; century, zero prefix
+		    (format out "~2,'0D" (floor year 100)))
+
+		   ;;((char= c #\c))	; national representation of date/time
+
+		   ((char= c #\D)	; equiv: %m/%d/%y
+		    (princ (format-datetime datetime "%m/%d/%y") out))
+
+		   ((char= c #\d)
+		    (format out "~2,'0D" day))
+		   ((char= c #\e)	; day of month, space prefix
+		    (format out "~2,' D" day))
+
+		   ;;((char= c #\E))	; POSIX locale extensions
+		   ;;((char= c #\O))
+
+		   ((char= c #\F)	; equiv: %Y-%m-%d
+		    (princ (format-datetime datetime "%Y-%m-%d") out))
+					;
+		   ((char= c #\G))      ; year as a decimal number with century
+		   ((char= c #\g))	; same as %G, without century
+
+		   ((char= c #\H)	; hour, zero prefix
+		    (format out "~2,'0D" hour))
+		   ((char= c #\I)	; hour on the 12-hour clock
+		    (if (> hour 12)
+			(format out "~2,'0D" (- hour 12))
+			(if (= hour 0)
+			    (format out "~2,'0D" 12)
+			    (format out "~2,'0D" hour))))
+
+		   ((char= c #\k)	; hour, space prefix
+		    (format out "~2,' D" hour))
+		   ((char= c #\l)	; 12-hour hour, space prefix
+		    (if (> hour 12)
+			(format out "~2,' D" (- hour 12))
+			(if (= hour 0)
+			    (format out "~2,' D" 12)
+			    (format out "~2,' D" hour))))
+
+		   ((char= c #\j))	; day of the year as a decimal
+
+		   ((char= c #\M)
+		    (format out "~2,'0D" minute))
+
+		   ((char= c #\m)
+		    (format out "~2,'0D" month))
+
+		   ((char= c #\p))	; national AM/PM, as appropriate
+
+		   ((char= c #\R)	; equiv: %H:%M
+		    (princ (format-datetime datetime "%H:%M") out))
+
+		   ((char= c #\r)	; equiv: %I:%M:%S %p
+		    (princ (format-datetime datetime "%I:%M:%S %p") out))
+
+		   ((char= c #\S)
+		    (format out "~2,'0D" second))
+
+		   ((char= c #\s)	; seconds since Epoch, UTC (unix time)
+		    (format out "~D" (local-time:unix-time datetime)))
+
+		   ((char= c #\T)	; equiv: %H:%M:%S
+		    (princ (format-datetime datetime "%H:%M:%S") out))
+
+		   ((char= c #\t)	; tab
+		    (write-char #\Tab out))
+
+		   ((char= c #\U))	; week number of the year (Sun) 00-53
+		   ((char= c #\u))	; weekday as a decimal (Mon) 1-7
+		   ((char= c #\V))	; week of the year 1-53 (*)
+
+		   ((char= c #\v)	; equiv: %e-%b-%Y
+		    (princ (format-datetime datetime "%e-%b-%Y") out))
+
+		   ((char= c #\W))	; week number of the year (Mon) 00-53
+		   ((char= c #\w))	; weekday as a decimal (Sun) 0-6
+		   ;;((char= c #\X))	; national representation of the time
+		   ;;((char= c #\x))	; national representation of the date
+
+		   ((char= c #\Y)
+		    (format out "~4,'0D" year))
+		   ((char= c #\y)
+		    (format out "~4,'0D" (floor year 100)))
+
+		   ((char= c #\Z)	; time zone name
+		    (format out "~A" time-zone-abbrev))
+		   ((char= c #\z)	; time zone offset from UTC
+		    (format out "~D" time-zone))
+		   ;;((char= c #\+))	; national representation of date/time
+
+		   ((char= c #\|)	; abort if string is ended
+		    (if (and (zerop (local-time:local-time-sec datetime))
+			     (zerop (local-time:local-time-msec datetime)))
+			(return)))))
+
+	       (write-char c out)))))))
 
 ;;;_ * BASIC-COMMODITY
 
@@ -2208,7 +2337,8 @@
 	  (if (and left-date (not right-date))
 	      (return nil))
 	  (when (and left-date right-date)
-	    (return (< left-date right-date))))
+	    (return (coerce (local-time:local-time< left-date right-date)
+			    'boolean))))
 
 	(let ((left-tag (annotation-tag left-annotation))
 	      (right-tag (annotation-tag right-annotation)))
@@ -2713,7 +2843,7 @@
 	  (read-char in)
 	  (let* ((date-string
 		  (read-until in #\] "Commodity date lacks closing bracket"))
-		 (tmp-date (parse-datetime *input-time-format* date-string)))
+		 (tmp-date (parse-datetime date-string)))
 	    (setf (annotation-date annotation) tmp-date)))
 
 	 ((char= c #\()
@@ -2817,7 +2947,7 @@
 		  (value= price-a price-b)))
 	 (or (and (null date-a) (null date-b))
 	     (and date-a date-b
-		  (= date-a date-b)))
+		  (local-time:local-time= date-a date-b)))
 	 (or (and (null tag-a) (null tag-b))
 	     (and tag-a tag-b
 		  (string= tag-a tag-b))))))

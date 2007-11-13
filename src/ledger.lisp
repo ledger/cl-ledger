@@ -15,6 +15,7 @@
 	   xact-amount
 	   xact-data
 
+	   *use-effective-dates*
 	   *default-account*
 
 	   map-transactions
@@ -36,7 +37,7 @@
 	     (:conc-name xact-)
 	     (:print-function print-transaction))
   entry
-  (date nil	       :type (or datetime null))
+  (actual-date nil     :type (or datetime null))
   (effective-date nil  :type (or datetime null))
   (status 'uncleared   :type item-status)
   account
@@ -61,7 +62,7 @@
 
 (defclass entry ()
   ((journal        :accessor entry-journal	   :initarg :journal)
-   (date	   :accessor entry-date		   :initarg :date
+   (actual-date	   :accessor entry-actual-date	   :initarg :actual-date
 		   :type datetime)
    (effective-date :accessor entry-effective-date  :initarg :effective-date
 		   :initform nil :type (or datetime null))
@@ -126,6 +127,8 @@
 
 ;; Textual journal parser
 
+(defvar *use-effective-dates* nil)
+
 (defvar *default-account* nil)
 
 (defvar *date-regexp* "[0-9]{4}[-./][0-9]{2}[-./][0-9]{2}")
@@ -177,7 +180,7 @@
 			      (string= open-bracket close-bracket))))
 	  (make-transaction
 	   :entry entry
-	   ;;:date
+	   ;;:actual-date
 	   ;;:effective-date
 	   :status (cond ((string= status "*")
 			  'cleared)
@@ -275,15 +278,13 @@ if there were an empty string between them."
   9 - A comment giving further details about the entry."
   (declare (type journal journal))
   (declare (type stream in))
-  ;;(format t "read-plain-entry~%")
   (let* ((heading-line (read-line in nil))
 	 (groups (and heading-line
 		      (nth-value 1 (cl-ppcre:scan-to-strings
 				    *entry-heading-scanner* heading-line)))))
-    ;;(format t "heading-line: '~A'~%groups: ~S~%" heading-line groups)
     (when groups
-      (let (;;(actual-date (aref groups 0))
-	    ;;(effective-date (aref groups 1))
+      (let ((actual-date (aref groups 0))
+	    (effective-date (aref groups 1))
 	    (status (aref groups 2))
 	    (code (aref groups 3))
 	    (payee (aref groups 4))
@@ -291,8 +292,10 @@ if there were an empty string between them."
 	(let ((entry (make-instance
 		      'entry
 		      :journal journal
-		      ;;:date actual-date   ; jww (2007-10-31): need parse-time
-		      ;;:effective-date
+		      :actual-date (cambl:parse-datetime actual-date)
+		      :effective-date
+		      (and effective-date
+			   (cambl:parse-datetime effective-date))
 		      :status (cond ((string= status "*")
 				     'cleared)
 				    ((string= status "!")
@@ -312,7 +315,6 @@ if there were an empty string between them."
 (defun read-periodic-entry (journal in)
   (declare (type journal journal))
   (declare (type stream in))
-  ;;(format t "read-plain-entry~%")
   (let ((period-string (read-line in nil)))
     (let ((entry
 	   (make-instance 'periodic-entry
@@ -424,6 +426,21 @@ The result is of type JOURNAL."
   `(block nil
      (map-transactions #'(lambda (,var) ,@body) ,object)
      ,result))
+
+(defun entry-date (entry)
+  (declare (type entry entry))
+  (if *use-effective-dates*
+      (or (entry-effective-date entry)
+	  (entry-actual-date entry))
+      (entry-actual-date entry)))
+
+(defun xact-date (xact)
+  (declare (type transaction xact))
+  (if *use-effective-dates*
+      (or (xact-effective-date xact)
+	  (entry-date (xact-entry xact)))
+      (or (xact-actual-date xact)
+	  (entry-date (xact-entry xact)))))
 
 (defun xact-cleared-p (xact)
   (declare (type transaction xact))
