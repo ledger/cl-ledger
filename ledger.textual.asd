@@ -31,27 +31,20 @@
 
 (in-package :cl-user)
 
-(defpackage :ledger-asd
+(defpackage :ledger.textual-asd
   (:use :cl :asdf))
 
-(in-package :ledger-asd)
+(in-package :ledger.textual-asd)
 
-(defvar *ledger-version* "4.0.0-pre-0"
-  "A string denoting the current version of LEDGER.  Used
+(defvar *ledger.textual-version* "4.0.0-pre-0"
+  "A string denoting the current version of LEDGER.TEXTUAL.  Used
 for diagnostic output.")
 
-(export '*ledger-version*)
+(export '*ledger.textual-version*)
 
-(asdf:defsystem :ledger
+(asdf:defsystem :ledger.textual
   :serial t
-  :version #.*ledger-version*
-  :depends-on (:cambl :cl-ppcre :periods)
-  :components ((:file "ledger")
-	       (:file "textual")
-	       (:file "autoentry")
-	       (:file "normalize")
-	       (:file "totals")
-	       (:file "filter")
-	       (:file "register")
-	       (:file "report")
-	       (:file "valexpr")))
+  :version #.*ledger.textual-version*
+  :depends-on (:ledger)
+  :components ((:file "textual")
+	       (:file "autoentry")))

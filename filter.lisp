@@ -1,9 +1,8 @@
 ;; filter.lisp
 
-(declaim (optimize (safety 3) (debug 3)))
+(declaim (optimize (safety 3) (debug 3) (speed 1) (space 0)))
 
 (in-package :ledger)
-(use-package :cl-ppcre)
 
 (defun include-transaction-p (xact &key
 			     (account-scanner nil)

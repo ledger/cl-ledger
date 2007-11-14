@@ -4,7 +4,7 @@
 
 ;; jww (2007-11-06): This is not yet ported; at all.
 
-(declaim (optimize (safety 3) (debug 3)))
+(declaim (optimize (safety 3) (debug 3) (speed 1) (space 0)))
 
 (in-package :ledger)
 
