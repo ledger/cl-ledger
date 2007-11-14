@@ -86,16 +86,15 @@
 	   do-transactions
 
 	   read-value-expr
-
+	   parse-value-expr
+	   
 	   destructively-filter
 	   normalize-binder
 	   abbreviate-string
 	   register-report
 	   report
 	   register
-	   calculate-totals
-	   read-value-expr
-	   compile-value-expr))
+	   calculate-totals))
 
 (in-package :ledger)
 

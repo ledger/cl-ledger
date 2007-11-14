@@ -14,12 +14,11 @@
 	  (make-instance 'automated-entry
 			 :journal journal
 			 :predicate-expr predicate-expr
-			 :predicate (compile-value-expr predicate-expr))))
+			 :predicate (parse-value-expr predicate-expr))))
     (loop
        for transaction = (read-transaction in entry)
        while transaction do
-       (add-transaction entry transaction)
-       (add-transaction (xact-account transaction) transaction))
+       (add-transaction entry transaction))
     entry))
 
 (pushnew `(#\= . ,#'(lambda (in journal)

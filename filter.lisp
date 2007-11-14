@@ -60,7 +60,7 @@
 			    `(not ,form)))) 
 		     (:expr
 		      (assert (stringp value))
-		      `(funcall ,(compile-value-expr value) xact))
+		      `(funcall ,(parse-value-expr value) xact))
 		     ((:begin :end)
 		      (assert (or (stringp value)
 				  (typep value 'cambl:datetime)))

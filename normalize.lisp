@@ -9,7 +9,8 @@
 (in-package :ledger)
 
 (defun normalize-binder (binder)
-  (let ((zero-amount (integer-to-amount 0)))
+  (let ((zero-amount (integer-to-amount 0))
+	(entry-class (find-class 'entry)))
     (dolist (journal (binder-journals binder))
       (setf (journal-entries journal)
 	    (loop
@@ -22,30 +23,9 @@
 			((functionp amt)
 			 (setf (xact-amount xact)
 			       (funcall (xact-amount xact) xact))))))
-	       when (eq (find-class 'entry) (class-of entry))
+	       when (eq entry-class (class-of entry))
 	       collect entry)))
-
-    (labels
-	((filter-in-account (name account)
-	   (declare (ignore name))
-	   (setf (account-transactions account)
-		 (loop
-		    for xact in (account-transactions account)
-		    when (eq (find-class 'entry)
-			     (class-of (xact-entry xact)))
-		    collect xact))
-	   (let ((children (account-children account)))
-	     (if children
-		 (maphash #'filter-in-account children)))))
-      (filter-in-account "" (binder-root-account binder)))
-
-    (if (binder-transactions binder)
-	(setf (binder-transactions binder)
-	      (loop
-		 for xact in (binder-transactions binder)
-		 when (eq (find-class 'entry)
-			  (class-of (xact-entry xact)))
-		 collect xact))))
+    (assert (null (binder-transactions binder))))
   binder)
 
 (export 'normalize-binder)
