@@ -76,7 +76,10 @@
   (let ((filter-keyword
 	 (member-if
 	  #'(lambda (element)
-	      (member element '(:account :payee :note :expr))) args))
+	      (member element '(:account :payee :note
+				:expr
+				:begin :end
+				:head :tail))) args))
 	dont-normalize)
     (when filter-keyword
       (rplacd filter-keyword

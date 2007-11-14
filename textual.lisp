@@ -84,7 +84,7 @@
 	    (setf amount (cambl:read-amount in))
 	    (when (peek-char t in nil)
 	      (file-position in 0)
-	      (setf amount (read-value-expr in)))))
+	      (setf amount (compile nil (read-value-expr in))))))
 	(let ((virtual-p (and open-bracket
 			      (string= open-bracket close-bracket))))
 	  (make-transaction

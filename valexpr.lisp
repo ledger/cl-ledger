@@ -295,41 +295,44 @@
 (defun read-and-expr (in)
   (let ((sexp (read-logic-expr in)))
     (when sexp
-      (let ((c (peek-char t in nil)))
-	(when (and c (char= c #\&))
-	  (read-char in)
-	  (setf sexp
-		(list 'and
-		      sexp
-		      (or (read-and-expr in)
-			  (error "'&' operator not followed by argument")))))))
-    sexp))
+      (let ((next-sexps
+	     (loop
+		for c = (peek-char t in nil)
+		while (and c (char= c #\&))
+		collect
+		(or (read-comma-expr in)
+		    (error "'&' operator not followed by argument")))))
+	(if next-sexps
+	    `(and ,sexp ,@next-sexps)
+	    sexp)))))
 
 (defun read-or-expr (in)
   (let ((sexp (read-and-expr in)))
     (when sexp
-      (let ((c (peek-char t in nil)))
-	(when (and c (char= c #\|))
-	  (read-char in)
-	  (setf sexp
-		(list 'or
-		      sexp
-		      (or (read-or-expr in)
-			  (error "'|' operator not followed by argument")))))))
-    sexp))
+      (let ((next-sexps
+	     (loop
+		for c = (peek-char t in nil)
+		while (and c (char= c #\|))
+		collect
+		(or (read-comma-expr in)
+		    (error "'|' operator not followed by argument")))))
+	(if next-sexps
+	    `(or ,sexp ,@next-sexps)
+	    sexp)))))
 
 (defun read-comma-expr (in)
   (let ((sexp (read-or-expr in)))
     (when sexp
-      (let ((c (peek-char t in nil)))
-	(when (and c (char= c #\,))
-	  (read-char in)
-	  (setf sexp
-		(list 'progn
-		      sexp
-		      (or (read-comma-expr in)
-			  (error "',' operator not followed by argument")))))))
-    sexp))
+      (let ((next-sexps
+	     (loop
+		for c = (peek-char t in nil)
+		while (and c (char= c #\,))
+		collect
+		(or (read-comma-expr in)
+		    (error "',' operator not followed by argument")))))
+	(if next-sexps
+	    `(progn ,sexp ,@next-sexps)
+	    sexp)))))
 
 (defun read-value-expr (in &key
 			(observe-properties-p nil)
@@ -355,9 +358,9 @@
 	      (if (char= c #\))
 		  (read-char in)
 		  (error (format nil "Unexpected character '~S'" c))))))
-      (compile nil `(lambda (xact)
-		      (declare (ignorable xact))
-		      ,sexp)))))
+      `(lambda (xact)
+	 (declare (ignorable xact))
+	 ,sexp))))
 
 (export 'read-value-expr)
 
@@ -371,6 +374,19 @@
 		     :pool pool)))
 
 (export 'parse-value-expr)
+
+(defun compile-value-expr (string &key
+			   (observe-properties-p nil)
+			   (reduce-to-smallest-units-p nil)
+			   (pool *default-commodity-pool*))
+  (with-input-from-string (in string)
+    (compile
+     nil
+     (read-value-expr in :observe-properties-p observe-properties-p
+			 :reduce-to-smallest-units-p reduce-to-smallest-units-p
+			 :pool pool))))
+
+(export 'compile-value-expr)
 
 (provide 'valexpr)
 

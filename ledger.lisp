@@ -3,7 +3,7 @@
 (declaim (optimize (safety 3) (debug 3) (speed 1) (space 0)))
 
 (defpackage :ledger
-  (:use :common-lisp :cambl :cl-ppcre :periods)
+  (:use :common-lisp :local-time :cambl :cl-ppcre :periods)
   (:export binder
 	   binder-commodity-pool
 	   binder-root-account
@@ -95,7 +95,7 @@
 	   register
 	   calculate-totals
 	   read-value-expr
-	   parse-value-expr))
+	   compile-value-expr))
 
 (in-package :ledger)
 
@@ -118,6 +118,7 @@
   (status 'uncleared   :type item-status)
   account
   (amount nil	       :type (or amount function null))
+  (cost nil	       :type (or amount function null))
   (note nil	       :type (or string null))
   (tags nil)
   (virtual-p nil       :type boolean)

@@ -11,15 +11,41 @@
 (defun normalize-binder (binder)
   (let ((zero-amount (integer-to-amount 0)))
     (dolist (journal (binder-journals binder))
-      (dolist (entry (journal-entries journal))
-	(dolist (xact (entry-transactions entry))
-	  (let ((amt (xact-amount xact)))
-	    (cond
-	      ((null amt)
-	       (setf (xact-amount xact) zero-amount))
-	      ((functionp amt)
-	       (setf (xact-amount xact)
-		     (funcall (xact-amount xact) xact)))))))))
+      (setf (journal-entries journal)
+	    (loop
+	       for entry in (journal-entries journal)
+	       do (dolist (xact (entry-transactions entry))
+		    (let ((amt (xact-amount xact)))
+		      (cond
+			((null amt)
+			 (setf (xact-amount xact) zero-amount))
+			((functionp amt)
+			 (setf (xact-amount xact)
+			       (funcall (xact-amount xact) xact))))))
+	       when (eq (find-class 'entry) (class-of entry))
+	       collect entry)))
+
+    (labels
+	((filter-in-account (name account)
+	   (declare (ignore name))
+	   (setf (account-transactions account)
+		 (loop
+		    for xact in (account-transactions account)
+		    when (eq (find-class 'entry)
+			     (class-of (xact-entry xact)))
+		    collect xact))
+	   (let ((children (account-children account)))
+	     (if children
+		 (maphash #'filter-in-account children)))))
+      (filter-in-account "" (binder-root-account binder)))
+
+    (if (binder-transactions binder)
+	(setf (binder-transactions binder)
+	      (loop
+		 for xact in (binder-transactions binder)
+		 when (eq (find-class 'entry)
+			  (class-of (xact-entry xact)))
+		 collect xact))))
   binder)
 
 (export 'normalize-binder)
