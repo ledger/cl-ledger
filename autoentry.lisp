@@ -5,7 +5,7 @@
 (defclass automated-entry (entry)
   ((predicate :accessor entry-predicate :initarg :predicate :type function)))
 
-(defun read-automated-entry (journal in)
+(defun read-automated-entry (in journal)
   (declare (type journal journal))
   (declare (type stream in))
   (let ((entry
@@ -13,15 +13,14 @@
 			:journal journal
 			:predicate (parse-value-expr (read-line in)))))
     (loop
-       for transaction = (read-transaction entry in)
+       for transaction = (read-transaction in entry)
        while transaction do
        (add-transaction entry transaction)
        (add-transaction (xact-account transaction) transaction))
     entry))
 
-(pushnew `(#\= . ,#'(lambda (c in binder)
-		      (let ((journal (binder-journal binder)))
-			(add-entry journal (read-automated-entry journal in)))))
+(pushnew `(#\= . ,#'(lambda (in journal)
+		      (add-entry journal (read-automated-entry in journal))))
 	 *directive-handlers*)
 
 (provide 'autoentry)

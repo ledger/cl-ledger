@@ -47,8 +47,6 @@ for diagnostic output.")
   :version #.*ledger-version*
   :depends-on (:cambl :cl-ppcre :periods)
   :components ((:file "ledger")
-	       (:file "textual")
-	       (:file "autoentry")
 	       (:file "normalize")
 	       (:file "totals")
 	       (:file "filter")

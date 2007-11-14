@@ -47,4 +47,5 @@ for diagnostic output.")
   :version #.*ledger.textual-version*
   :depends-on (:ledger)
   :components ((:file "textual")
-	       (:file "autoentry")))
+	       (:file "autoentry")
+	       (:file "perentry")))

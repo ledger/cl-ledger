@@ -29,49 +29,38 @@
 	   *spacing-regexp* #\Tab *comment-regexp*)))
 
 (defvar *directive-handlers*
-  `((#\; . ,#'(lambda (c in binder)
+  `((#\; . ,#'(lambda (in journal)
+		(declare (ignore journal))
 		;; comma begins a comment; gobble up the rest of the line
 		(read-line in nil)))
-    ((#\Newline #\Return) . ,#'(lambda (c in binder)
+    ((#\Newline #\Return) . ,#'(lambda (in journal)
+				 (declare (ignore journal))
 				 (read-char in nil)))
-    (#\A . ,#'(lambda (c in binder)
+    (#\A . ,#'(lambda (in journal)
+		(read-char in)
 		(peek-char t in)
 		(setf *default-account*
-		      (find-account binder (read-line in)
+		      (find-account journal (read-line in)
 				    :create-if-not-exists-p t))))
-    (#\D . ,#'(lambda (c in binder)
+    (#\D . ,#'(lambda (in journal)
+		(declare (ignore journal))
+		(read-char in)
 		(peek-char t in)
 		(cambl:read-amount in)))
-    (#\N . ,#'(lambda (c in binder)
+    (#\N . ,#'(lambda (in journal)
+		(declare (ignore journal))
+		(read-char in)
 		(peek-char t in)
 		(let ((commodity
 		       (cambl:find-commodity (read-line in)
 					     :create-if-not-exists-p t)))
 		  (setf (cambl::get-no-market-price-p
 			 (cambl::commodity-base commodity)) t))))
-    (#\~ . ,#'(lambda (c in binder)
-		(let ((journal (binder-journal binder)))
-		  (add-entry journal (read-periodic-entry journal in)))))
     (,#'digit-char-p
-     . ,#'(lambda (c in binder)
-	    (unread-char c in)
-	    (let ((journal (binder-journal binder)))
-	      (add-entry journal (read-plain-entry journal in)))))
-    (t . ,#'(lambda (c in binder)
-	      (format t "Unhandled directive (pos ~D): ~C~%" (file-position in) c)
-	      (read-line in nil)))))
+     . ,#'(lambda (in journal)
+	    (add-entry journal (read-plain-entry in journal))))))
 
-(defun split-string-at-char (string char)
-  "Returns a list of substrings of string
-divided by ONE colon each.
-Note: Two consecutive colons will be seen as
-if there were an empty string between them."
-  (loop for i = 0 then (1+ j)
-     as j = (position char string :start i)
-     collect (subseq string i j)
-     while j))
-
-(defun read-transaction (entry in)
+(defun read-transaction (in entry)
   (declare (type stream in))
   ;;(format t "read-transaction~%")
   (let* ((beg-pos (file-position in))
@@ -113,12 +102,13 @@ if there were an empty string between them."
 	   :amount amount
 	   :note note
 	   ;;:tags
-	   :stream-position beg-pos
+	   :position (make-item-position :begin-char beg-pos
+					 :end-char (file-position in))
 	   :virtual-p virtual-p
 	   :must-balance-p (and virtual-p
 				(string= open-bracket "["))))))))
 
-(defun read-plain-entry (journal in)
+(defun read-plain-entry (in journal)
   "Read in the header line for the entry, which has the syntax:
   
     (DATE(=DATE)?)( (*|!))?( (\((.+?)\)))? (.+)(:spacer:;(.+))?
@@ -165,7 +155,7 @@ if there were an empty string between them."
 		      :payee payee
 		      :note note)))
 	  (loop
-	     for transaction = (read-transaction entry in)
+	     for transaction = (read-transaction in entry)
 	     while transaction do
 	     (add-transaction entry transaction)
 	     (add-transaction (xact-account transaction) transaction))
@@ -176,24 +166,29 @@ if there were an empty string between them."
   (declare (type binder binder))
   (let ((journal (make-instance 'journal :binder binder)))
     (loop
-       for c = (read-char in nil)
+       for c = (peek-char nil in nil)
        while c do
        (let ((handler
-	      (assoc-if
-	       #'(lambda (key)
-		   (cond
-		     ((characterp key)
-		      (char= c key))
-		     ((listp key)
-		      (member c key :test #'char=))
-		     ((functionp key)
-		      (funcall key c in binder))
-		     (t
-		      (error "Unexpected element in `*directive-handlers*': ~S"
-			     key))))
-	       *directive-handlers*)))
+	      (cdr
+	       (assoc-if
+		#'(lambda (key)
+		    (cond
+		      ((characterp key)
+		       (char= c key))
+		      ((listp key)
+		       (member c key :test #'char=))
+		      ((functionp key)
+		       (funcall key c))
+		      (t
+		       (error "Unexpected element in `*directive-handlers*': ~S"
+			      key))))
+		*directive-handlers*))))
 	 (if handler
-	     (funcall handler))))
+	     (funcall handler in journal)
+	     (progn
+	       (format t "Unhandled directive (pos ~D): ~C~%"
+		       (file-position in) c)
+	       (read-line in nil)))))
     journal))
 
 (pushnew #'read-journal *registered-parsers*)

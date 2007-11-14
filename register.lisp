@@ -6,21 +6,6 @@
 
 ;; (put 'do-transactions 'lisp-indent-function 1)
 
-(defun longest (&rest items)
-  (let (current-length)
-    (reduce #'(lambda (left right)
-		(let ((left-len  (or current-length
-				     (length left)))
-		      (right-len (length right)))
-		  (if (< left-len right-len)
-		      (prog1
-			  right
-			(setf current-length right-len))
-		      (prog1
-			  left
-			(setf current-length left-len)))))
-	    items)))
-
 (defun abbreviate-string (name width &key
 			  (elision-style 'abbreviate)
 			  (account-p nil)
@@ -86,6 +71,28 @@
    count))
 
 (export 'register-report)
+
+(defun register (&rest args)
+  (let ((filter-keyword
+	 (member-if
+	  #'(lambda (element)
+	      (member element '(:account :payee :note :expr))) args))
+	dont-normalize)
+    (when filter-keyword
+      (rplacd filter-keyword
+	      (append (list #'destructively-filter)
+		      (cons (car filter-keyword)
+			    (cdr filter-keyword))))
+      (rplaca filter-keyword #'normalize-binder)
+      (setf dont-normalize t))
+    (apply #'report
+	   (append args
+		   (unless dont-normalize
+		     (list #'normalize-binder))
+		   (list #'calculate-totals
+			 #'register-report)))))
+
+(export 'register)
 
 (provide 'register)
 

@@ -38,6 +38,7 @@
 	   entry-position
 	   entry-data
 
+	   make-transaction
 	   transaction
 	   xact-entry
 	   xact-actual-date
@@ -56,6 +57,7 @@
 	   xact-pending-p
 	   xact-uncleared-p
 
+	   make-item-position
 	   item-position
 	   item-position-begin-char
 	   item-position-end-char
@@ -151,10 +153,6 @@
    position
    data))
 
-(defclass periodic-entry (entry)
-  ((period         :accessor entry-period	   :initarg :period
-		   :initform nil)))
-
 (defclass account ()
   ((parent         :accessor account-parent	   :initarg :parent
 		   :initform nil)
@@ -214,8 +212,9 @@
 (defmethod add-journal ((binder binder) (journal journal))
   (pushend journal (binder-journals binder)))
 
-(defun find-child-account (account account-name &optional fullpath
-			   &key (create-if-not-exists-p nil))
+(defun find-child-account (account account-name &key
+			   (create-if-not-exists-p nil)
+			   (fullname nil))
   (the (or account null)
     (let ((accounts-map (account-children account)))
       (or (and accounts-map
@@ -227,20 +226,31 @@
 	    (setf (gethash account-name accounts-map)
 		  (make-instance 'account :parent account
 				 :name account-name
-				 :fullname fullpath)))))))
+				 :fullname fullname)))))))
+
+(defun split-string-at-char (string char)
+  "Returns a list of substrings of string
+divided by ONE colon each.
+Note: Two consecutive colons will be seen as
+if there were an empty string between them."
+  (loop for i = 0 then (1+ j)
+     as j = (position char string :start i)
+     collect (subseq string i j)
+     while j))
 
 (defmethod find-account ((binder binder) (account-path string)
 			 &key (create-if-not-exists-p nil))
   (the (or account null)
-    (labels ((traverse-accounts (account path-elements fullpath)
+    (labels ((traverse-accounts (account path-elements fullname)
 	       (let ((child-account
-		      (find-child-account account (car path-elements) fullpath
+		      (find-child-account account (car path-elements)
 					  :create-if-not-exists-p
-					  create-if-not-exists-p)))
+					  create-if-not-exists-p
+					  :fullname fullname)))
 		 (if child-account
 		     (if (cdr path-elements)
 			 (traverse-accounts child-account (cdr path-elements)
-					    fullpath)
+					    fullname)
 			 child-account)))))
       (traverse-accounts (binder-root-account binder)
 			 (split-string-at-char account-path #\:)
@@ -250,21 +260,6 @@
 			 &key (create-if-not-exists-p nil))
   (find-account (journal-binder journal) account-path
 		:create-if-not-exists-p create-if-not-exists-p))
-
-(defun read-periodic-entry (journal in)
-  (declare (type journal journal))
-  (declare (type stream in))
-  (let ((period-string (read-line in nil)))
-    (let ((entry
-	   (make-instance 'periodic-entry
-			  :journal journal
-			  :period (periods:parse-time-period period-string))))
-      (loop
-	 for transaction = (read-transaction entry in)
-	 while transaction do
-	 (add-transaction entry transaction)
-	 (add-transaction (xact-account transaction) transaction))
-      entry)))
 
 (defun read-journal-file (binder path)
   "Read in a textual Ledger journal from the given PATH.

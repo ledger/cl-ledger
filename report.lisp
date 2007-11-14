@@ -41,43 +41,7 @@
 	    (setf keyword-args (cdr keyword-args))))
       binder)))
 
-(defun longest (&rest items)
-  (let (current-length)
-    (reduce #'(lambda (left right)
-		(let ((left-len  (or current-length
-				     (length left)))
-		      (right-len (length right)))
-		  (if (< left-len right-len)
-		      (prog1
-			  right
-			(setf current-length right-len))
-		      (prog1
-			  left
-			(setf current-length left-len)))))
-	    items)))
-
-(defun register (&rest args)
-  (let ((filter-keyword
-	 (member-if
-	  #'(lambda (element)
-	      (member element '(:account :payee :note :expr))) args))
-	dont-normalize)
-    (when filter-keyword
-      (rplacd filter-keyword
-	      (append (list #'destructively-filter)
-		      (cons (car filter-keyword)
-			    (cdr filter-keyword))))
-      (rplaca filter-keyword #'normalize-binder)
-      (setf dont-normalize t))
-    (apply #'report
-	   (append args
-		   (unless dont-normalize
-		     (list #'normalize-binder))
-		   (list #'calculate-totals
-			 #'register-report)))))
-
 (export 'report)
-(export 'register)
 
 (provide 'report)
 
