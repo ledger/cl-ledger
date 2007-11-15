@@ -244,7 +244,9 @@
 		     (lambda (xact)
 		       (divide (funcall function xact)
 			       (funcall next-function xact)))
-		     (error "'/' operator not followed by argument")))))
+		     (error "'/' operator not followed by argument"))))
+	      (t
+	       function))
 	    function)))))
 
 (defun read-add-expr (in)
@@ -268,7 +270,9 @@
 		     (lambda (xact)
 		       (subtract (funcall function xact)
 				 (funcall next-function xact)))
-		     (error "'-' operator not followed by argument")))))
+		     (error "'-' operator not followed by argument"))))
+	      (t
+	       function))
 	    function)))))
 
 (defun read-logic-expr (in)
@@ -342,7 +346,9 @@
 			     (and (value> (funcall function xact)
 					  second)
 				  second)))
-			 (error "'>' operator not followed by argument"))))))
+			 (error "'>' operator not followed by argument")))))
+	      (t
+	       function))
 	    function)))))
 
 (defun read-and-expr (in)
@@ -350,12 +356,14 @@
     (when function
       (let ((c (peek-char t in nil)))
 	(if (and c (char= c #\&))
-	    (let ((next-function (read-and-expr in)))
-	      (if next-function
-		  (lambda (xact)
-		    (and (funcall function xact)
-			 (funcall next-function xact)))
-		  (error "'&' operator not followed by argument")))
+	    (progn
+	      (read-char in)
+	      (let ((next-function (read-and-expr in)))
+		(if next-function
+		    (lambda (xact)
+		      (and (funcall function xact)
+			   (funcall next-function xact)))
+		    (error "'&' operator not followed by argument"))))
 	    function)))))
 
 (defun read-or-expr (in)
@@ -363,12 +371,14 @@
     (when function
       (let ((c (peek-char t in nil)))
 	(if (and c (char= c #\|))
-	    (let ((next-function (read-or-expr in)))
-	      (if next-function
-		  (lambda (xact)
-		    (or (funcall function xact)
-			(funcall next-function xact)))
-		  (error "'|' operator not followed by argument")))
+	    (progn
+	      (read-char in)
+	      (let ((next-function (read-or-expr in)))
+		(if next-function
+		    (lambda (xact)
+		      (or (funcall function xact)
+			  (funcall next-function xact)))
+		    (error "'|' operator not followed by argument"))))
 	    function)))))
 
 (defun read-comma-expr (in &key (as-arguments nil))
@@ -376,19 +386,21 @@
     (when function
       (let ((c (peek-char t in nil)))
 	(if (and c (char= c #\,))
-	    (let ((next-function (read-comma-expr in)))
-	      (if next-function
-		  (if as-arguments
-		      (lambda (xact)
-			(let ((next-value (funcall next-function xact)))
-			  (cons (funcall function xact)
-				(if (consp next-value)
-				    next-value
-				    (cons next-value nil)))))
-		      (lambda (xact)
-			(funcall function xact)
-			(funcall next-function xact)))
-		  (error "',' operator not followed by argument")))
+	    (progn
+  	      (read-char in)
+	      (let ((next-function (read-comma-expr in)))
+		(if next-function
+		    (if as-arguments
+			(lambda (xact)
+			  (let ((next-value (funcall next-function xact)))
+			    (cons (funcall function xact)
+				  (if (consp next-value)
+				      next-value
+				      (cons next-value nil)))))
+			(lambda (xact)
+			  (funcall function xact)
+			  (funcall next-function xact)))
+		    (error "',' operator not followed by argument"))))
 	    function)))))
 
 (defun read-value-expr (in &key

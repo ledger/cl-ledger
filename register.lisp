@@ -72,28 +72,26 @@
 
 (export 'register-report)
 
-(defun register (&rest args)
-  (let ((filter-keyword
-	 (member-if
-	  #'(lambda (element)
-	      (member element '(:account :payee :note
-				:expr
-				:begin :end
-				:head :tail))) args))
-	dont-normalize)
-    (when filter-keyword
-      (rplacd filter-keyword
-	      (append (list #'destructively-filter)
-		      (cons (car filter-keyword)
-			    (cdr filter-keyword))))
-      (rplaca filter-keyword #'normalize-binder)
-      (setf dont-normalize t))
-    (apply #'report
-	   (append args
-		   (unless dont-normalize
-		     (list #'normalize-binder))
-		   (list #'calculate-totals
-			 #'register-report)))))
+(defun register (binder &rest args)
+  "This is a convenience function for quickly making register reports.
+
+  A typical usage might be:
+
+    (ledger:register \"/path/to/ledger.dat\"
+                     :begin \"2007/08/26\" :account \"food\")
+
+  "
+  (let* ((binder-object
+	  (etypecase binder
+	    ((or string pathname) (read-binder binder))
+	    (binder binder)))
+	 (normalized-binder (normalize-binder binder-object)))
+    (register-report
+     (calculate-totals
+      (if args
+	  (destructively-filter normalized-binder
+				(apply #'compose-predicate args))
+	  normalized-binder)))))
 
 (export 'register)
 

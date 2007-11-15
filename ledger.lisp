@@ -10,6 +10,7 @@
 	   binder-journals
 	   binder-transactions
 	   binder-data
+	   read-binder
 
 	   journal
 	   journal-binder
@@ -82,12 +83,14 @@
 
 	   read-journal-file
 
+	   transactions-iterator
 	   map-transactions
 	   do-transactions
 
 	   read-value-expr
 	   parse-value-expr
-	   
+
+	   compose-predicate
 	   destructively-filter
 	   normalize-binder
 	   abbreviate-string
@@ -286,21 +289,65 @@ The result is of type JOURNAL."
 	     (error "unknown"))))
     binder))
 
-(defgeneric map-transactions (callable object))
+(declaim (inline read-binder))
+(defun read-binder (&rest args)
+  (apply #'binder args))
 
-(defmethod map-transactions (callable (binder binder))
+(declaim (inline list-iterator))
+(defun list-iterator (list)
+  (lambda ()
+    (prog1
+	(first list)
+      (setf list (rest list)))))
+
+(defgeneric transactions-iterator (object))
+
+(defmethod transactions-iterator ((binder binder))
   (let ((xacts (binder-transactions binder)))
     (if xacts
-	(mapc callable xacts)
-	(dolist (journal (binder-journals binder))
-	  (dolist (entry (journal-entries journal))
-	    (mapc callable (entry-transactions entry)))))))
+	(list-iterator xacts)
+	(let ((journals-iterator
+	       (list-iterator (binder-journals binder)))
+	      (xacts-iterator (constantly nil)))
+	  (lambda ()
+	    (labels
+		((next-xact ()
+		   (or (funcall xacts-iterator)
+		       (let ((next-journal (funcall journals-iterator)))
+			 (when next-journal
+			   (setf xacts-iterator
+				 (transactions-iterator next-journal))
+			   (next-xact))))))
+	      (next-xact)))))))
 
-(defmethod map-transactions (callable (account account))
-  (mapc callable (account-transactions account)))
+(defmethod transactions-iterator ((account account))
+  (list-iterator (account-transactions account)))
 
-(defmethod map-transactions (callable (entry entry))
-  (mapc callable (entry-transactions entry)))
+(defmethod transactions-iterator ((journal journal))
+  (let ((entries-iterator (list-iterator (journal-entries journal)))
+	(xacts-iterator (constantly nil)))
+    (lambda ()
+      (labels
+	  ((next-xact ()
+	     (or (funcall xacts-iterator)
+		 (let ((next-entry (funcall entries-iterator)))
+		   (when next-entry
+		     (setf xacts-iterator
+			   (list-iterator (entry-transactions next-entry)))
+		     (next-xact))))))
+	(next-xact)))))
+
+(defmethod transactions-iterator ((entry entry))
+  (list-iterator (entry-transactions entry)))
+
+(defmethod transactions-iterator ((transaction transaction))
+  (list-iterator (list transaction)))
+
+(defmethod map-transactions (callable object)
+  (let ((xacts-iterator (transactions-iterator object)))
+    (loop
+       for xact = (funcall xacts-iterator)
+       while xact do (funcall callable xact))))
 
 (defmacro do-transactions ((var object &optional (result nil)) &body body)
   `(block nil
@@ -333,5 +380,35 @@ The result is of type JOURNAL."
 (defun xact-uncleared-p (xact)
   (declare (type transaction xact))
   (eq (xact-status xact) 'uncleared))
+
+(defmacro while (test-form &body body)
+  `(do () ((not ,test-form))
+     ,@body))
+
+(defun chain-functions (first-arg &rest args)
+  "Call a group of functions by chaining, passing all keyword args.
+
+  This function allows you to call a set of functions like this:
+
+    (chain-functions arg #'foo :foo 10 :foo2 20
+                         #'bar :bar 30)
+
+  This is equivalent to:
+
+    (bar (foo arg :foo 10 :foo2 20) :bar 30)"
+  (if args
+      (apply
+       #'chain-functions
+       (apply (first args)
+	      (cons first-arg
+		    (when (rest args)
+		      (setf args (rest args))
+		      (loop
+			 while (keywordp (first args))
+			 collect (first args)
+			 collect (first (rest args))
+			 do (setf args (rest (rest args)))))))
+       args)
+      first-arg))
 
 ;; ledger.lisp ends here

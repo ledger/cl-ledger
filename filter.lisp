@@ -4,104 +4,148 @@
 
 (in-package :ledger)
 
-(defun destructively-filter (binder &rest args)
-  (let (filter)
+(defun regex-matcher (regex)
+  (declare (type string regex))
+  (let ((scanner (cl-ppcre:create-scanner regex :case-insensitive-mode t)))
+    (lambda (string)
+      (cl-ppcre:scan scanner string))))
 
-    ;; "Cook" the criteria into callable functions
-    (flet ((cook-regex (pattern)
-	     (cl-ppcre:create-scanner pattern :case-insensitive-mode t))
-	   (cook-date (datestring)
-	     (cambl:parse-datetime datestring)))
-      (setf
-       filter
-       (compile
-	nil
-	`(lambda (xact)
-	   (let ((entry (xact-entry xact)))
-	     (declare (ignorable entry))
-	     (and
-	      ,@(loop
-		   for arg = args then (rest (rest arg))
-		   while arg
-		   for keyword = (first arg)
-		   for value   = (first (rest arg))
-		   collect
-		   (case keyword
-		     ((:account :not-account)
-		      (assert (or (stringp value)
-				  (typep value 'account)))
-		      (if (stringp value)
-			  (let ((form `(cl-ppcre:scan
-					,(cook-regex value)
-					(account-fullname (xact-account xact)))))
-			    (if (eq keyword :account)
-				form
-				`(not ,form)))
-			  `(eq ,value (xact-account xact))))
-		     ((:payee :not-payee)
-		      (assert (stringp value))
-		      (let ((form `(cl-ppcre:scan ,(cook-regex value)
-						  (entry-payee entry))))
-			(if (eq keyword :payee)
-			    form
-			    `(not ,form))))
-		     ((:note :not-note)
-		      (assert (stringp value))
-		      (let* ((scanner (cook-regex value))
-			     (form
-			      `(or (and (xact-note xact)
-					(cl-ppcre:scan ,scanner
-						       (xact-note xact)))
-				   (and (entry-note entry)
-					(cl-ppcre:scan ,scanner
-						       (entry-note entry))))))
-			(if (eq keyword :note)
-			    form
-			    `(not ,form)))) 
-		     (:expr
-		      (assert (stringp value))
-		      `(funcall ,(parse-value-expr value) xact))
-		     ((:begin :end)
-		      (assert (or (stringp value)
-				  (typep value 'cambl:datetime)))
-		      `(,(if (eq keyword :begin)
-			     'local-time>=
-			     'local-time<=)
-			 (xact-date xact) ,(if (stringp value)
-					       (cook-date value)
-					       value)))))))))))
+(defun eq-matcher (object)
+  (lambda (other-object)
+    (eq object other-object)))
 
-    (dolist (journal (binder-journals binder))
-      (setf (journal-entries journal)
+(defun account-matcher (regex-or-account)
+  (declare (type (or string account) regex-or-account))
+  (if (stringp regex-or-account)
+      (let ((matcher (regex-matcher regex-or-account)))
+	(lambda (xact)
+	  (funcall matcher (account-fullname (xact-account xact)))))
+      (let ((matcher (eq-matcher regex-or-account)))
+	(lambda (xact)
+	  (funcall matcher (xact-account xact))))))
+
+(defun payee-matcher (regex)
+  (declare (type string regex))
+  (let ((matcher (regex-matcher regex)))
+    (lambda (xact)
+      (funcall matcher (entry-payee (xact-entry xact))))))
+
+(defun note-matcher (regex)
+  (declare (type string regex))
+  (let ((matcher (regex-matcher regex)))
+    (lambda (xact)
+      (funcall matcher (or (xact-note xact)
+			   (entry-note (xact-entry xact)))))))
+
+(defun value-expr-matcher (expr-or-function)
+  (declare (type (or string function) expr-or-function))
+  (if (stringp expr-or-function)
+      (let ((closure (parse-value-expr expr-or-function)))
+	(lambda (xact)
+	  (funcall closure xact)))
+      expr-or-function))
+
+(defun not-matcher (matcher)
+  (declare (type function matcher))
+  (lambda (xact)
+    (not (funcall matcher xact))))
+
+(defun datetime-matcher (string-or-datetime operator)
+  (declare (type (or string cambl:datetime) string-or-datetime))
+  (if (stringp string-or-datetime)
+      (let ((moment (cambl:parse-datetime string-or-datetime)))
+	(lambda (xact)
+	  (funcall operator (xact-date xact) moment)))
+      (lambda (xact)
+	(funcall operator (xact-date xact) string-or-datetime))))
+
+(defun compose-predicate (&rest args)
+  (if args
+      (let* ((first-arg (first args))
+	     remainder
+	     (function
+	      (if (functionp first-arg)
+		  (progn
+		    (setf remainder (rest args))
+		    first-arg)
+		  (let ((value (first (rest args))))
+		    (setf remainder (rest (rest args)))
+		    (case first-arg
+		      (:account
+		       (assert (or (stringp value)
+				   (typep value 'account)))
+		       (account-matcher value))
+		      (:not-account
+		       (assert (or (stringp value)
+				   (typep value 'account)))
+		       (not-matcher (account-matcher value)))
+		      (:payee
+		       (assert (stringp value))
+		       (payee-matcher value))
+		      (:not-payee
+		       (assert (stringp value))
+		       (not-matcher (payee-matcher value)))
+		      (:note
+		       (assert (stringp value))
+		       (note-matcher value)) 
+		      (:not-note
+		       (assert (stringp value))
+		       (not-matcher (note-matcher value))) 
+		      (:expr
+		       (assert (or (stringp value)
+				   (functionp value)))
+		       (value-expr-matcher value))
+		      (:begin
+		       (assert (or (stringp value)
+				   (typep value 'cambl:datetime)))
+		       (datetime-matcher value #'local-time>=))
+		      (:end
+		       (assert (or (stringp value)
+				   (typep value 'cambl:datetime)))
+		       (datetime-matcher value #'local-time<=))
+		      (otherwise
+		       (error "Unrecognized predicate keyword '~S'"
+			      first-arg)))))))
+	(if remainder
+	    (let ((next-matcher (apply #'compose-predicate remainder)))
+	      (lambda (xarg)
+		(and (funcall function xarg)
+		     (funcall next-matcher xarg))))
+	    function))
+      (constantly t)))
+
+(defun destructively-filter (binder predicate)
+  (dolist (journal (binder-journals binder))
+    (setf (journal-entries journal)
+	  (loop
+	     for entry in (journal-entries journal)
+	     do (setf (entry-transactions entry)
+		      (loop
+			 for xact in (entry-transactions entry)
+			 when (funcall predicate xact)
+			 collect xact))
+	     when (plusp (length (entry-transactions entry)))
+	     collect entry)))
+
+  (labels
+      ((filter-in-account (name account)
+	 (declare (ignore name))
+	 (setf (account-transactions account)
+	       (loop
+		  for xact in (account-transactions account)
+		  when (funcall predicate xact)
+		  collect xact))
+	 (let ((children (account-children account)))
+	   (if children
+	       (maphash #'filter-in-account children)))))
+    (filter-in-account "" (binder-root-account binder)))
+
+  (if (binder-transactions binder)
+      (setf (binder-transactions binder)
 	    (loop
-	       for entry in (journal-entries journal)
-	       do (setf (entry-transactions entry)
-			(loop
-			   for xact in (entry-transactions entry)
-			   when (funcall filter xact)
-			   collect xact))
-	       when (plusp (length (entry-transactions entry)))
-	       collect entry)))
-
-    (labels
-	((filter-in-account (name account)
-	   (declare (ignore name))
-	   (setf (account-transactions account)
-		 (loop
-		    for xact in (account-transactions account)
-		    when (funcall filter xact)
-		    collect xact))
-	   (let ((children (account-children account)))
-	     (if children
-		 (maphash #'filter-in-account children)))))
-      (filter-in-account "" (binder-root-account binder)))
-
-    (if (binder-transactions binder)
-	(setf (binder-transactions binder)
-	      (loop
-		 for xact in (binder-transactions binder)
-		 when (funcall filter xact)
-		 collect xact))))
+	       for xact in (binder-transactions binder)
+	       when (funcall predicate xact)
+	       collect xact)))
   binder)
 
 (export 'destructively-filter)
