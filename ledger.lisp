@@ -119,11 +119,13 @@
   (effective-date nil  :type (or datetime null))
   (status 'uncleared   :type item-status)
   account
-  (amount nil	       :type (or amount function null))
-  (cost nil	       :type (or amount function null))
+  (amount nil	       :type (or integer amount function null))
+  (cost nil	       :type (or integer amount function null))
   (note nil	       :type (or string null))
   (tags nil)
   (virtualp nil        :type boolean)
+  (generatedp nil      :type boolean)
+  (calculatedp nil     :type boolean)
   (must-balance-p t    :type boolean)
   position
   data)
