@@ -85,8 +85,8 @@
 	    (when (peek-char t in nil)
 	      (file-position in 0)
 	      (setf amount (read-value-expr in)))))
-	(let ((virtual-p (and open-bracket
-			      (string= open-bracket close-bracket))))
+	(let ((virtualp (and open-bracket
+			     (string= open-bracket close-bracket))))
 	  (make-transaction
 	   :entry entry
 	   ;;:actual-date
@@ -104,8 +104,8 @@
 	   ;;:tags
 	   :position (make-item-position :begin-char beg-pos
 					 :end-char (file-position in))
-	   :virtual-p virtual-p
-	   :must-balance-p (and virtual-p
+	   :virtualp virtualp
+	   :must-balance-p (and virtualp
 				(string= open-bracket "["))))))))
 
 (defun read-plain-entry (in journal)

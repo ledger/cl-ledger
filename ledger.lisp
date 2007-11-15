@@ -123,7 +123,7 @@
   (cost nil	       :type (or amount function null))
   (note nil	       :type (or string null))
   (tags nil)
-  (virtual-p nil       :type boolean)
+  (virtualp nil        :type boolean)
   (must-balance-p t    :type boolean)
   position
   data)
