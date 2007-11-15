@@ -69,16 +69,16 @@
     (unless no-amounts
       ;; If there is only one transaction, balance against the default
       ;; account if one has been set.
-      (when (and *default-account*
-		 (= 1 (length (entry-transactions entry))))
-	(assert (not (value-zerop* balance)))
-	(let ((new-xact (make-transaction :entry entry
-					  :status 'uncleared
-					  :account *default-account*
-					  :generatedp t)))
-	  (add-transaction entry new-xact)
-	  (add-transaction *default-account* new-xact))
-	(setf saw-null t))
+      (let ((default-account (journal-default-account (entry-journal entry))))
+	(when (and default-account
+		   (= 1 (length (entry-transactions entry))))
+	  (assert (not (value-zerop* balance)))
+	  (let ((new-xact (make-transaction :entry entry
+					    :status 'uncleared
+					    :account default-account
+					    :generatedp t)))
+	    (add-transaction entry new-xact))
+	  (setf saw-null t)))
 
       ;; If the first transaction of an entry with exactly two commodities is
       ;; of a different commodity than the following transactions, and it has
@@ -178,8 +178,7 @@
 						    :account (xact-account x)
 						    :amount amt
 						    :generatedp t)))
-			     (add-transaction entry new-xact)
-			     (add-transaction (xact-account x) new-xact)))
+			     (add-transaction entry new-xact)))
 		       (add* balance amt))))
 		(progn
 		  (setf (xact-amount x) (negate balance)
@@ -200,15 +199,14 @@
 (defun normalize-binder (binder)
   (let ((entry-class (find-class 'entry)))
     (dolist (journal (binder-journals binder))
-      (setf (journal-entries journal)
+      (setf (journal-contents journal)
             (loop
-               for entry in (journal-entries journal)
-	       when (and entry
-			 (eq entry-class (class-of entry)))
-               collect (normalize-entry entry))))
+               for item in (journal-contents journal)
+	       while item
+	       collect (if (eq (class-of item) entry-class)
+			   (normalize-entry item)
+			   item))))
     (assert (null (binder-transactions binder))))
   binder)
-
-(export 'normalize-binder)
 
 (provide 'normalize)

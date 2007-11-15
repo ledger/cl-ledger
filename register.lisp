@@ -55,23 +55,54 @@
   (declare (type binder binder))
   (declare (type stream output-stream))
   (let ((count 0))
-   (do-transactions (xact binder)
-     (format output-stream "~10A ~20A ~22A ~A ~A~%"
-	     (cambl:format-datetime (xact-date xact))
-	     (abbreviate-string (entry-payee (xact-entry xact)) 20)
-	     (abbreviate-string (account-fullname (xact-account xact)) 22
-				:account-p t)
-	     (format-value (xact-amount xact)
-			   :width 12 :latter-width 67)
-	     (let ((running-total (xact-value :running-total xact)))
-	       (if running-total
-		   (format-value running-total
-				 :width 12 :latter-width 80)
-		   "")))
-     (incf count))
-   count))
+    (do-transactions (xact binder)
+      (format output-stream "~10A ~20A ~22A ~A ~A~%"
+	      (cambl:format-datetime (xact-date xact))
+	      (abbreviate-string (entry-payee (xact-entry xact)) 20)
+	      (abbreviate-string (account-fullname (xact-account xact)) 22
+				 :account-p t)
+	      (let ((display-amount (xact-value xact :display-amount)))
+		(if display-amount
+		    (format-value display-amount
+				  :width 12 :latter-width 67)
+		    (format-value (xact-amount xact) :width 12)))
+	      (let ((running-total (xact-value xact :running-total)))
+		(if running-total
+		    (format-value running-total
+				  :width 12 :latter-width 80)
+		    "")))
+      (incf count))
+    count))
 
 (export 'register-report)
+
+(defun extract-keyword (keyword args)
+  (declare (type keyword keyword))
+  (declare (type list args))
+  (let ((cell (member keyword args)) value)
+    (if cell
+	(values (setf value (cadr cell))
+		(delete-if #'(lambda (cons)
+			       (or (eq cons keyword)
+				   (eq cons value))) args))
+	(values nil args))))
+
+(defun register* (binder &rest args)
+  (let ((binder (etypecase binder
+		  ((or string pathname) (read-binder binder))
+		  (binder binder)))
+	total amount)
+    (multiple-value-setq (total args)
+      (extract-keyword :total args))
+    (multiple-value-setq (amount args)
+      (extract-keyword :amount args))
+    (values (register-report
+	     (calculate-totals
+	      (if args
+		  (apply-filter binder (apply #'compose-predicate args))
+		  binder)
+	      :amount amount :total total))
+	    binder)))
 
 (defun register (binder &rest args)
   "This is a convenience function for quickly making register reports.
@@ -82,19 +113,13 @@
                      :begin \"2007/08/26\" :account \"food\")
 
   "
-  (let* ((binder-object
-	  (etypecase binder
-	    ((or string pathname) (read-binder binder))
-	    (binder binder)))
-	 (normalized-binder (normalize-binder binder-object)))
-    (register-report
-     (calculate-totals
-      (if args
-	  (destructively-filter normalized-binder
-				(apply #'compose-predicate args))
-	  normalized-binder)))))
-
-(export 'register)
+  (prog1
+      (multiple-value-bind (count new-binder)
+	  (apply #'register* binder args)
+	(prog1
+	    count
+	  (setf binder new-binder)))
+    (undo-filter binder)))
 
 (provide 'register)
 

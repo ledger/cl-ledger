@@ -8,7 +8,7 @@
 
 (in-package :ledger.textual)
 
-(defvar *date-regexp* "[0-9]{4}[-./][0-9]{2}[-./][0-9]{2}")
+(defvar *date-regexp* "[0-9-./]+")
 
 (defvar *spacing-regexp* (format nil "(?:  |~C| ~C)\\s*" #\Tab #\Tab))
 
@@ -36,10 +36,16 @@
     ((#\Newline #\Return) . ,#'(lambda (in journal)
 				 (declare (ignore journal))
 				 (read-char in nil)))
+    (#\Y . ,#'(lambda (in journal)
+		(read-char in)
+		(peek-char t in)
+		(setf (journal-default-year journal) (read in)
+		      ;; jww (2007-11-15): This is a total hack
+		      (journal-date-format journal) "%m/%d")))
     (#\A . ,#'(lambda (in journal)
 		(read-char in)
 		(peek-char t in)
-		(setf *default-account*
+		(setf (journal-default-account journal)
 		      (find-account journal (read-line in)
 				    :create-if-not-exists-p t))))
     (#\D . ,#'(lambda (in journal)
@@ -58,7 +64,7 @@
 			 (cambl::commodity-base commodity)) t))))
     (,#'digit-char-p
      . ,#'(lambda (in journal)
-	    (add-entry journal (read-plain-entry in journal))))))
+	    (add-to-contents journal (read-plain-entry in journal))))))
 
 (defun read-transaction (in entry)
   (declare (type stream in))
@@ -157,10 +163,10 @@
 	(let ((entry (make-instance
 		      'entry
 		      :journal journal
-		      :actual-date (cambl:parse-datetime actual-date)
+		      :actual-date (parse-journal-date journal actual-date)
 		      :effective-date
 		      (and effective-date
-			   (cambl:parse-datetime effective-date))
+			   (parse-journal-date journal effective-date))
 		      :status (cond ((string= status "*")
 				     'cleared)
 				    ((string= status "!")
@@ -176,8 +182,7 @@
 	  (loop
 	     for transaction = (read-transaction in entry)
 	     while transaction do
-	     (add-transaction entry transaction)
-	     (add-transaction (xact-account transaction) transaction))
+	     (add-transaction entry transaction))
 	  entry)))))
 
 (defun read-journal (in binder)

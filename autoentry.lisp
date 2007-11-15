@@ -36,7 +36,7 @@
 
 (pushnew `(#\= . ,#'(lambda (in journal)
                       (read-char in)
-                      (add-entry journal (read-automated-entry in journal))))
+                      (add-to-contents journal (read-automated-entry in journal))))
          *directive-handlers*)
 
 (defun apply-automated-entries (entry &optional postp)
@@ -77,8 +77,7 @@
 				     :amount amt
 				     :generatedp t)))
 		      (push (cons :automatedp t) (xact-data new-xact))
-		      (add-transaction entry new-xact)
-		      (add-transaction account new-xact))))))))))))
+		      (add-transaction entry new-xact))))))))))))
 
 (pushnew #'apply-automated-entries *pre-normalization-functions*)
 (pushnew #'apply-automated-entries *post-normalization-functions*)

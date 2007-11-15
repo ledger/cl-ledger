@@ -12,20 +12,27 @@
 
 (in-package :ledger)
 
-(defun calculate-totals (binder)
-  (let ((running-total 0))
-    (dolist (journal (binder-journals binder))
-      (dolist (entry (journal-entries journal))
-	(dolist (xact (entry-transactions entry))
-	  (let ((amt (xact-amount xact)))
-	    (if amt
-		(setf running-total (add running-total amt))
-		(error "Running `calculate-running-totals' on non-normalized data"))
-	    (let ((total (assoc :running-total (xact-data xact))))
-	      (if total
-		  (rplacd total running-total)
-		  (push (cons :running-total running-total)
-			(xact-data xact)))))))))
+(defun calculate-totals (binder &key (amount nil) (total nil))
+  (declare (type (or string function null) amount))
+  (declare (type (or string function null) total))
+  (if (stringp amount) (setf amount (parse-value-expr amount)))
+  (if (stringp total)  (setf total (parse-value-expr total)))
+  (let ((running-total (make-instance 'balance)))
+    (loop
+       with iterator = (transactions-iterator binder)
+       for xact = (funcall iterator)
+       while xact do
+       (let ((amt (if amount
+		      (funcall amount xact)
+		      (xact-amount xact))))
+	 (if amt
+	     (progn
+	       (unless (eq amt (xact-amount xact))
+		 (xact-set-value :display-amount amt))
+	       (add* running-total amt))
+	     (error "Running `calculate-running-totals' on non-normalized data"))
+	 (xact-set-value xact :running-total
+			 (copy-from-balance running-total)))))
   binder)
 
 (export 'calculate-totals)

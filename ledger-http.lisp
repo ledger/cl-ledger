@@ -44,19 +44,22 @@
                  :style "margin: 10px 0 0 5%"
                  (:thead
                   (:tr (:th "Payee") (:th "Amount") (:th "Total")))
-                 (dolist (entry (journal-entries journal))
-                   (dolist (xact (entry-transactions entry))
-                     (let ((amt (xact-amount xact)))
-                       (htm
-                        (:tr
-                         (:td (str (entry-payee entry)))
-                         (:td :style "text-align: right; padding-left: 2em"
-                              (print-value amt))
-                         (:td
-                          :style "text-align: right; padding-left: 2em"
-                          (print-value
-                           (cdr (assoc :running-total (xact-data xact)))
-                           :line-feed-string "<br />")))))))))))))))))
+		 (loop
+		    with iterator = (entries-iterator journal)
+		    for entry = (funcall iterator)
+		    while entry do
+		    (dolist (xact (entry-transactions entry))
+		      (let ((amt (xact-amount xact)))
+			(htm
+			 (:tr
+			  (:td (str (entry-payee entry)))
+			  (:td :style "text-align: right; padding-left: 2em"
+			       (print-value amt))
+			  (:td
+			   :style "text-align: right; padding-left: 2em"
+			   (print-value
+			    (cdr (assoc :running-total (xact-data xact)))
+			    :line-feed-string "<br />")))))))))))))))))
 
 (defun hello-world ()
   (with-html

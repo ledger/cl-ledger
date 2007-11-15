@@ -114,45 +114,30 @@
 	    function))
       (constantly t)))
 
-(defun destructively-filter (binder predicate)
-  (dolist (journal (binder-journals binder))
-    (setf (journal-entries journal)
-	  (loop
-	     for entry in (journal-entries journal)
-	     while entry
-	     do (setf (entry-transactions entry)
-		      (loop
-			 for xact in (entry-transactions entry)
-			 while xact
-			 when (funcall predicate xact)
-			 collect xact))
-	     when (plusp (length (entry-transactions entry)))
-	     collect entry)))
-
-  (labels
-      ((filter-in-account (name account)
-	 (declare (ignore name))
-	 (setf (account-transactions account)
-	       (loop
-		  for xact in (account-transactions account)
-		  while xact
-		  when (funcall predicate xact)
-		  collect xact))
-	 (let ((children (account-children account)))
-	   (if children
-	       (maphash #'filter-in-account children)))))
-    (filter-in-account "" (binder-root-account binder)))
-
-  (if (binder-transactions binder)
-      (setf (binder-transactions binder)
-	    (loop
-	       for xact in (binder-transactions binder)
-	       while xact
-	       when (funcall predicate xact)
-	       collect xact)))
+(defun apply-filter (binder predicate)
+  (setf (binder-transactions binder)
+	(loop
+	   with iterator = (transactions-iterator binder)
+	   for xact = (funcall iterator)
+	   while xact
+	   when (funcall predicate xact)
+	   collect xact))
   binder)
 
-(export 'destructively-filter)
+(export 'apply-filter)
+
+(defun undo-filter (binder)
+  (setf (binder-transactions binder) nil)
+  (labels ((undo-filter-in-account (name account)
+	     (declare (ignore name))
+	     (setf (account-transactions account) nil)
+	     (let ((children (account-children account)))
+	       (if children
+		   (maphash #'undo-filter-in-account children)))))
+    (undo-filter-in-account "" (binder-root-account binder)))
+  binder)
+
+(export 'undo-filter)
 
 (provide 'filter)
 

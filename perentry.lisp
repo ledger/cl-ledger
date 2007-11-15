@@ -17,10 +17,19 @@
 	 for transaction = (read-transaction in entry)
 	 while transaction do
 	 (add-transaction entry transaction))
+
+      (let ((periodic-entries (assoc :periodic-entries
+				     (journal-data journal))))
+	(if periodic-entries
+	    (nconc (cdr periodic-entries) (list entry))
+	    (push (cons :periodic-entries (list entry))
+		  (journal-data journal))))
+
+      (add-to-contents journal entry)
       entry)))
 
 (pushnew `(#\~ . ,#'(lambda (in journal)
-		      (add-entry journal (read-periodic-entry in journal))))
-	 *directive-handlers*)    
+		      (add-to-contents journal (read-periodic-entry in journal))))
+	 *directive-handlers*)
 
 (provide 'perentry)

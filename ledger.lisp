@@ -5,18 +5,26 @@
 (defpackage :ledger
   (:use :common-lisp :local-time :cambl :cl-ppcre :periods :log5)
   (:export binder
+	   binder*
 	   binder-commodity-pool
 	   binder-root-account
 	   binder-journals
 	   binder-transactions
 	   binder-data
 	   read-binder
+	   read-binder*
+	   normalize-binder
 
 	   journal
 	   journal-binder
+	   journal-contents
 	   journal-entries
+	   journal-date-format
+	   journal-default-year
+	   journal-default-account
 	   journal-source
 	   journal-data
+	   parse-journal-date
 
 	   account
 	   account-parent
@@ -46,6 +54,9 @@
 	   xact-effective-date
 	   xact-date
 	   xact-status
+	   xact-cleared-p
+	   xact-pending-p
+	   xact-uncleared-p
 	   xact-account
 	   xact-amount
 	   xact-note
@@ -54,9 +65,8 @@
 	   xact-must-balance-p
 	   xact-position
 	   xact-data
-	   xact-cleared-p
-	   xact-pending-p
-	   xact-uncleared-p
+	   xact-value
+	   xact-set-value
 
 	   make-item-position
 	   copy-item-position
@@ -73,13 +83,12 @@
 	   cleared
 
 	   add-transaction
-	   add-entry
+	   add-to-contents
 	   add-journal
 	   find-account
 	   find-child-account
 
 	   *use-effective-dates*
-	   *default-account*
 	   *pre-normalization-functions*
 	   *post-normalization-functions*
 	   *registered-parsers*
@@ -89,16 +98,15 @@
 	   transactions-iterator
 	   map-transactions
 	   do-transactions
-
+	   entries-iterator
+	   
 	   read-value-expr
 	   parse-value-expr
 
 	   compose-predicate
-	   destructively-filter
-	   normalize-binder
+	   apply-filter
 	   abbreviate-string
 	   register-report
-	   report
 	   register
 	   calculate-totals))
 
@@ -139,8 +147,16 @@
     (format stream "")))
 
 (declaim (inline xact-value))
-(defun xact-value (key xact)
-  (cdr (assoc key (xact-data xact))))
+(defun xact-value (xact key)
+  (let ((value-cell (assoc key (xact-data xact))))
+    (values (cdr value-cell) value-cell)))
+
+(declaim (inline xact-value))
+(defun xact-set-value (xact key value)
+  (let ((value-cell (assoc key (xact-data xact))))
+    (if value-cell
+	(rplacd value-cell value)
+	(push (cons key value) (xact-data xact)))))
 
 (defclass entry ()
   ((journal        :accessor entry-journal	   :initarg :journal)
@@ -180,9 +196,17 @@
 
 (defclass journal ()
   ((binder	   :accessor journal-binder	   :initarg :binder)
+   (contents       :accessor journal-contents      :initform nil)
+   (last-content-cell :accessor journal-last-content-cell :initform nil)
    (entries	   :accessor journal-entries	   :initarg :entries
 		   :initform nil)
    (last-entry-cell :accessor journal-last-entry-cell :initform nil)
+   (date-format    :accessor journal-date-format  :initform nil
+		   :type (or string null))
+   (default-year   :accessor journal-default-year  :initform (this-year)
+		   :type (or integer null))
+   (default-account :accessor journal-default-account :initform nil
+		    :type (or account null))
    (source	   :accessor journal-source	   :initarg :source-path
 		   :type pathname)
    (data           :accessor journal-data          :initarg :data
@@ -201,14 +225,12 @@
 		   :initform nil)))
 
 (defgeneric add-transaction (item transaction))
-(defgeneric add-entry (journal entry))
 (defgeneric add-journal (binder journal))
 (defgeneric find-account (item account-path &key create-if-not-exists-p))
 
 ;; Textual journal parser
 
 (defvar *use-effective-dates* nil)
-(defvar *default-account* nil)
 (defvar *registered-parsers* nil)
 
 (defmethod add-transaction ((entry entry) (transaction transaction))
@@ -218,9 +240,10 @@
   (pushend transaction (account-transactions account)
 	   (account-last-transaction-cell account)))
 
-(defmethod add-entry ((journal journal) (entry entry))
-  (pushend entry (journal-entries journal)
-	   (journal-last-entry-cell journal)))
+(defun add-to-contents (journal item)
+  (declare (type journal journal))
+  (pushend item (journal-contents journal)
+	   (journal-last-content-cell journal)))
 
 (defmethod add-journal ((binder binder) (journal journal))
   (pushend journal (binder-journals binder)))
@@ -285,7 +308,7 @@ The result is of type JOURNAL."
 	      (return-from nil journal)
 	      (file-position in start-position)))))))
 
-(defun binder (&rest journals-or-paths-or-strings)
+(defun binder* (&rest journals-or-paths-or-strings)
   (let ((binder (make-instance 'binder
 			       :commodity-pool *default-commodity-pool*)))
     (dolist (item journals-or-paths-or-strings)
@@ -299,9 +322,17 @@ The result is of type JOURNAL."
 	     (error "unknown"))))
     binder))
 
+(declaim (inline binder))
+(defun binder (&rest journals-or-paths-or-strings)
+  (normalize-binder (apply #'binder* journals-or-paths-or-strings)))
+
 (declaim (inline read-binder))
 (defun read-binder (&rest args)
   (apply #'binder args))
+
+(declaim (inline read-binder*))
+(defun read-binder* (&rest args)
+  (apply #'binder* args))
 
 (declaim (inline list-iterator))
 (defun list-iterator (list)
@@ -334,7 +365,7 @@ The result is of type JOURNAL."
   (list-iterator (account-transactions account)))
 
 (defmethod transactions-iterator ((journal journal))
-  (let ((entries-iterator (list-iterator (journal-entries journal)))
+  (let ((entries-iterator (entries-iterator journal))
 	(xacts-iterator (constantly nil)))
     (lambda ()
       (labels
@@ -364,6 +395,17 @@ The result is of type JOURNAL."
      (map-transactions #'(lambda (,var) ,@body) ,object)
      ,result))
 
+(defun entries-iterator (journal)
+  (declare (type journal journal))
+  (let ((contents-iterator (list-iterator (journal-contents journal)))
+	(entry-class (find-class 'entry)))
+    (lambda ()
+      (loop
+	 for item = (funcall contents-iterator)
+	 while item
+	 when (eq (class-of item) entry-class)
+	 do (return item)))))
+
 (defun entry-date (entry)
   (declare (type entry entry))
   (if *use-effective-dates*
@@ -390,6 +432,14 @@ The result is of type JOURNAL."
 (defun xact-uncleared-p (xact)
   (declare (type transaction xact))
   (eq (xact-status xact) 'uncleared))
+
+(defun parse-journal-date (journal string)
+  (cambl:parse-datetime string
+			:format
+			(or (journal-date-format journal)
+			    cambl:*input-time-format*)
+			:default-year
+			(journal-default-year journal)))
 
 (defmacro while (test-form &body body)
   `(do () ((not ,test-form))
