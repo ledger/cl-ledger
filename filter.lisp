@@ -119,9 +119,11 @@
     (setf (journal-entries journal)
 	  (loop
 	     for entry in (journal-entries journal)
+	     while entry
 	     do (setf (entry-transactions entry)
 		      (loop
 			 for xact in (entry-transactions entry)
+			 while xact
 			 when (funcall predicate xact)
 			 collect xact))
 	     when (plusp (length (entry-transactions entry)))
@@ -133,6 +135,7 @@
 	 (setf (account-transactions account)
 	       (loop
 		  for xact in (account-transactions account)
+		  while xact
 		  when (funcall predicate xact)
 		  collect xact))
 	 (let ((children (account-children account)))
@@ -144,6 +147,7 @@
       (setf (binder-transactions binder)
 	    (loop
 	       for xact in (binder-transactions binder)
+	       while xact
 	       when (funcall predicate xact)
 	       collect xact)))
   binder)

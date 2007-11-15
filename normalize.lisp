@@ -8,7 +8,16 @@
 
 (in-package :ledger)
 
+(defcategory normalize)
+
+(defvar *pre-normalization-functions* nil)
+(defvar *post-normalization-functions* nil)
+
 (defun normalize-entry (entry)
+  (if *pre-normalization-functions*
+      (dolist (function *pre-normalization-functions*)
+	(funcall function entry)))
+
   ;; Scan through and compute the total balance for the entry.  This
   ;; is used for auto-calculating the value of entries with no cost,
   ;; and the per-unit price of unpriced commodities.
@@ -27,6 +36,9 @@
 	  (if p
 	      (progn
 		(add* balance p)
+		;;(format t " xact amount = ~S~%" (xact-amount x))
+		;;(format t " xact cost = ~S~%" (xact-cost x))
+		;;(format t " balance after add = ~S~%" (format-value balance))
 		(if no-amounts
 		    (setf no-amounts nil))
 
@@ -34,14 +46,23 @@
 
 		(if (and (xact-cost x)
 			 (commodity-annotated-p
-			  (amount-commodity (xact-cost x))))
-		    (let* ((commodity (amount-commodity (xact-cost x)))
+			  (amount-commodity (xact-amount x))))
+		    (let* ((commodity (amount-commodity (xact-amount x)))
 			   (price (annotation-price
 				   (commodity-annotation commodity))))
 		      (if price
-			  (add* balance
-				(subtract (multiply price (xact-amount x))
-					  (xact-cost x)))))))
+			  (progn
+			    ;;(format t " balance before = ~S~%" (format-value balance))
+			    ;;(format t " price = ~S~%" price)
+			    ;;(format t " (xact-amount x) = ~S~%" (xact-amount x))
+			    ;;(format t " (multiply price (xact-amount x)) = ~S~%" (multiply price (xact-amount x)))
+			    ;;(format t " (xact-cost x) = ~S~%" (xact-cost x))
+			    ;;(format t " (subtract (multiply price (xact-amount x)) (xact-cost x)) = ~S~%" (subtract (multiply price (xact-amount x)) (xact-cost x)))
+			    (add* balance
+				  (subtract (multiply price (xact-amount x))
+					    (xact-cost x)))
+			    ;;(format t " balance after = ~S~%" (format-value balance))
+			    )))))
 	      (setf saw-null t)))))
 
     ;; If it's a null entry, then let the user have their fun
@@ -51,11 +72,12 @@
       (when (and *default-account*
 		 (= 1 (length (entry-transactions entry))))
 	(assert (not (value-zerop* balance)))
-	(add-transaction entry (make-transaction
-				:entry entry
-				:status 'uncleared
-				:account *default-account*
-				:generatedp t))
+	(let ((new-xact (make-transaction :entry entry
+					  :status 'uncleared
+					  :account *default-account*
+					  :generatedp t)))
+	  (add-transaction entry new-xact)
+	  (add-transaction *default-account* new-xact))
 	(setf saw-null t))
 
       ;; If the first transaction of an entry with exactly two commodities is
@@ -66,37 +88,61 @@
       (when (and (not saw-null)
 		 (not (value-zerop* balance))
 		 (= 2 (balance-commodity-count balance)))
-	(let* ((xact-iterator (transactions-iterator entry))
-	       (x (funcall xact-iterator))
-	       (amount (xact-amount x))
-	       (commodity (amount-commodity amount))
+	(let* ((x (first (entry-transactions entry)))
+	       (commodity (amount-commodity (xact-amount x)))
+	       (amount (copy-amount
+			(amount-in-balance balance commodity)))
 	       (balancing-amount
-		(let ((amounts-map (cambl::get-amounts-map balance)))
+		(let ((amounts-map (get-amounts-map balance)))
 		  (if (eq commodity (car (nth 0 amounts-map)))
 		      (cdr (nth 1 amounts-map))
 		      (cdr (nth 0 amounts-map)))))
-	       (per-unit-cost
-		(divide balancing-amount amount)))
+	       (per-unit-cost (divide balancing-amount amount)))
+	  ;;(format t "Auto-balancing at position ~S~%" (item-position-begin-char (entry-position entry)))
+	  ;;(format t " amount	       = ~S~%" amount)
+	  ;;(format t " cost	       = ~S~%" (xact-cost x))
+	  ;;(format t " commodity        = ~S~%" commodity)
+	  ;;(format t " balancing-amount = ~S~%" balancing-amount)
+	  ;;(format t " per-unit-cost    = ~S~%" per-unit-cost)
 	  (setf (amount-keep-precision-p amount) t)
+	  ;;(format t " balance          = ~S~%" (format-value balance))
 	  (loop
-	     for x = (funcall xact-iterator)
+	     for x in (entry-transactions entry)
 	     while x
-	     unless (or (null (xact-cost x))
+	     unless (or (xact-cost x)
 			(xact-virtualp x)
 			(not (eq (amount-commodity amount)
 				 commodity)))
 	     do
+	     ;;(format t " subtract ~S from balance~%" amount)
 	     (subtract* balance amount)
-	     (if (and commodity
-		      (not (commodity-annotated-p commodity)))
-		 (annotate-commodity commodity
-				     (make-commodity-annotation
-				      :price (value-abs per-unit-cost)
-				      :date  (entry-date entry)
-				      :tag   (entry-code entry))))
+	     ;;(format t " balance          = ~S~%" (format-value balance))
+	     (if (and commodity (not (commodity-annotated-p commodity)))
+		 (progn
+		   ;;(format t "   amount before annotation = ~S~%" amount)
+		   ;;(format t " 2.balance        = ~S~%" (format-value balance))
+		   (setf (amount-commodity amount)
+			 (annotate-commodity commodity
+					     (make-commodity-annotation
+					      :price (value-abs per-unit-cost)
+					      :date  (entry-date entry)
+					      :tag   (entry-code entry))))
+		   ;;(format t " 3.balance        = ~S~%" (format-value balance))
+		   ;;(format t "   amount before annotation = ~S~%" amount) 
+		   ;;(format t " annotated commodity: ~S~%" (amount-commodity amount))
+		   ))
+	     ;;(format t "   per-unit-cost = ~S~%" per-unit-cost)
+	     ;;(format t "   amount = ~S~%" amount)
+	     ;;(format t "   (multiply per-unit-cost amount) = ~S~%" (multiply per-unit-cost amount))
+	     ;;(format t "   (negate (multiply per-unit-cost amount)) = ~S~%" (negate (multiply per-unit-cost amount)))
+	     ;;(format t " 4.balance        = ~S~%" (format-value balance))
 	     (setf (xact-cost x)
 		   (negate (multiply per-unit-cost amount)))
-	     (add* balance (xact-cost x)))))
+	     ;;(format t " 5.balance        = ~S~%" (format-value balance))
+	     ;;(format t " adding ~S to balance~%" (xact-cost x))
+	     (add* balance (xact-cost x))
+	     ;;(format t " 6.balance        = ~S~%" (format-value balance))
+	     )))
 
       ;; Walk through each of the transactions, fixing up any that we
       ;; can, and performing any on-the-fly calculations.
@@ -107,43 +153,49 @@
 			   (not (xact-must-balance-p x))))
 	    (unless empty-allowed
 	      (error "Only one transaction with null amount allowed per entry"))
-	    (setf empty-allowed nil))
+	    (setf empty-allowed nil)
 
-	  ;; If one transaction gives no value at all, its value will become
-	  ;; the inverse of the value of the others.  If multiple commodities
-	  ;; are involved, multiple transactions will be generated to balance
-	  ;; them all.
+	    ;; If one transaction gives no value at all, its value will become
+	    ;; the inverse of the value of the others.  If multiple
+	    ;; commodities are involved, multiple transactions will be
+	    ;; generated to balance them all.
 
-	  (setf balance (optimize-value balance))
+	    (setf balance (optimize-value balance))
 
-	  (if (balancep balance)
-	      (let ((first t))
-		(loop
-		   for pairs = (cambl::get-amounts-map balance)
-		   then (cdr pairs)
-		   for pair = (car pairs)
-		   do
-		   (let ((amt (negate (cdr pair))))
-		     (if first
-			 (progn
+	    (if (balancep balance)
+		(let ((first t))
+		  (loop
+		     for pairs = (get-amounts-map balance) then (cdr pairs)
+		     while pairs
+		     for pair = (car pairs)
+		     do
+		     (let ((amt (negate (cdr pair))))
+		       (if first
 			   (setf (xact-amount x) amt
-				 first nil))
-			 (let ((new-xact
-				(make-transaction :entry entry
-						  :account (xact-account x)
-						  :amount amt
-						  :generatedp t)))
-			   (add-transaction entry new-xact)))
-		     (add* balance amt)))
-		)
-	      (progn
-		(setf (xact-amount x) (negate balance)
-		      (xact-calculatedp x) t)
-		(add* balance (xact-amount x))))))
+				 first nil)
+			   (let ((new-xact
+				  (make-transaction :entry entry
+						    :account (xact-account x)
+						    :amount amt
+						    :generatedp t)))
+			     (add-transaction entry new-xact)
+			     (add-transaction (xact-account x) new-xact)))
+		       (add* balance amt))))
+		(progn
+		  (setf (xact-amount x) (negate balance)
+			(xact-calculatedp x) t)
+		  (add* balance (xact-amount x)))))))
 
-      (if (value-zerop* balance)
-	  entry
-	  (error "Entry does not balance")))))
+      (if *post-normalization-functions*
+	  (dolist (function *post-normalization-functions*)
+	    (funcall function entry t))))
+
+    (if (value-zerop balance)
+	entry
+	(error "Entry does not balance (beg ~S end ~S); remaining balance is:~%~A"
+	       (item-position-begin-char (entry-position entry))
+	       (item-position-end-char (entry-position entry))
+	       (format-value balance :width 20)))))
 
 (defun normalize-binder (binder)
   (let ((entry-class (find-class 'entry)))
@@ -151,7 +203,8 @@
       (setf (journal-entries journal)
             (loop
                for entry in (journal-entries journal)
-               when (eq entry-class (class-of entry))
+	       when (and entry
+			 (eq entry-class (class-of entry)))
                collect (normalize-entry entry))))
     (assert (null (binder-transactions binder))))
   binder)

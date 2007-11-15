@@ -211,7 +211,7 @@
 	 (let ((function (read-value-term in)))
 	   (if function
 	       (lambda (xact)
-		 (value-zerop (funcall function xact)))
+		 (not (value-truth (funcall function xact))))
 	       (error "'!' operator not followed by argument"))))
 	((char= c #\-)
 	 (read-char in)

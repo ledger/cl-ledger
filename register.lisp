@@ -41,7 +41,8 @@
 				   (subseq right 0 abbrev-length)))
 			      (setf last-part
 				    (concatenate 'string left-abbrev ":"
-						 right-abbrev))))) parts)))
+						 right-abbrev)))))
+		    parts)))
 	     (if (> (length abbrev) width)
 		 (abbreviate-string abbrev width :elision-style 'leading)
 		 abbrev)))

@@ -45,7 +45,7 @@ for diagnostic output.")
 (asdf:defsystem :ledger
   :serial t
   :version #.*ledger-version*
-  :depends-on (:cambl :cl-ppcre :periods)
+  :depends-on (:cambl :cl-ppcre :periods :log5)
   :components ((:file "ledger")
 	       (:file "normalize")
 	       (:file "totals")

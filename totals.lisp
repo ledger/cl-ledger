@@ -13,7 +13,7 @@
 (in-package :ledger)
 
 (defun calculate-totals (binder)
-  (let ((running-total (integer-to-amount 0)))
+  (let ((running-total 0))
     (dolist (journal (binder-journals binder))
       (dolist (entry (journal-entries journal))
 	(dolist (xact (entry-transactions entry))

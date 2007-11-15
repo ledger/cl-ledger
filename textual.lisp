@@ -12,13 +12,13 @@
 
 (defvar *spacing-regexp* (format nil "(?:  |~C| ~C)\\s*" #\Tab #\Tab))
 
-(defvar *comment-regexp* (format nil "(?:~A;(.+))?" *spacing-regexp*))
+(defvar *comment-regexp* (format nil "(?:~A;(.+))" *spacing-regexp*))
 
 (defvar *entry-heading-scanner*
   (cl-ppcre:create-scanner
    (format nil (concatenate 'string
 			    "^(?:(~A)(?:=(~A))?)\\s+(?:(\\*|!)\\s*)?"
-			    "(?:\\((.+?)\\)\\s+)?(.+?)~A$")
+			    "(?:\\((.+?)\\)\\s+)?(.+?)~A?$")
 	   *date-regexp* *date-regexp* *comment-regexp*)))
 
 (defvar *transaction-scanner*
@@ -62,31 +62,41 @@
 
 (defun read-transaction (in entry)
   (declare (type stream in))
-  ;;(format t "read-transaction~%")
   (let* ((beg-pos (file-position in))
 	 (xact-line (read-line in nil))
 	 (groups (and xact-line
 		      (nth-value 1 (cl-ppcre:scan-to-strings
 				    *transaction-scanner* xact-line)))))
-    ;;(format t "xact-line: '~A'~%groups: ~S~%" xact-line groups)
     (when groups
       (let ((status (aref groups 0))
 	    (open-bracket (aref groups 1))
 	    (account-name (aref groups 2))
 	    (close-bracket (aref groups 3))
 	    (amount-expr (aref groups 4))
-	    ;;(cost-specifier (aref groups 5))
-	    ;;(cost-expr (aref groups 6))
+	    (cost-specifier (aref groups 5))
+	    (cost-expr (aref groups 6))
 	    (note (aref groups 7))
-	    amount)
-	(when (and amount-expr (string/= amount-expr ""))
+	    amount cost)
+
+	(when amount-expr
 	  (with-input-from-string (in amount-expr)
 	    (setf amount (cambl:read-amount in))
 	    (when (peek-char t in nil)
 	      (file-position in 0)
 	      (setf amount (read-value-expr in)))))
+	(when cost-expr
+	  (with-input-from-string (in cost-expr)
+	    (setf cost (cambl:read-amount* in))
+	    (when (peek-char t in nil)
+	      (file-position in 0)
+	      (setf cost (read-value-expr in)))
+	    (unless cost
+	      (error "Failed to read cost expression: ~S" cost-expr))))
+
 	(let ((virtualp (and open-bracket
-			     (string= open-bracket close-bracket))))
+			     (if (string= "(" open-bracket)
+				 (string= ")" close-bracket)
+				 (string= "]" close-bracket)))))
 	  (make-transaction
 	   :entry entry
 	   ;;:actual-date
@@ -100,13 +110,18 @@
 	   :account (find-account (entry-journal entry) account-name
 				  :create-if-not-exists-p t)
 	   :amount amount
+	   :cost (if cost
+		     (if (string= "@" cost-specifier)
+			 (multiply cost amount)
+			 cost))
 	   :note note
 	   ;;:tags
 	   :position (make-item-position :begin-char beg-pos
 					 :end-char (file-position in))
 	   :virtualp virtualp
-	   :must-balance-p (and virtualp
-				(string= open-bracket "["))))))))
+	   :must-balance-p (if virtualp
+			       (string= open-bracket "[")
+			       t)))))))
 
 (defun read-plain-entry (in journal)
   "Read in the header line for the entry, which has the syntax:
@@ -127,7 +142,8 @@
   9 - A comment giving further details about the entry."
   (declare (type journal journal))
   (declare (type stream in))
-  (let* ((heading-line (read-line in nil))
+  (let* ((beg-pos (file-position in))
+	 (heading-line (read-line in nil))
 	 (groups (and heading-line
 		      (nth-value 1 (cl-ppcre:scan-to-strings
 				    *entry-heading-scanner* heading-line)))))
@@ -153,7 +169,10 @@
 				     'uncleared))
 		      :code code
 		      :payee payee
-		      :note note)))
+		      :note note
+		      :position
+		      (make-item-position :begin-char beg-pos
+					  :end-char (file-position in)))))
 	  (loop
 	     for transaction = (read-transaction in entry)
 	     while transaction do

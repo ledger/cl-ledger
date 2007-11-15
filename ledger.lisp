@@ -3,7 +3,7 @@
 (declaim (optimize (safety 3) (debug 3) (speed 1) (space 0)))
 
 (defpackage :ledger
-  (:use :common-lisp :local-time :cambl :cl-ppcre :periods)
+  (:use :common-lisp :local-time :cambl :cl-ppcre :periods :log5)
   (:export binder
 	   binder-commodity-pool
 	   binder-root-account
@@ -59,6 +59,7 @@
 	   xact-uncleared-p
 
 	   make-item-position
+	   copy-item-position
 	   item-position
 	   item-position-begin-char
 	   item-position-end-char
@@ -79,6 +80,8 @@
 
 	   *use-effective-dates*
 	   *default-account*
+	   *pre-normalization-functions*
+	   *post-normalization-functions*
 	   *registered-parsers*
 
 	   read-journal-file
@@ -155,8 +158,10 @@
 		   :initform nil :type (or string null))
    (transactions   :accessor entry-transactions	   :initarg :transactions
 		   :initform nil)
-   position
-   data))
+   (position       :accessor entry-position        :initarg :position
+		   :initform nil)
+   (data           :accessor entry-data            :initarg :data
+		   :initform nil)))
 
 (defclass account ()
   ((parent         :accessor account-parent	   :initarg :parent
@@ -170,7 +175,8 @@
    (transactions   :accessor account-transactions  :initarg :transactions
 		   :initform nil)
    (last-transaction-cell :accessor account-last-transaction-cell :initform nil)
-   data))
+   (data           :accessor account-data          :initarg :data
+		   :initform nil)))
 
 (defclass journal ()
   ((binder	   :accessor journal-binder	   :initarg :binder)
@@ -179,7 +185,8 @@
    (last-entry-cell :accessor journal-last-entry-cell :initform nil)
    (source	   :accessor journal-source	   :initarg :source-path
 		   :type pathname)
-   data))
+   (data           :accessor journal-data          :initarg :data
+		   :initform nil)))
 
 (defclass binder ()
   ((commodity-pool :accessor binder-commodity-pool :initarg :commodity-pool
@@ -190,7 +197,8 @@
 		   :initform nil)
    (transactions   :accessor binder-transactions   :initarg :transactions
 		   :initform nil)
-   data))
+   (data           :accessor binder-data           :initarg :data
+		   :initform nil)))
 
 (defgeneric add-transaction (item transaction))
 (defgeneric add-entry (journal entry))
