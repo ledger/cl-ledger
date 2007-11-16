@@ -200,7 +200,7 @@
   (let ((entry-class (find-class 'entry)))
     (dolist (journal (binder-journals binder))
       (setf (journal-contents journal)
-            (loop
+	    (loop
                for item in (journal-contents journal)
 	       while item
 	       collect (if (eq (class-of item) entry-class)

@@ -29,30 +29,37 @@
 	   *spacing-regexp* #\Tab *comment-regexp*)))
 
 (defvar *directive-handlers*
-  `((#\; . ,#'(lambda (in journal)
-		(declare (ignore journal))
-		;; comma begins a comment; gobble up the rest of the line
-		(read-line in nil)))
+  `(((#\; #\* #\% #\#)
+     . ,#'(lambda (in journal)
+	    (declare (ignore journal))
+	    ;; comma begins a comment; gobble up the rest of
+	    ;; the line
+	    (read-line in nil)))
+
     ((#\Newline #\Return) . ,#'(lambda (in journal)
 				 (declare (ignore journal))
 				 (read-char in nil)))
+
     (#\Y . ,#'(lambda (in journal)
 		(read-char in)
 		(peek-char t in)
 		(setf (journal-default-year journal) (read in)
 		      ;; jww (2007-11-15): This is a total hack
 		      (journal-date-format journal) "%m/%d")))
+
     (#\A . ,#'(lambda (in journal)
 		(read-char in)
 		(peek-char t in)
 		(setf (journal-default-account journal)
 		      (find-account journal (read-line in)
 				    :create-if-not-exists-p t))))
+
     (#\D . ,#'(lambda (in journal)
 		(declare (ignore journal))
 		(read-char in)
 		(peek-char t in)
 		(cambl:read-amount in)))
+
     (#\N . ,#'(lambda (in journal)
 		(declare (ignore journal))
 		(read-char in)
@@ -62,9 +69,31 @@
 					     :create-if-not-exists-p t)))
 		  (setf (cambl::get-no-market-price-p
 			 (cambl::commodity-base commodity)) t))))
+
     (,#'digit-char-p
      . ,#'(lambda (in journal)
-	    (add-to-contents journal (read-plain-entry in journal))))))
+	    (add-to-contents journal (read-plain-entry in journal))))
+
+    ((#\@ #\!)
+     . ,#'(lambda (in journal)
+	    (declare (ignore journal))
+	    (let ((symbol (read in))
+		  (argument (read-line in)))
+	      (if (symbolp symbol)
+		  (progn
+		    (setf symbol
+			  (find-symbol (format nil "ledger-text-directive/~A"
+					       (symbol-name symbol))))
+		    (if (and symbol (functionp symbol))
+			(funcall (fdefinition symbol) argument)
+			argument))
+		  argument))))
+
+    (#\( . ,#'(lambda (in journal)
+		(declare (ignore journal))
+		(if *allow-embedded-lisp*
+		    (eval (read in))
+		    (error "Embedded Lisp not allowed, set `LEDGER:*ALLOW-EMBEDDED-LISP*'"))))))
 
 (defun read-transaction (in entry)
   (declare (type stream in))
@@ -146,8 +175,8 @@
   6 - The (optional) \"code\" for the entry; has no meaning to Ledger.
   7 - The payee or description of the entry.
   9 - A comment giving further details about the entry."
-  (declare (type journal journal))
   (declare (type stream in))
+  (declare (type journal journal))
   (let* ((beg-pos (file-position in))
 	 (heading-line (read-line in nil))
 	 (groups (and heading-line
@@ -214,6 +243,81 @@
 		       (file-position in) c)
 	       (read-line in nil)))))
     journal))
+
+(defun ledger-text-directive/include (argument)
+  (declare (ignorable argument))
+  (format t "@include (~A)~%" argument))
+(defun ledger-text-directive/account (argument)
+  (declare (ignorable argument))
+  (format t "@include (~A)~%" argument))
+(defun ledger-text-directive/end (argument)
+  (declare (ignorable argument))
+  (format t "@include (~A)~%" argument))
+(defun ledger-text-directive/alias (argument)
+  (declare (ignorable argument))
+  (format t "@include (~A)~%" argument))
+(defun ledger-text-directive/def (argument)
+  (declare (ignorable argument))
+  (format t "@include (~A)~%" argument))
+
+;; if (word == "include") {
+;;   push_var<std::string>	  save_path(path);
+;;   push_var<unsigned int>  save_src_idx(src_idx);
+;;   push_var<unsigned long> save_beg_pos(beg_pos);
+;;   push_var<unsigned long> save_end_pos(end_pos);
+;;   push_var<unsigned int>  save_linenum(linenum);
+;; 
+;;   path = p;
+;;   if (path[0] != '/' && path[0] != '\\' && path[0] != '~') {
+;;     std::string::size_type pos = save_path.prev.rfind('/');
+;;     if (pos == std::string::npos)
+;;       pos = save_path.prev.rfind('\\');
+;;     if (pos != std::string::npos)
+;;       path = std::string(save_path.prev, 0, pos + 1) + path;
+;;   }
+;;   path = resolve_path(path);
+;; 
+;;   DEBUG_PRINT("ledger.textual.include", "line " << linenum << ": " <<
+;; 	      "Including path '" << path << "'");
+;; 
+;;   include_stack.push_back(std::pair<std::string, int>
+;; 			  (journal->sources.back(), linenum - 1));
+;;   count += parse_journal_file(path, config, journal,
+;; 			      account_stack.front());
+;;   include_stack.pop_back();
+;; }
+;; else if (word == "account") {
+;;   account_t * acct;
+;;   acct = account_stack.front()->find_account(p);
+;;   account_stack.push_front(acct);
+;; }
+;; else if (word == "end") {
+;;   account_stack.pop_front();
+;; }
+;; else if (word == "alias") {
+;;   char * b = p;
+;;   if (char * e = std::strchr(b, '=')) {
+;;     char * z = e - 1;
+;;     while (std::isspace(*z))
+;;       *z-- = '\0';
+;;     *e++ = '\0';
+;;     e = skip_ws(e);
+;; 
+;;     // Once we have an alias name (b) and the target account
+;;     // name (e), add a reference to the account in the
+;;     // `account_aliases' map, which is used by the transaction
+;;     // parser to resolve alias references.
+;;     account_t * acct = account_stack.front()->find_account(e);
+;;     std::pair<accounts_map::iterator, bool> result
+;;       = account_aliases.insert(accounts_pair(b, acct));
+;;     assert(result.second);
+;;   }
+;; }
+;; else if (word == "def") {
+;;   if (! global_scope.get())
+;;     init_value_expr();
+;;   parse_value_definition(p);
+;; }
 
 (pushnew #'read-journal *registered-parsers*)
 

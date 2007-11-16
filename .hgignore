@@ -34,3 +34,4 @@
 .*/\.svn$
 ^doc/Structure \[backup]\.ooutline$
 ^_darcs$
+(^|/)\..*\.ping$
