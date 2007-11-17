@@ -3,7 +3,7 @@
 (declaim (optimize (safety 3) (debug 3) (speed 1) (space 0)))
 
 (defpackage :ledger
-  (:use :common-lisp :local-time :cambl :cl-ppcre :periods :log5)
+  (:use :common-lisp :local-time :cambl :cl-ppcre :periods)
   (:export binder
 	   binder-commodity-pool
 	   binder-root-account
