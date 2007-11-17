@@ -1,0 +1,81 @@
+This is a very brief README, since things are just beginning and still very
+much in flux.  First, this document assumes the use of SBCL for now.  Other
+implementations will be tested soon.
+
+The first thing to do is install the prerequisites.  You may do this quite
+easily using asdf-install (note that if Hunchentoot gives you compilation
+                                error on the file port-sbcl, just select the restart for ACCEPT):
+
+$ sbcl
+* (require 'asdf-install)
+* (push  :hunchentoot-no-ssl *features*)
+* (asdf-install:install :hunchentoot)
+* (asdf-install:install :cl-who)
+* (asdf-install:install :cl-ppcre)
+* (asdf-install:install :local-time)
+* (quit)
+
+Now you need to pull all of the projects relating to Ledger.  Here's what I do
+for Darcs:
+
+$ darcs get http://darcs.newartisans.com/ledger
+$ darcs get http://darcs.newartisans.com/cambl
+$ darcs get http://darcs.newartisans.com/periods
+$ darcs get http://darcs.newartisans.com/red-black
+
+And for Mercurial users:
+
+$ hg clone http://hg.newartisans.com/ledger
+$ hg clone http://hg.newartisans.com/cambl
+$ hg clone http://hg.newartisans.com/periods
+$ hg clone http://hg.newartisans.com/red-black
+
+The next step is to configure SBCL so it knows where to load ledger from.
+Create a file called ~/.sbclrc and add these contents:
+
+  ;; -*- lisp -*-
+  
+  (mapc 'require
+        '(sb-bsd-sockets sb-posix
+          asdf asdf-install))
+  
+  (dolist (project '("red-black/"
+                     "cambl/"
+                     "periods/"
+                     "ledger/"))
+    (push (merge-pathnames project "/path/to/src/")
+          asdf:*central-registry*))
+
+Make sure you change /path/to/src/ to be the directory under which you're
+keeping all of the Ledger projects.  Also, be sure this pathname ends with a
+slash!  In CL, directory names always end with/
+
+Now you can run Ledger at the REPL like this:
+
+  $ sbcl
+  * (require 'asdf)
+  * (asdf:oos 'asdf:load-op :ledger)
+  * (asdf:oos 'asdf:load-op :ledger.textual)
+
+This compiles and loads the Ledger core, and also the textual parser package,
+for parsing standard Ledger text files (other parser packages soon to come).
+
+Once in the REPL, try out this command:
+
+  * (ledger:register "/path/to/src/ledger/doc/sample.dat")
+
+You should see a register printed representing the contents of sample.dat.
+You can constrain this report using keyword modifiers:
+
+  * (ledger:register "/path/to/src/ledger/doc/sample.dat" :account "books")
+
+If you prefer to use the HTTP interface, just cd to where you have Ledger
+pulled and type "make".  If this works, you can quit, then type "make core" to
+build a core file just for the Ledger web server.  After it's built, type
+"make" to run the server using that core.  Once a core is built, Ledger should
+start up in a split second.
+
+That's it for now, expect more in this file as things progress!
+
+John Wiegley
+2007/11/17

@@ -31,19 +31,19 @@
 
 (in-package :cl-user)
 
-(defpackage :ledger-http-asd
+(defpackage :ledger.http-asd
   (:use :cl :asdf))
 
-(in-package :ledger-http-asd)
+(in-package :ledger.http-asd)
 
-(defvar *ledger-http-version* "4.0.0-pre-0"
-  "A string denoting the current version of LEDGER-HTTP.  Used
+(defvar *ledger.http-version* "4.0.0-pre-0"
+  "A string denoting the current version of LEDGER.HTTP.  Used
 for diagnostic output.")
 
-(export '*ledger-http-version*)
+(export '*ledger.http-version*)
 
-(asdf:defsystem :ledger-http
+(asdf:defsystem :ledger.http
   :serial t
-  :version #.*ledger-http-version*
-  :depends-on (:ledger)
-  :components ((:file "src/ledger-server")))
+  :version #.*ledger.http-version*
+  :depends-on (:ledger :hunchentoot :cl-who)
+  :components ((:file "ledger.http")))

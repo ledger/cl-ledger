@@ -70,74 +70,67 @@
 		    first-arg)
 		  (let ((value (first (rest args))))
 		    (setf remainder (rest (rest args)))
-		    (case first-arg
-		      (:account
-		       (assert (or (stringp value)
-				   (typep value 'account)))
-		       (account-matcher value))
-		      (:not-account
-		       (assert (or (stringp value)
-				   (typep value 'account)))
-		       (not-matcher (account-matcher value)))
-		      (:payee
-		       (assert (stringp value))
-		       (payee-matcher value))
-		      (:not-payee
-		       (assert (stringp value))
-		       (not-matcher (payee-matcher value)))
-		      (:note
-		       (assert (stringp value))
-		       (note-matcher value)) 
-		      (:not-note
-		       (assert (stringp value))
-		       (not-matcher (note-matcher value))) 
-		      (:expr
-		       (assert (or (stringp value)
-				   (functionp value)))
-		       (value-expr-matcher value))
-		      (:begin
-		       (assert (or (stringp value)
-				   (typep value 'cambl:datetime)))
-		       (datetime-matcher value #'local-time>=))
-		      (:end
-		       (assert (or (stringp value)
-				   (typep value 'cambl:datetime)))
-		       (datetime-matcher value #'local-time<=))
-		      (otherwise
-		       (error "Unrecognized predicate keyword '~S'"
-			      first-arg)))))))
+		    (when value
+		      (case first-arg
+			(:account
+			 (assert (or (stringp value)
+				     (typep value 'account)))
+			 (account-matcher value))
+			(:not-account
+			 (assert (or (stringp value)
+				     (typep value 'account)))
+			 (not-matcher (account-matcher value)))
+			(:payee
+			 (assert (stringp value))
+			 (payee-matcher value))
+			(:not-payee
+			 (assert (stringp value))
+			 (not-matcher (payee-matcher value)))
+			(:note
+			 (assert (stringp value))
+			 (note-matcher value)) 
+			(:not-note
+			 (assert (stringp value))
+			 (not-matcher (note-matcher value))) 
+			(:expr
+			 (assert (or (stringp value)
+				     (functionp value)))
+			 (value-expr-matcher value))
+			(:begin
+			 (assert (or (stringp value)
+				     (typep value 'cambl:datetime)))
+			 (datetime-matcher value #'local-time>=))
+			(:end
+			 (assert (or (stringp value)
+				     (typep value 'cambl:datetime)))
+			 (datetime-matcher value #'local-time<=))
+			(otherwise
+			 (error "Unrecognized predicate keyword '~S'"
+				first-arg))))))))
 	(if remainder
 	    (let ((next-matcher (apply #'compose-predicate remainder)))
-	      (lambda (xarg)
-		(and (funcall function xarg)
-		     (funcall next-matcher xarg))))
+	      (if next-matcher
+		  (if function
+		      (lambda (xarg)
+			(and (funcall function xarg)
+			     (funcall next-matcher xarg)))
+		      next-matcher)
+		  function))
 	    function))
       (constantly t)))
 
 (defun apply-filter (binder predicate)
-  (setf (binder-transactions binder)
-	(loop
-	   with iterator = (transactions-iterator binder)
-	   for xact = (funcall iterator)
-	   while xact
-	   when (funcall predicate xact)
-	   collect xact))
+  (if predicate
+      (setf (binder-transactions binder)
+	    (loop
+	       with iterator = (transactions-iterator binder)
+	       for xact = (funcall iterator)
+	       while xact
+	       when (funcall predicate xact)
+	       collect xact)))
   binder)
 
 (export 'apply-filter)
-
-(defun undo-filter (binder)
-  (setf (binder-transactions binder) nil)
-  (labels ((undo-filter-in-account (name account)
-	     (declare (ignore name))
-	     (setf (account-transactions account) nil)
-	     (let ((children (account-children account)))
-	       (if children
-		   (maphash #'undo-filter-in-account children)))))
-    (undo-filter-in-account "" (binder-root-account binder)))
-  binder)
-
-(export 'undo-filter)
 
 (provide 'filter)
 

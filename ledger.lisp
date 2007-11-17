@@ -12,6 +12,7 @@
 	   binder-data
 	   read-binder
 	   add-journal-file
+	   reset-binder
 
 	   normalize-binder
 	   apply-filter
@@ -147,6 +148,8 @@
 (defun print-transaction (transaction stream depth)
   (declare (ignore depth))
   (print-unreadable-object (transaction stream :type t)
+    ;; jww (2007-11-17): Need to print details here for transactions, and all
+    ;; the other Ledger classes.  I also need format-transaction.
     (format stream "")))
 
 (declaim (inline xact-value))
@@ -272,6 +275,17 @@ The result is of type JOURNAL."
 
 (defmethod add-journal ((journal journal) (child journal))
   (pushend child (journal-contents journal)))
+
+(defun reset-binder (binder)
+  (setf (binder-transactions binder) nil)
+  (labels ((undo-filter-in-account (name account)
+	     (declare (ignore name))
+	     (setf (account-transactions account) nil)
+	     (let ((children (account-children account)))
+	       (if children
+		   (maphash #'undo-filter-in-account children)))))
+    (undo-filter-in-account "" (binder-root-account binder)))
+  binder)
 
 (declaim (inline add-to-contents))
 (defun add-to-contents (journal item)

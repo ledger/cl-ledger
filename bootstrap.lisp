@@ -9,8 +9,6 @@
 (dolist (libdir (directory "./lib/*/"))
   (pushnew libdir asdf:*central-registry*))
 
-(asdf:operate 'asdf:load-op :ledger)
-
 (asdf:operate 'asdf:load-op :cffi)
 (push "/usr/local/lib" cffi:*foreign-library-directories*)
 (push "/opt/local/lib" cffi:*foreign-library-directories*)
@@ -26,3 +24,7 @@
 (push  :hunchentoot-no-ssl *features*)
 (asdf:operate 'asdf:load-op :hunchentoot)
 (asdf:operate 'asdf:load-op :cl-who)
+
+(asdf:operate 'asdf:load-op :ledger)
+(asdf:operate 'asdf:load-op :ledger.textual)
+(asdf:operate 'asdf:load-op :ledger.http)
