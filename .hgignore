@@ -13,7 +13,6 @@
 ^aclocal\.m4$
 ^acconf\.h\.in$
 ^Makefile\.in$
-^Makefile$
 ^missing$
 ^install-sh$
 ^elisp-comp$
