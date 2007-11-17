@@ -8,8 +8,6 @@
 
 (in-package :ledger)
 
-(defcategory normalize)
-
 (defvar *pre-normalization-functions* nil)
 (defvar *post-normalization-functions* nil)
 
