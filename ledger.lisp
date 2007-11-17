@@ -103,10 +103,12 @@
 	   entries-list
 	   map-entries
 	   do-entries
+	   #+:ledger-series scan-entries
 	   transactions-iterator
 	   transactions-list
 	   map-transactions
 	   do-transactions
+	   #+:ledger-series scan-transactions
 	   
 	   read-value-expr
 	   parse-value-expr
@@ -401,6 +403,12 @@ if there were an empty string between them."
 	(first list)
       (setf list (rest list)))))
 
+(declaim (inline ignore-args))
+(defun ignore-args (closure)
+  (lambda (&rest args)
+    (declare (ignore args))
+    (funcall closure)))
+
 (declaim (inline map-iterator))
 (defun map-iterator (callable iterator)
   ;; This makes the assumption that iterator returns NIL when it reaches end
@@ -498,6 +506,11 @@ if there were an empty string between them."
      (map-entries #'(lambda (,var) ,@body) ,object)
      ,result))
 
+#+:ledger-series
+(defmacro scan-entries (object)
+  `(let ((iterator (ignore-args (entries-iterator ,object))))
+     (series:scan-fn '(or entry null) iterator iterator #'null)))
+
 (defmethod transactions-iterator ((binder binder))
   (let ((xacts (binder-transactions binder)))
     (if xacts
@@ -557,5 +570,10 @@ if there were an empty string between them."
 	do (progn
 	     ,@body
 	     ,result))))
+
+#+:ledger-series
+(defmacro scan-transactions (object)
+  `(let ((iterator (ignore-args (transactions-iterator ,object))))
+     (series:scan-fn '(or transaction null) iterator iterator #'null)))
 
 ;; ledger.lisp ends here

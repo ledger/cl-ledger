@@ -79,3 +79,11 @@ That's it for now, expect more in this file as things progress!
 
 John Wiegley
 2007/11/17
+
+p.s. For fans of the SERIES library, you can apply `scan-transactions' or
+     `scan-entries' to a binder/account/journal/entry in order to produce
+     a SERIES of the corresponding type.  Example:
+
+       (collect (ledger:scan-transactions
+       		 (read-binder "doc/sample.dat")))
+	  => [a list of all transactions, in sequence, within sample.dat]
