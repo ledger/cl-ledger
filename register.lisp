@@ -51,11 +51,11 @@
 
 (export 'abbreviate-string)
 
-(defun register-report (binder &key (output-stream *standard-output*))
-  (declare (type binder binder))
+(defun register-report (iterator &key (output-stream *standard-output*))
+  (declare (type function iterator))
   (declare (type stream output-stream))
   (let ((count 0))
-    (do-transactions (xact binder)
+    (do-iterator (xact iterator)
       (format output-stream "~10A ~20A ~22A ~A ~A~%"
 	      (cambl:format-datetime (xact-date xact))
 	      (abbreviate-string (entry-payee (xact-entry xact)) 20)
@@ -97,11 +97,12 @@
     (multiple-value-setq (amount args)
       (extract-keyword :amount args))
     (values (register-report
-	     (calculate-totals
-	      (if args
-		  (apply-filter binder (apply #'compose-predicate args))
-		  binder)
-	      :amount amount :total total))
+	     (transactions-iterator
+	      (calculate-totals
+	       (if args
+		   (apply-filter binder (apply #'compose-predicate args))
+		   binder)
+	       :amount amount :total total)))
 	    binder)))
 
 (defun register (binder &rest args)
