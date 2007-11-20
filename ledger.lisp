@@ -383,17 +383,17 @@ if there were an empty string between them."
 
 (defun xact-resolve-amount (xact)
   (declare (type transaction xact))
-  (let ((amount (xact-amount xact)))
-    (cond
-      ((valuep amount)
-       amount)
-      ((null amount)
-       (error "Resolving transaction amount for unnormalized data"))
-      ((functionp amount)
-       (or (xact-value xact :computed-amount)
-	   (xact-set-value xact :computed-amount (funcall amount xact))))
-      (t
-       (error "impossible")))))
+  (or (xact-value xact :computed-amount)
+      (let ((amount (xact-amount xact)))
+	(cond
+	  ((valuep amount)
+	   amount)
+	  ((null amount)
+	   (error "Resolving transaction amount for unnormalized data"))
+	  ((functionp amount)
+	   (xact-set-value xact :computed-amount (funcall amount xact)))
+	  (t
+	   (error "impossible"))))))
 
 (declaim (inline xact-cleared-p))
 (defun xact-cleared-p (xact)

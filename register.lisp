@@ -51,7 +51,7 @@
 
 (defun register-reporter (&key (output-stream *standard-output*))
   (let (last-entry)
-    (lambda (xact amount total)
+    (lambda (xact)
       (if (or (null last-entry)
 	      (not (eq last-entry (xact-entry xact))))
 	  (progn
@@ -65,17 +65,16 @@
       (format output-stream "~22A ~A ~A~%"
 	      (abbreviate-string (account-fullname (xact-account xact)) 22
 				 :account-p t)
-	      (format-value amount :width 12 :latter-width 67)
-	      (format-value total :width 12 :latter-width 80)))))
+	      (format-value (xact-resolve-amount xact)
+			    :width 12 :latter-width 67)
+	      (format-value (or (xact-value xact :running-total)
+				0) :width 12 :latter-width 80)))))
 
-(defun register-report (xact-series amounts-series totals-series
-			&key (output-stream *standard-output*))
+(defun register-report (xact-series &key (output-stream *standard-output*))
   (let ((reporter (register-reporter :output-stream output-stream))
 	(count 0))
-    (iterate ((xact xact-series)
-	      (amount amounts-series)
-	      (total totals-series))
-	     (funcall reporter xact amount total)
+    (iterate ((xact xact-series))
+	     (funcall reporter xact)
 	     (incf count))
     count))
 
@@ -112,6 +111,7 @@
 	total amount
 	head tail
 	period)
+
     (multiple-value-setq (total args)
       (extract-keywords :total args))
     (multiple-value-setq (amount args)
@@ -122,40 +122,33 @@
       (extract-keywords '(:tail :last :bottom) args))
     (multiple-value-setq (period args)
       (extract-keywords '(:period :group) args))
-    (multiple-value-bind (xacts amounts totals)
-	(calculate-totals
-	 (let ((xacts
-		(scan-transactions binder
-				   :entry-transform #'normalize-entry)))
-	   (if period
-	       (setf xacts
-		     (group-by-period xacts
-				      (if (stringp period)
-					  (parse-time-period period)
-					  period))))
-	   (if args
-	       (choose-if (apply #'compose-predicate args) xacts)
-	       xacts))
-	 :amount amount :total total)
+
+    (let ((xacts (scan-normalized-transactions binder)))
+
+      (if args
+	  (setf xacts (choose-if (apply #'compose-predicate args)
+				 xacts)))
+
+      (if period
+	  (setf xacts
+		(group-by-period xacts (if (stringp period)
+					   (parse-time-period period)
+					   period))))
+
+      (setf xacts (calculate-totals xacts :amount amount :total total))
+      
       (cond
 	(head
-	 (let ((mask (latch xacts :after head)))
-	   (register-report (choose mask xacts)
-			    (choose mask amounts)
-			    (choose mask totals))))
+	 (register-report (choose (latch xacts :after head) xacts)))
 	(tail
-	 ;; Tail is expensive, because normally we don't know the length of
-	 ;; the transaction series until it's all over.  In this case, the
-	 ;; entire list will have to be precomputed in order to find the
-	 ;; length.  Expect a pause for large data sets.
-	 (let* ((length (collect-length xacts))
-		(mask (latch xacts :after (- length tail)
-				   :pre nil)))
-	   (register-report (choose mask xacts)
-			    (choose mask amounts)
-			    (choose mask totals))))
+	 ;; Tail is expensive, because we don't know the length of the
+	 ;; transaction series until every element has been seen (and hence
+	 ;; computed).  Expect a large pause for giant data sets.
+	 (let ((length (collect-length xacts)))
+	   (register-report (choose (latch xacts :after (- length tail)
+						 :pre nil) xacts))))
 	(t
-	 (register-report xacts amounts totals))))))
+	 (register-report xacts))))))
 
 (provide 'register)
 
