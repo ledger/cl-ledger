@@ -12,6 +12,9 @@
 (defvar *post-normalization-functions* nil)
 
 (defun normalize-entry (entry)
+  (if (entry-normalizedp entry)
+      (return-from normalize-entry entry))
+
   (if *pre-normalization-functions*
       (dolist (function *pre-normalization-functions*)
 	(funcall function entry)))
@@ -188,23 +191,12 @@
 	    (funcall function entry t))))
 
     (if (value-zerop balance)
-	entry
+	(prog1
+	    entry
+	  (setf (entry-normalizedp entry) t))
 	(error "Entry does not balance (beg ~S end ~S); remaining balance is:~%~A"
 	       (item-position-begin-char (entry-position entry))
 	       (item-position-end-char (entry-position entry))
 	       (format-value balance :width 20)))))
-
-(defun normalize-binder (binder)
-  (let ((entry-class (find-class 'entry)))
-    (dolist (journal (binder-journals binder))
-      (setf (journal-contents journal)
-	    (loop
-               for item in (journal-contents journal)
-	       while item
-	       collect (if (eq (class-of item) entry-class)
-			   (normalize-entry item)
-			   item))))
-    (assert (null (binder-transactions binder))))
-  binder)
 
 (provide 'normalize)

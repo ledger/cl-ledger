@@ -4,8 +4,6 @@
 
 (in-package :ledger)
 
-;; (put 'do-transactions 'lisp-indent-function 1)
-
 (defun abbreviate-string (name width &key
 			  (elision-style 'abbreviate)
 			  (account-p nil)
@@ -51,59 +49,53 @@
 
 (export 'abbreviate-string)
 
-(defun register-report (iterator &key (output-stream *standard-output*))
-  (declare (type function iterator))
-  (declare (type stream output-stream))
-  (let ((count 0))
-    (do-iterator (xact iterator)
-      (format output-stream "~10A ~20A ~22A ~A ~A~%"
-	      (cambl:format-datetime (xact-date xact))
-	      (abbreviate-string (entry-payee (xact-entry xact)) 20)
+(defun register-reporter (&key (output-stream *standard-output*))
+  (let (last-entry)
+    (lambda (xact amount total)
+      (if (or (null last-entry)
+	      (not (eq last-entry (xact-entry xact))))
+	  (progn
+	    (format output-stream "~10A ~20A "
+		    ;; jww (2007-11-19): What if the transaction has its own date
+		    ;; set?
+		    (cambl:format-datetime (xact-date xact))
+		    (abbreviate-string (entry-payee (xact-entry xact)) 20))
+	    (setf last-entry (xact-entry xact)))
+	  (format output-stream "~32A" " "))
+      (format output-stream "~22A ~A ~A~%"
 	      (abbreviate-string (account-fullname (xact-account xact)) 22
 				 :account-p t)
-	      (let ((display-amount (xact-value xact :display-amount)))
-		(if display-amount
-		    (format-value display-amount
-				  :width 12 :latter-width 67)
-		    (format-value (xact-amount xact) :width 12)))
-	      (let ((running-total (xact-value xact :running-total)))
-		(if running-total
-		    (format-value running-total
-				  :width 12 :latter-width 80)
-		    "")))
-      (incf count))
+	      (format-value amount :width 12 :latter-width 67)
+	      (format-value total :width 12 :latter-width 80)))))
+
+(defun register-report (xact-series amounts-series totals-series
+			&key (output-stream *standard-output*))
+  (let ((reporter (register-reporter :output-stream output-stream))
+	(count 0))
+    (iterate ((xact xact-series)
+	      (amount amounts-series)
+	      (total totals-series))
+	     (funcall reporter xact amount total)
+	     (incf count))
     count))
 
 (export 'register-report)
 
-(defun extract-keyword (keyword args)
-  (declare (type keyword keyword))
+(defun extract-keywords (keyword-or-list args)
+  (declare (type (or list keyword) keyword-or-list))
   (declare (type list args))
-  (let ((cell (member keyword args)) value)
+  (let ((cell (member-if #'(lambda (arg)
+			     (if (keywordp keyword-or-list)
+				 (eq keyword-or-list arg)
+				 (member arg keyword-or-list)))
+			 args))
+	value)
     (if cell
 	(values (setf value (cadr cell))
 		(delete-if #'(lambda (cons)
-			       (or (eq cons keyword)
+			       (or (eq cons (car cell))
 				   (eq cons value))) args))
 	(values nil args))))
-
-(defun register* (binder &rest args)
-  (let ((binder (etypecase binder
-		  ((or string pathname) (read-binder binder))
-		  (binder binder)))
-	total amount)
-    (multiple-value-setq (total args)
-      (extract-keyword :total args))
-    (multiple-value-setq (amount args)
-      (extract-keyword :amount args))
-    (values (register-report
-	     (transactions-iterator
-	      (calculate-totals
-	       (if args
-		   (apply-filter binder (apply #'compose-predicate args))
-		   binder)
-	       :amount amount :total total)))
-	    binder)))
 
 (defun register (binder &rest args)
   "This is a convenience function for quickly making register reports.
@@ -114,13 +106,56 @@
                      :begin \"2007/08/26\" :account \"food\")
 
   "
-  (prog1
-      (multiple-value-bind (count new-binder)
-	  (apply #'register* binder args)
-	(prog1
-	    count
-	  (setf binder new-binder)))
-    (undo-filter binder)))
+  (let ((binder (etypecase binder
+		  ((or string pathname) (read-binder binder))
+		  (binder binder)))
+	total amount
+	head tail
+	period)
+    (multiple-value-setq (total args)
+      (extract-keywords :total args))
+    (multiple-value-setq (amount args)
+      (extract-keywords :amount args))
+    (multiple-value-setq (head args)
+      (extract-keywords '(:head :first :top) args))
+    (multiple-value-setq (tail args)
+      (extract-keywords '(:tail :last :bottom) args))
+    (multiple-value-setq (period args)
+      (extract-keywords '(:period :group) args))
+    (multiple-value-bind (xacts amounts totals)
+	(calculate-totals
+	 (let ((xacts
+		(scan-transactions binder
+				   :entry-transform #'normalize-entry)))
+	   (if period
+	       (setf xacts
+		     (group-by-period xacts
+				      (if (stringp period)
+					  (parse-time-period period)
+					  period))))
+	   (if args
+	       (choose-if (apply #'compose-predicate args) xacts)
+	       xacts))
+	 :amount amount :total total)
+      (cond
+	(head
+	 (let ((mask (latch xacts :after head)))
+	   (register-report (choose mask xacts)
+			    (choose mask amounts)
+			    (choose mask totals))))
+	(tail
+	 ;; Tail is expensive, because normally we don't know the length of
+	 ;; the transaction series until it's all over.  In this case, the
+	 ;; entire list will have to be precomputed in order to find the
+	 ;; length.  Expect a pause for large data sets.
+	 (let* ((length (collect-length xacts))
+		(mask (latch xacts :after (- length tail)
+				   :pre nil)))
+	   (register-report (choose mask xacts)
+			    (choose mask amounts)
+			    (choose mask totals))))
+	(t
+	 (register-report xacts amounts totals))))))
 
 (provide 'register)
 

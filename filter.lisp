@@ -119,19 +119,6 @@
 	    function))
       (constantly t)))
 
-(defun apply-filter (binder predicate)
-  (if predicate
-      (setf (binder-transactions binder)
-	    (loop
-	       with iterator = (transactions-iterator binder)
-	       for xact = (funcall iterator)
-	       while xact
-	       when (funcall predicate xact)
-	       collect xact)))
-  binder)
-
-(export 'apply-filter)
-
 (provide 'filter)
 
 ;; filter.lisp ends here

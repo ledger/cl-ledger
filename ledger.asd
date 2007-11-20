@@ -42,13 +42,17 @@ for diagnostic output.")
 
 (export '*ledger-version*)
 
+(pushnew :periods-use-series *features*)
+(pushnew :periods-use-parser *features*)
+
 (asdf:defsystem :ledger
   :serial t
   :version #.*ledger-version*
-  :depends-on (:cambl :cl-ppcre :periods :local-time)
+  :depends-on (:local-time :cambl :periods :series :cl-ppcre)
   :components ((:file "ledger")
 	       (:file "normalize")
 	       (:file "totals")
 	       (:file "filter")
-	       (:file "register")
-	       (:file "valexpr")))
+	       (:file "valexpr")
+	       (:file "periodic")
+	       (:file "register")))

@@ -49,16 +49,16 @@
 	    (do-transactions (inner-xact auto-entry)
 	      (let ((amt
 		     (block nil
-		       (if (null (amount-commodity (xact-amount inner-xact)))
+		       (if (amount-commodity (xact-amount inner-xact))
+			   (progn
+			     (if postp
+				 (return))
+			     (xact-amount inner-xact))
 			   (progn
 			     (if (not postp)
 				 (return))
 			     (multiply (xact-amount outer-xact)
-				       (xact-amount inner-xact)))
-			   (progn
-			     (if postp
-				 (return))
-			     (xact-amount inner-xact))))))
+				       (xact-amount inner-xact)))))))
 		(when amt
 		  (let* ((account (xact-account inner-xact))
 			 (fullname (account-fullname account)))
@@ -75,6 +75,8 @@
 						(xact-position inner-xact))
 				     :account account
 				     :amount amt
+				     :virtualp (xact-virtualp inner-xact)
+				     :must-balance-p (xact-must-balance-p inner-xact)
 				     :generatedp t)))
 		      (push (cons :automatedp t) (xact-data new-xact))
 		      (add-transaction entry new-xact))))))))))))

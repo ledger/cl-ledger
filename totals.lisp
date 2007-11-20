@@ -12,28 +12,19 @@
 
 (in-package :ledger)
 
-(defun calculate-totals (binder &key (amount nil) (total nil))
+(defun calculate-totals (xact-series &key (amount nil) (total nil))
+  (declare (type series xact-series))
   (declare (type (or string function null) amount))
   (declare (type (or string function null) total))
   (if (stringp amount) (setf amount (parse-value-expr amount)))
   (if (stringp total)  (setf total (parse-value-expr total)))
-  (let ((running-total (make-instance 'balance)))
-    (loop
-       with iterator = (transactions-iterator binder)
-       for xact = (funcall iterator)
-       while xact do
-       (let ((amt (if amount
-		      (funcall amount xact)
-		      (xact-amount xact))))
-	 (if amt
-	     (progn
-	       (unless (eq amt (xact-amount xact))
-		 (xact-set-value :display-amount amt))
-	       (add* running-total amt))
-	     (error "Running `calculate-running-totals' on non-normalized data"))
-	 (xact-set-value xact :running-total
-			 (copy-from-balance running-total)))))
-  binder)
+  (let ((running-total (balance)))
+    (map-fn
+     '(values transaction value value)
+     #'(lambda (xact)
+	 (let ((amt (xact-resolve-amount xact)))
+	   (values xact amt (copy-from-balance (add* running-total amt)))))
+     xact-series)))
 
 (export 'calculate-totals)
 

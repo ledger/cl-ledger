@@ -3,7 +3,7 @@
 (declaim (optimize (safety 3) (debug 3) (speed 1) (space 0)))
 
 (defpackage :ledger
-  (:use :common-lisp :local-time :cambl :cl-ppcre :periods)
+  (:use :common-lisp :local-time :cambl :periods :series)
   (:export binder
 	   binder-commodity-pool
 	   binder-root-account
@@ -14,8 +14,7 @@
 	   add-journal-file
 	   reset-binder
 
-	   normalize-binder
-	   apply-filter
+	   filter-transactions
 	   calculate-totals
 	   register-report
 	   abbreviate-string
@@ -103,12 +102,12 @@
 	   entries-list
 	   map-entries
 	   do-entries
-	   #+:ledger-series scan-entries
+	   scan-entries
 	   transactions-iterator
 	   transactions-list
 	   map-transactions
 	   do-transactions
-	   #+:ledger-series scan-transactions
+	   scan-transactions
 	   
 	   read-value-expr
 	   parse-value-expr
@@ -117,6 +116,8 @@
 	   register))
 
 (in-package :ledger)
+
+(setf *suppress-series-warnings* t)
 
 (deftype item-status ()
   '(member uncleared pending cleared))
@@ -136,8 +137,8 @@
   (effective-date nil  :type (or datetime null))
   (status 'uncleared   :type item-status)
   account
-  (amount nil	       :type (or integer amount function null))
-  (cost nil	       :type (or integer amount function null))
+  (amount nil	       :type (or value function null))
+  (cost nil	       :type (or value function null))
   (note nil	       :type (or string null))
   (tags nil)
   (virtualp nil        :type boolean)
@@ -150,9 +151,20 @@
 (defun print-transaction (transaction stream depth)
   (declare (ignore depth))
   (print-unreadable-object (transaction stream :type t)
-    ;; jww (2007-11-17): Need to print details here for transactions, and all
-    ;; the other Ledger classes.  I also need format-transaction.
-    (format stream "")))
+    (format stream
+	    ":DATE ~S :ACCT ~S :AMT ~S :V ~S :M ~S :G ~S :C ~S :POS ~S"
+	    (let ((date (xact-date transaction)))
+	      (and date (format-datetime date)))
+	    (account-fullname (xact-account transaction))
+	    (let ((amt (xact-amount transaction)))
+	      (and (typep amt 'value)
+		   (format-value amt)))
+	    (xact-virtualp transaction)
+	    (xact-must-balance-p transaction)
+	    (xact-generatedp transaction)
+	    (xact-calculatedp transaction)
+	    (let ((pos (xact-position transaction)))
+	      (and pos (item-position-begin-char pos))))))
 
 (declaim (inline xact-value))
 (defun xact-value (xact key)
@@ -169,7 +181,7 @@
 (defclass entry ()
   ((journal        :accessor entry-journal	   :initarg :journal)
    (actual-date	   :accessor entry-actual-date	   :initarg :actual-date
-		   :type datetime)
+		   :initform nil :type (or datetime null))
    (effective-date :accessor entry-effective-date  :initarg :effective-date
 		   :initform nil :type (or datetime null))
    (status         :accessor entry-status	   :initarg :status
@@ -183,6 +195,8 @@
    (transactions   :accessor entry-transactions	   :initarg :transactions
 		   :initform nil)
    (position       :accessor entry-position        :initarg :position
+		   :initform nil)
+   (normalizedp    :accessor entry-normalizedp     :initarg :normalizedp
 		   :initform nil)
    (data           :accessor entry-data            :initarg :data
 		   :initform nil)))
@@ -211,7 +225,7 @@
    (last-entry-cell :accessor journal-last-entry-cell :initform nil)
    (date-format    :accessor journal-date-format  :initform nil
 		   :type (or string null))
-   (default-year   :accessor journal-default-year  :initform (this-year)
+   (default-year   :accessor journal-default-year  :initform nil
 		   :type (or integer null))
    (default-account :accessor journal-default-account :initform nil
 		    :type (or account null))
@@ -236,7 +250,7 @@
 (defgeneric add-journal (binder journal))
 (defgeneric find-account (item account-path &key create-if-not-exists-p))
 (defgeneric entries-iterator (object))
-(defgeneric transactions-iterator (object))
+(defgeneric transactions-iterator (object &key entry-transform))
 
 ;; Textual journal parser
 
@@ -257,7 +271,7 @@ The result is of type JOURNAL."
 	      (return-from nil journal)
 	      (file-position in start-position)))))))
 
-(defun binder (path-or-string &key (normalize t))
+(defun binder (path-or-string)
   (let ((binder
 	 (make-instance 'binder :commodity-pool *default-commodity-pool*)))
     (if (typep path-or-string '(or pathname string))
@@ -265,12 +279,11 @@ The result is of type JOURNAL."
 	  (if journal
 	      (add-journal binder journal)))
 	(error "unknown"))
-    (if normalize
-	(normalize-binder binder)
-	binder)))
+    binder))
 
-(defmacro read-binder (path-or-string)
-  `(binder ,path-or-string))
+(declaim (inline read-binder))
+(defun read-binder (path-or-string)
+  (binder path-or-string))
 
 (defmethod add-journal ((binder binder) (journal journal))
   (pushend journal (binder-journals binder)))
@@ -367,6 +380,20 @@ if there were an empty string between them."
 	  (entry-date (xact-entry xact)))
       (or (xact-actual-date xact)
 	  (entry-date (xact-entry xact)))))
+
+(defun xact-resolve-amount (xact)
+  (declare (type transaction xact))
+  (let ((amount (xact-amount xact)))
+    (cond
+      ((valuep amount)
+       amount)
+      ((null amount)
+       (error "Resolving transaction amount for unnormalized data"))
+      ((functionp amount)
+       (or (xact-value xact :computed-amount)
+	   (xact-set-value xact :computed-amount (funcall amount xact))))
+      (t
+       (error "impossible")))))
 
 (declaim (inline xact-cleared-p))
 (defun xact-cleared-p (xact)
@@ -506,12 +533,14 @@ if there were an empty string between them."
      (map-entries #'(lambda (,var) ,@body) ,object)
      ,result))
 
-#+:ledger-series
-(defmacro scan-entries (object)
-  `(let ((iterator (ignore-args (entries-iterator ,object))))
-     (series:scan-fn '(or entry null) iterator iterator #'null)))
+(declaim (inline scan-entries))
+(defun scan-entries (object)
+  (declare (optimizable-series-function))
+  (multiple-value-bind (entries)
+      (map-fn '(or entry null) (entries-iterator object))
+    (until-if #'null entries)))
 
-(defmethod transactions-iterator ((binder binder))
+(defmethod transactions-iterator ((binder binder) &key (entry-transform nil))
   (let ((xacts (binder-transactions binder)))
     (if xacts
 	(list-iterator xacts)
@@ -525,14 +554,18 @@ if there were an empty string between them."
 		       (let ((next-journal (funcall journals-iterator)))
 			 (when next-journal
 			   (setf xacts-iterator
-				 (transactions-iterator next-journal))
+				 (transactions-iterator
+				  next-journal
+				  :entry-transform entry-transform))
 			   (next-xact))))))
 	      (next-xact)))))))
 
-(defmethod transactions-iterator ((account account))
+;; jww (2007-11-19): implement
+(defmethod transactions-iterator ((account account) &key (entry-transform nil))
+  (declare (ignore entry-transform))
   (list-iterator (account-transactions account)))
 
-(defmethod transactions-iterator ((journal journal))
+(defmethod transactions-iterator ((journal journal) &key (entry-transform nil))
   (let ((entries-iterator (entries-iterator journal))
 	(xacts-iterator (constantly nil)))
     (lambda ()
@@ -542,25 +575,35 @@ if there were an empty string between them."
 		 (let ((next-entry (funcall entries-iterator)))
 		   (when next-entry
 		     (setf xacts-iterator
-			   (list-iterator (entry-transactions next-entry)))
+			   (transactions-iterator
+			    next-entry :entry-transform entry-transform))
 		     (next-xact))))))
 	(next-xact)))))
 
-(defmethod transactions-iterator ((entry entry))
-  (list-iterator (entry-transactions entry)))
+(defmethod transactions-iterator ((entry entry) &key (entry-transform nil))
+  (declare (type (or function null) entry-transform))
+  (list-iterator (entry-transactions (if entry-transform
+					 (funcall entry-transform entry)
+					 entry))))
 
-(defmethod transactions-iterator ((transaction transaction))
+(defmethod transactions-iterator ((transaction transaction)
+				  &key (entry-transform nil))
+  (declare (ignore entry-transform))
   (list-iterator (list transaction)))
 
-(defun transactions-list (object)
+(defun transactions-list (object &key (entry-transform nil))
   (loop
-     with iterator = (transactions-iterator object)
+     with iterator =
+       (transactions-iterator object :entry-transform entry-transform)
      for xact = (funcall iterator)
      while xact collect xact))
 
-(defmacro map-transactions (callable object)
-  `(map-iterator ,callable (transactions-iterator ,object)))
+(defmacro map-transactions (callable object &key (entry-transform nil))
+  `(map-iterator ,callable
+		 (transactions-iterator ,object
+					:entry-transform ,entry-transform)))
 
+;; jww (2007-11-19): deprecated?
 (defmacro do-transactions ((var object &optional (result nil)) &body body)
   (let ((iterator (gensym)))
     `(loop
@@ -571,9 +614,18 @@ if there were an empty string between them."
 	     ,@body
 	     ,result))))
 
-#+:ledger-series
-(defmacro scan-transactions (object)
-  `(let ((iterator (ignore-args (transactions-iterator ,object))))
-     (series:scan-fn '(or transaction null) iterator iterator #'null)))
+(declaim (inline scan-transactions))
+(defun scan-transactions (object &key (entry-transform nil))
+  (declare (optimizable-series-function))
+  (multiple-value-bind (transactions)
+      (map-fn '(or transaction null)
+	      (transactions-iterator object
+				     :entry-transform entry-transform))
+    (until-if #'null transactions)))
+
+(declaim (inline scan-transactions))
+(defun scan-normalized-transactions (object)
+  (declare (optimizable-series-function))
+  (scan-transactions object :entry-transform #'normalize-entry))
 
 ;; ledger.lisp ends here
