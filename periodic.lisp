@@ -33,6 +33,13 @@
 		(xact-resolve-amount xact))))))
     (scan-transactions artificial-journal)))
 
+(defun periodic-transform (xact-series &rest args)
+  (let ((period (getf args :period)))
+    (group-by-period xact-series (if (stringp period)
+				     nil
+				     ;; jww (2007-11-21): (parse-time-period period)
+				     period))))
+
 (provide 'periodic)
 
 ;; periodic.lisp ends here

@@ -216,6 +216,18 @@
    (data           :accessor account-data          :initarg :data
 		   :initform nil)))
 
+(declaim (inline account-value))
+(defun account-value (account key)
+  (let ((value-cell (assoc key (account-data account))))
+    (values (cdr value-cell) value-cell)))
+
+(declaim (inline account-value))
+(defun account-set-value (account key value)
+  (let ((value-cell (assoc key (account-data account))))
+    (if value-cell
+	(rplacd value-cell value)
+	(push (cons key value) (account-data account)))))
+
 (defclass journal ()
   ((binder	   :accessor journal-binder	   :initarg :binder)
    (contents       :accessor journal-contents      :initform nil)
@@ -295,7 +307,9 @@ The result is of type JOURNAL."
   (setf (binder-transactions binder) nil)
   (labels ((undo-filter-in-account (name account)
 	     (declare (ignore name))
-	     (setf (account-transactions account) nil)
+	     (setf (account-data account) nil
+		   (account-transactions account) nil
+		   (account-last-transaction-cell account) nil)
 	     (let ((children (account-children account)))
 	       (if children
 		   (maphash #'undo-filter-in-account children)))))

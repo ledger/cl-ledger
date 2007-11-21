@@ -18,14 +18,18 @@
   (declare (type (or string function null) total))
   (if (stringp amount) (setf amount (parse-value-expr amount)))
   (if (stringp total)  (setf total (parse-value-expr total)))
-  (let ((running-total (balance)))
-    (map-fn 'transaction
+  (let ((running-total (cambl:balance)))
+    (map-fn
+     'transaction
      #'(lambda (xact)
 	 (let ((amt (if amount
 			(funcall amount xact)
 			(xact-resolve-amount xact))))
-	  (xact-set-value xact :running-total
-			  (copy-from-balance (add* running-total amt))))
+	   (xact-set-value xact :running-total
+			   (copy-from-balance (add* running-total amt)))
+	   (if total
+	       (xact-set-value xact :running-total
+			       (funcall total xact))))
 	 xact)
      xact-series)))
 

@@ -129,12 +129,6 @@
 	  (setf xacts (choose-if (apply #'compose-predicate args)
 				 xacts)))
 
-      (if period
-	  (setf xacts
-		(group-by-period xacts (if (stringp period)
-					   (parse-time-period period)
-					   period))))
-
       (setf xacts (calculate-totals xacts :amount amount :total total))
       
       (cond

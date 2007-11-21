@@ -50,9 +50,13 @@ for diagnostic output.")
   :version #.*ledger-version*
   :depends-on (:local-time :periods :cambl :series :cl-ppcre)
   :components ((:file "ledger")
+	       (:file "valexpr")
+
 	       (:file "normalize")
 	       (:file "totals")
 	       (:file "filter")
-	       (:file "valexpr")
 	       (:file "periodic")
-	       (:file "register")))
+	       (:file "transform")
+
+	       (:file "register")
+	       (:file "balance")))

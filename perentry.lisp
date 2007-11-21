@@ -12,7 +12,10 @@
     (let ((entry
 	   (make-instance 'periodic-entry
 			  :journal journal
-			  :period (periods:parse-time-period period-string))))
+			  ;; jww (2007-11-21): This isn't working just yet
+			  :period (and nil
+				       ;; (periods:parse-time-period period-string)
+				       ))))
       (loop
 	 for transaction = (read-transaction in entry)
 	 while transaction do

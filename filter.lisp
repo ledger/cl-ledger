@@ -119,6 +119,11 @@
 	    function))
       (constantly t)))
 
+(declaim (inline apply-filter))
+(defun apply-filter (xacts &rest args)
+  (declare (optimizable-series-function))
+  (choose-if (apply #'compose-predicate args) xacts))
+
 (provide 'filter)
 
 ;; filter.lisp ends here
