@@ -72,7 +72,8 @@
 		   (incf elided)))
 
 	   (if (account-children account)
-	       (locally (declare (sb-ext:muffle-conditions sb-ext:code-deletion-note))
+	       (locally #+sbcl(declare (sb-ext:muffle-conditions
+					sb-ext:code-deletion-note))
 		 (mapc #'(lambda (cell)
 			   (print-accounts (cdr cell) (car cell)
 					   elided (1+ real-depth)))
