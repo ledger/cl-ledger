@@ -143,7 +143,7 @@
 		     (running-total (xact-value xact :running-total)))
 		(htm
 		 (:tr
-		  (:td (str (format-datetime (xact-date xact))))
+		  (:td (str (strftime (xact-date xact))))
 		  (:td (str (entry-payee (xact-entry xact))))
 		  (:td :style "font-weight: bold"
 		       (str (account-fullname (xact-account xact))))

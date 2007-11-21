@@ -3,7 +3,7 @@
 (declaim (optimize (safety 3) (debug 3) (speed 1) (space 0)))
 
 (defpackage :ledger.textual
-  (:use :common-lisp :ledger :cambl :cl-ppcre :periods)
+  (:use :common-lisp :ledger :local-time :periods :cambl :cl-ppcre)
   (:export *directive-handlers*))
 
 (in-package :ledger.textual)

@@ -133,8 +133,8 @@
 	     (:conc-name xact-)
 	     (:print-function print-transaction))
   entry
-  (actual-date nil     :type (or datetime null))
-  (effective-date nil  :type (or datetime null))
+  (actual-date nil     :type (or fixed-time null))
+  (effective-date nil  :type (or fixed-time null))
   (status 'uncleared   :type item-status)
   account
   (amount nil	       :type (or value function null))
@@ -154,7 +154,7 @@
     (format stream
 	    ":DATE ~S :ACCT ~S :AMT ~S :V ~S :M ~S :G ~S :C ~S :POS ~S"
 	    (let ((date (xact-date transaction)))
-	      (and date (format-datetime date)))
+	      (and date (strftime date)))
 	    (account-fullname (xact-account transaction))
 	    (let ((amt (xact-amount transaction)))
 	      (and (typep amt 'value)
@@ -181,9 +181,9 @@
 (defclass entry ()
   ((journal        :accessor entry-journal	   :initarg :journal)
    (actual-date	   :accessor entry-actual-date	   :initarg :actual-date
-		   :initform nil :type (or datetime null))
+		   :initform nil :type (or fixed-time null))
    (effective-date :accessor entry-effective-date  :initarg :effective-date
-		   :initform nil :type (or datetime null))
+		   :initform nil :type (or fixed-time null))
    (status         :accessor entry-status	   :initarg :status
 		   :initform 'uncleared :type item-status)
    (code	   :accessor entry-code		   :initarg :code
@@ -412,10 +412,9 @@ if there were an empty string between them."
 
 (declaim (inline parse-journal-date))
 (defun parse-journal-date (journal string)
-  (cambl:parse-datetime string
-			:format (or (journal-date-format journal)
-				    cambl:*input-time-format*)
-			:default-year (journal-default-year journal)))
+  (strptime string :format (or (journal-date-format journal)
+			       *input-time-format*)
+	    :default-year (journal-default-year journal)))
 
 ;;;_ * General utility functions
 

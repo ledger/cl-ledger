@@ -21,9 +21,11 @@
   (let ((running-total (balance)))
     (map-fn 'transaction
      #'(lambda (xact)
-	 (xact-set-value xact :running-total
-			 (copy-from-balance
-			  (add* running-total (xact-resolve-amount xact))))
+	 (let ((amt (if amount
+			(funcall amount xact)
+			(xact-resolve-amount xact))))
+	  (xact-set-value xact :running-total
+			  (copy-from-balance (add* running-total amt))))
 	 xact)
      xact-series)))
 

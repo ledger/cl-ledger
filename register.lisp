@@ -58,7 +58,7 @@
 	    (format output-stream "~10A ~20A "
 		    ;; jww (2007-11-19): What if the transaction has its own date
 		    ;; set?
-		    (cambl:format-datetime (xact-date xact))
+		    (strftime (xact-date xact))
 		    (abbreviate-string (entry-payee (xact-entry xact)) 20))
 	    (setf last-entry (xact-entry xact)))
 	  (format output-stream "~32A" " "))

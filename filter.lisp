@@ -50,14 +50,14 @@
   (lambda (xact)
     (not (funcall matcher xact))))
 
-(defun datetime-matcher (string-or-datetime operator)
-  (declare (type (or string cambl:datetime) string-or-datetime))
-  (if (stringp string-or-datetime)
-      (let ((moment (cambl:parse-datetime string-or-datetime)))
+(defun fixed-time-matcher (string-or-fixed-time operator)
+  (declare (type (or string fixed-time) string-or-fixed-time))
+  (if (stringp string-or-fixed-time)
+      (let ((moment (strptime string-or-fixed-time)))
 	(lambda (xact)
 	  (funcall operator (xact-date xact) moment)))
       (lambda (xact)
-	(funcall operator (xact-date xact) string-or-datetime))))
+	(funcall operator (xact-date xact) string-or-fixed-time))))
 
 (defun compose-predicate (&rest args)
   (if args
@@ -98,12 +98,12 @@
 			 (value-expr-matcher value))
 			(:begin
 			 (assert (or (stringp value)
-				     (typep value 'cambl:datetime)))
-			 (datetime-matcher value #'local-time>=))
+				     (typep value 'fixed-time)))
+			 (fixed-time-matcher value #'local-time>=))
 			(:end
 			 (assert (or (stringp value)
-				     (typep value 'cambl:datetime)))
-			 (datetime-matcher value #'local-time<=))
+				     (typep value 'fixed-time)))
+			 (fixed-time-matcher value #'local-time<=))
 			(otherwise
 			 (error "Unrecognized predicate keyword '~S'"
 				first-arg))))))))

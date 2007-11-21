@@ -46,7 +46,7 @@
 	  (constantly found-amount)
 	  (cond
 	    ((digit-char-p c)
-	     (assert (null "We should never get here anymore"))
+	     (assert (null "We should never get here"))
 	     (constantly (cambl:integer-to-amount (read in))))
 
 	    ((char= c #\/)
@@ -72,7 +72,7 @@
 	    ((char= c #\[)
 	     (read-char in)
 	     (constantly
-	      (parse-datetime
+	      (strptime
 	       (cambl::read-until in #\] "Date/time lacks closing bracket"))))
 
 	    ((char= c #\{)
@@ -103,11 +103,12 @@
 		     ((member symbol '(|a| |amount|) :test #'eq)
 		      (lambda (xact &rest args)
 			(declare (ignore args))
-			(xact-amount xact)))
+			(xact-resolve-amount xact)))
 		     ((member symbol '(|i| |price|) :test #'eq)
 		      (lambda (xact &rest args)
 			(declare (ignore args))
-			(divide (xact-cost xact) (xact-amount xact))))
+			(divide (xact-cost xact)
+				(xact-resolve-amount xact))))
 		     ((member symbol '(|b| |cost|) :test #'eq)
 		      (lambda (xact &rest args)
 			(declare (ignore args))
@@ -163,11 +164,14 @@
 		     ((member symbol '(|S| |quant| |quantity|) :test #'eq)
 		      (lambda (xact &rest args)
 			(declare (ignore args))
-			(cambl:amount-quantity (xact-amount xact))))
+			(cambl:amount-quantity (xact-resolve-amount xact))))
 		     ((member symbol '(|comm| |commodity|) :test #'eq)
 		      (lambda (xact &rest args)
 			(declare (ignore args))
-			(cambl:amount-commodity (xact-amount xact))))
+			(let ((one (amount 1)))
+			  (setf (amount-commodity one)
+				(amount-commodity (xact-resolve-amount xact)))
+			  one)))
 		     ((member symbol '(|setcomm| |set_commodity|) :test #'eq)
 		      )
 		     ((member symbol '(|A| |avg| |mean| |average|) :test #'eq)
@@ -275,6 +279,19 @@
 	       function))
 	    function)))))
 
+(defmacro make-comparator (function time-operator value-operator error-string)
+  `(let ((next-function (read-logic-expr in)))
+     (if next-function
+	 (lambda (xact)
+	   (let ((second (funcall next-function xact)))
+	     (and (etypecase second
+		    (local-time
+		     (,time-operator (funcall ,function xact) second))
+		    (value
+		     (,value-operator (funcall ,function xact) second)))
+		  second)))
+	 (error ,error-string))))
+
 (defun read-logic-expr (in)
   (let ((function (read-add-expr in)))
     (when function
@@ -283,70 +300,37 @@
 	    (cond
 	      ((char= c #\=)
 	       (read-char in)
-	       (let ((next-function (read-logic-expr in)))
-		 (if next-function
-		     (lambda (xact)
-		       (let ((second (funcall next-function xact)))
-			 (and (value= (funcall function xact)
-				      second)
-			      second)))
-		     (error "'=' operator not followed by argument"))))
+	       (make-comparator function local-time= value=
+				"'=' operator not followed by argument"))
+
 	      ((char= c #\!)
 	       (read-char in)
 	       (if (char= #\= (peek-char nil in))
 		   (progn
 		     (read-char in)
-		     (let ((next-function (read-logic-expr in)))
-		       (if next-function
-			   (lambda (xact)
-			     (let ((second (funcall next-function xact)))
-			       (and (value/= (funcall function xact)
-					     second)
-				    second)))
-			   (error "'!=' operator not followed by argument"))))
+		     (make-comparator function local-time/= value/=
+				      "'!=' operator not followed by argument"))
 		   (error "Syntax error")))
+
 	      ((char= c #\<)
 	       (read-char in)
 	       (if (char= #\= (peek-char nil in))
 		   (progn
 		     (read-char in)
-		     (let ((next-function (read-logic-expr in)))
-		       (if next-function
-			   (lambda (xact)
-			     (let ((second (funcall next-function xact)))
-			       (and (value<= (funcall function xact)
-					     second)
-				    second)))
-			   (error "'<=' operator not followed by argument"))))
-		   (let ((next-function (read-logic-expr in)))
-		     (if next-function
-			 (lambda (xact)
-			   (let ((second (funcall next-function xact)))
-			     (and (value< (funcall function xact)
-					  second)
-				  second)))
-			 (error "'<' operator not followed by argument")))))
+		     (make-comparator function local-time<= value<=
+				      "'<=' operator not followed by argument"))
+		   (make-comparator function local-time< value<
+				    "'<' operator not followed by argument")))
+
 	      ((char= c #\>)
 	       (read-char in)
 	       (if (char= #\= (peek-char nil in))
 		   (progn
 		     (read-char in)
-		     (let ((next-function (read-logic-expr in)))
-		       (if next-function
-			   (lambda (xact)
-			     (let ((second (funcall next-function xact)))
-			       (and (value>= (funcall function xact)
-					     second)
-				    second)))
-			   (error "'>=' operator not followed by argument"))))
-		   (let ((next-function (read-logic-expr in)))
-		     (if next-function
-			 (lambda (xact)
-			   (let ((second (funcall next-function xact)))
-			     (and (value> (funcall function xact)
-					  second)
-				  second)))
-			 (error "'>' operator not followed by argument")))))
+		     (make-comparator function local-time>= value>=
+				      "'>=' operator not followed by argument"))
+		   (make-comparator function local-time> value>
+				    "'>' operator not followed by argument")))
 	      (t
 	       function))
 	    function)))))
