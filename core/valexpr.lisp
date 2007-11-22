@@ -25,6 +25,11 @@
 		#\" #\@ #\;))
   (set-macro-character char #'ignore-character nil *value-expr-readtable*))
 
+(defun ignore-rest (function)
+ (lambda (arg &rest args)
+   (declare (ignore args))
+   (funcall function arg)))
+
 (defun read-value-term (in)
   (let ((c (peek-char t in nil))
 	found-amount)
@@ -42,6 +47,7 @@
 	      :pool                       *value-expr-commodity-pool*)))
 	  (unless found-amount
 	    (file-position in position))))
+
       (if found-amount
 	  (constantly found-amount)
 	  (cond
@@ -51,20 +57,32 @@
 	     )
 
 	    ((char= c #\/)
-	     (read-char in)
-	     (let ((scanner
-		    (cl-ppcre:create-scanner
-		     (cambl::read-until
-		      in #\/ "Regular expression lacks closing slash")
-		     :case-insensitive-mode t)))
-	       (lambda (xact)
-		 ;; If just `match' were used here, the result might be 0 if the
-		 ;; match occurred at the beginning of the string -- which
-		 ;; `value-truth' (applied to the result in filter.lisp) would
-		 ;; interpret as FALSE.  By returning T or NIL here, `value-truth'
-		 ;; will always do the right thing.
-		 (not (null (cl-ppcre:scan
-			     scanner (account-fullname (xact-account xact))))))))
+	     (let ((scanner-type :account))
+	       (when (char= #\/ (read-char in))
+		 (setf scanner-type :payee)
+		 (when (char= #\/ (read-char in))
+		   (setf scanner-type :short-account)
+		   (read-char in)))
+	       (let ((scanner
+		      (cl-ppcre:create-scanner
+		       (cambl::read-until
+			in #\/ "Regular expression lacks closing slash")
+		       :case-insensitive-mode t)))
+		 (lambda (xact)
+		   ;; If just `match' were used here, the result might be 0 if the
+		   ;; match occurred at the beginning of the string -- which
+		   ;; `value-truth' (applied to the result in filter.lisp) would
+		   ;; interpret as FALSE.  By returning T or NIL here, `value-truth'
+		   ;; will always do the right thing.
+		   (not (null (cl-ppcre:scan
+			       scanner
+			       (ecase scanner-type
+				 (:account
+				  (account-fullname (xact-account xact)))
+				 (:payee
+				  (entry-payee (xact-entry xact)))
+				 (:short-account
+				  (account-name (xact-account xact)))))))))))
 
 	    ((char= c #\()
 	     (read-char in)
@@ -101,67 +119,72 @@
 		   (cond
 		     ((member symbol '(|m| |now| |today|) :test #'eq)
 		      (constantly (local-time:now)))
+
 		     ((member symbol '(|t| |a| |amount|) :test #'eq)
-		      (lambda (xact &rest args)
-			(declare (ignore args))
-			(xact-resolve-amount xact)))
+		      (ignore-rest #'xact-resolve-amount))
+
 		     ((member symbol '(|i| |price|) :test #'eq)
 		      (lambda (xact &rest args)
 			(declare (ignore args))
 			(divide (xact-cost xact)
 				(xact-resolve-amount xact))))
+
 		     ((member symbol '(|b| |cost|) :test #'eq)
-		      (lambda (xact &rest args)
-			(declare (ignore args))
-			(xact-cost xact)))
+		      (ignore-rest #'xact-cost))
+
 		     ((member symbol '(|d| |date|) :test #'eq)
-		      (lambda (xact &rest args)
-			(declare (ignore args))
-			(xact-date xact)))
+		      (ignore-rest #'xact-date))
+
 		     ((member symbol '(|act_date| |actual_date|) :test #'eq)
-		      (lambda (xact &rest args)
-			(declare (ignore args))
-			(xact-actual-date xact)))
+		      (ignore-rest #'xact-actual-date))
+
 		     ((member symbol '(|eff_date| |effective_date|) :test #'eq)
-		      (lambda (xact &rest args)
-			(declare (ignore args))
-			(xact-effective-date xact)))
+		      (ignore-rest #'xact-effective-date))
+
 		     ((member symbol '(|X| |cleared|) :test #'eq)
-		      (lambda (xact &rest args)
-			(declare (ignore args))
-			(xact-cleared-p xact)))
+		      (ignore-rest #'xact-cleared-p))
+
 		     ((member symbol '(|Y| |pending|) :test #'eq)
-		      (lambda (xact &rest args)
-			(declare (ignore args))
-			(xact-pending-p xact)))
+		      (ignore-rest #'xact-pending-p))
+
 		     ((member symbol '(|R| |real|) :test #'eq)
 		      )
+
 		     ((member symbol '(|L| |actual|) :test #'eq)
 		      )
+
 		     ((member symbol '(|N| |count|) :test #'eq)
 		      )
+
 		     ((member symbol '(|l| |depth|) :test #'eq)
 		      )
+
 		     ((member symbol '(|T| |O| |total|) :test #'eq)
 		      (lambda (xact &rest args)
 			(declare (ignore args))
 			(xact-value xact :running-total)))
+
 		     ((member symbol '(|I| |total_price|) :test #'eq)
 		      )
+
 		     ((member symbol '(|B| |total_cost|) :test #'eq)
 		      )
+
 		     ((member symbol '(|U| |abs|) :test #'eq)
 		      (lambda (xact value)
 			(declare (ignore xact))
 			(value-abs value)))
+
 		     ((eq symbol '|round|)
 		      (lambda (xact value)
 			(declare (ignore xact))
 			(value-round value)))
+
 		     ((member symbol '(|S| |quant| |quantity|) :test #'eq)
 		      (lambda (xact &rest args)
 			(declare (ignore args))
 			(cambl:amount-quantity (xact-resolve-amount xact))))
+
 		     ((member symbol '(|comm| |commodity|) :test #'eq)
 		      (lambda (xact &rest args)
 			(declare (ignore args))
@@ -169,20 +192,28 @@
 			  (setf (amount-commodity one)
 				(amount-commodity (xact-resolve-amount xact)))
 			  one)))
+
 		     ((member symbol '(|setcomm| |set_commodity|) :test #'eq)
 		      )
+
 		     ((member symbol '(|A| |avg| |mean| |average|) :test #'eq)
 		      )
+
 		     ((eq symbol '|P|)
 		      )
+
 		     ((member symbol '(|v| |market|) :test #'eq)
 		      )
+
 		     ((member symbol '(|V| |total_market|) :test #'eq)
 		      )
+
 		     ((member symbol '(|g| |gain|) :test #'eq)
 		      )
+
 		     ((member symbol '(|G| |total_gain|) :test #'eq)
 		      )
+
 		     (t
 		      (let ((symbol
 			     (or (find-symbol (format nil "value-expr/~S" symbol))
@@ -214,6 +245,7 @@
 	       (lambda (xact)
 		 (not (value-truth (funcall function xact))))
 	       (error "'!' operator not followed by argument"))))
+
 	((char= c #\-)
 	 (read-char in)
 	 (let ((function (read-value-term in)))
@@ -238,6 +270,7 @@
 		       (multiply (funcall function xact)
 				 (funcall next-function xact)))
 		     (error "'*' operator not followed by argument"))))
+
 	      ((char= c #\/)
 	       (read-char in)
 	       (let ((next-function (read-mul-expr in)))
@@ -264,6 +297,7 @@
 		       (add (funcall function xact)
 			    (funcall next-function xact)))
 		     (error "'+' operator not followed by argument"))))
+
 	      ((char= c #\-)
 	       (read-char in)
 	       (let ((next-function (read-add-expr in)))
@@ -404,8 +438,6 @@
 		  (funcall function xact)))
 	      function))))))
 
-(export 'read-value-expr)
-
 (defun parse-value-expr (string &key
 			 (observe-properties-p nil)
 			 (reduce-to-smallest-units-p nil)
@@ -414,8 +446,6 @@
     (read-value-expr in :observe-properties-p observe-properties-p
 		     :reduce-to-smallest-units-p reduce-to-smallest-units-p
 		     :pool pool)))
-
-(export 'parse-value-expr)
 
 (provide 'valexpr)
 

@@ -49,7 +49,9 @@ for diagnostic output.")
   :serial t
   :version #.*ledger-version*
   :depends-on (:local-time :periods :cambl :series :cl-ppcre)
-  :components ((:file "core/ledger")
+  :components ((:file "core/package")
+	       (:file "core/types")
+	       (:file "core/ledger")
 	       (:file "core/valexpr")
 
 	       (:file "transforms/normalize")

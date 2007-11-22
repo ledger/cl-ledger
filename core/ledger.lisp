@@ -2,151 +2,9 @@
 
 (declaim (optimize (safety 3) (debug 3) (speed 1) (space 0)))
 
-(defpackage :ledger
-  (:use :common-lisp :local-time :cambl :periods :series)
-  (:export binder
-	   binder-commodity-pool
-	   binder-root-account
-	   binder-journals
-	   binder-transactions
-	   binder-data
-	   read-binder
-	   add-journal-file
-	   reset-binder
-
-	   filter-transactions
-	   calculate-totals
-	   register-report
-	   abbreviate-string
-
-	   journal
-	   journal-binder
-	   journal-contents
-	   journal-entries
-	   journal-date-format
-	   journal-default-year
-	   journal-default-account
-	   journal-source
-	   journal-data
-	   parse-journal-date
-
-	   account
-	   account-parent
-	   account-children
-	   account-name
-	   account-fullname
-	   account-transactions
-	   account-data
-
-	   entry
-	   entry-journal
-	   entry-actual-date
-	   entry-effective-date
-	   entry-date
-	   entry-status
-	   entry-code
-	   entry-payee
-	   entry-note
-	   entry-transactions
-	   entry-position
-	   entry-data
-
-	   make-transaction
-	   transaction
-	   xact-entry
-	   xact-actual-date
-	   xact-effective-date
-	   xact-date
-	   xact-status
-	   xact-cleared-p
-	   xact-pending-p
-	   xact-uncleared-p
-	   xact-account
-	   xact-amount
-	   xact-note
-	   xact-tags
-	   xact-virtualp
-	   xact-must-balance-p
-	   xact-position
-	   xact-data
-	   xact-value
-	   xact-set-value
-
-	   make-item-position
-	   copy-item-position
-	   item-position
-	   item-position-begin-char
-	   item-position-end-char
-	   item-position-begin-line
-	   item-position-end-line
-	   item-position-source
-
-	   item-status
-	   uncleared
-	   pending
-	   cleared
-
-	   add-transaction
-	   add-to-contents
-	   add-journal
-	   find-account
-	   find-child-account
-
-	   *use-effective-dates*
-	   *pre-normalization-functions*
-	   *post-normalization-functions*
-	   *registered-parsers*
-	   *allow-embedded-lisp*
-
-	   entries-iterator
-	   entries-list
-	   map-entries
-	   do-entries
-	   scan-entries
-	   transactions-iterator
-	   transactions-list
-	   map-transactions
-	   do-transactions
-	   scan-transactions
-	   
-	   read-value-expr
-	   parse-value-expr
-	   compose-predicate
-
-	   register))
-
 (in-package :ledger)
 
-(setf *suppress-series-warnings* t)
-
-(deftype item-status ()
-  '(member uncleared pending cleared))
-
-(defstruct (item-position)
-  begin-char
-  end-char
-  begin-line
-  end-line
-  source)
-
-(defstruct (transaction
-	     (:conc-name xact-)
-	     (:print-function print-transaction))
-  entry
-  (actual-date nil     :type (or fixed-time null))
-  (effective-date nil  :type (or fixed-time null))
-  (status 'uncleared   :type item-status)
-  account
-  (amount nil	       :type (or value function null))
-  (cost nil	       :type (or value function null))
-  (note nil	       :type (or string null))
-  (tags nil)
-  (virtualp nil        :type boolean)
-  (generatedp nil      :type boolean)
-  (calculatedp nil     :type boolean)
-  (must-balance-p t    :type boolean)
-  position
-  data)
+(require 'types)
 
 (defun print-transaction (transaction stream depth)
   (declare (ignore depth))
@@ -178,44 +36,6 @@
 	(rplacd value-cell value)
 	(push (cons key value) (xact-data xact)))))
 
-(defclass entry ()
-  ((journal        :accessor entry-journal	   :initarg :journal)
-   (actual-date	   :accessor entry-actual-date	   :initarg :actual-date
-		   :initform nil :type (or fixed-time null))
-   (effective-date :accessor entry-effective-date  :initarg :effective-date
-		   :initform nil :type (or fixed-time null))
-   (status         :accessor entry-status	   :initarg :status
-		   :initform 'uncleared :type item-status)
-   (code	   :accessor entry-code		   :initarg :code
-		   :initform nil :type (or string null))
-   (payee	   :accessor entry-payee	   :initarg :payee
-		   :initform nil :type (or string null))
-   (note	   :accessor entry-note		   :initarg :note
-		   :initform nil :type (or string null))
-   (transactions   :accessor entry-transactions	   :initarg :transactions
-		   :initform nil)
-   (position       :accessor entry-position        :initarg :position
-		   :initform nil)
-   (normalizedp    :accessor entry-normalizedp     :initarg :normalizedp
-		   :initform nil)
-   (data           :accessor entry-data            :initarg :data
-		   :initform nil)))
-
-(defclass account ()
-  ((parent         :accessor account-parent	   :initarg :parent
-		   :initform nil)
-   (children       :accessor account-children	   :initarg :children
-		   :initform nil :type (or hash-table null))
-   (name	   :accessor account-name	   :initarg :name
-		   :type string)
-   (fullname	   :accessor account-fullname	   :initarg :fullname
-		   :type string)
-   (transactions   :accessor account-transactions  :initarg :transactions
-		   :initform nil)
-   (last-transaction-cell :accessor account-last-transaction-cell :initform nil)
-   (data           :accessor account-data          :initarg :data
-		   :initform nil)))
-
 (declaim (inline account-value))
 (defun account-value (account key)
   (let ((value-cell (assoc key (account-data account))))
@@ -227,42 +47,6 @@
     (if value-cell
 	(rplacd value-cell value)
 	(push (cons key value) (account-data account)))))
-
-(defclass journal ()
-  ((binder	   :accessor journal-binder	   :initarg :binder)
-   (contents       :accessor journal-contents      :initform nil)
-   (last-content-cell :accessor journal-last-content-cell :initform nil)
-   (entries	   :accessor journal-entries	   :initarg :entries
-		   :initform nil)
-   (last-entry-cell :accessor journal-last-entry-cell :initform nil)
-   (date-format    :accessor journal-date-format  :initform nil
-		   :type (or string null))
-   (default-year   :accessor journal-default-year  :initform nil
-		   :type (or integer null))
-   (default-account :accessor journal-default-account :initform nil
-		    :type (or account null))
-   (source	   :accessor journal-source	   :initarg :source-path
-		   :type pathname)
-   (data           :accessor journal-data          :initarg :data
-		   :initform nil)))
-
-(defclass binder ()
-  ((commodity-pool :accessor binder-commodity-pool :initarg :commodity-pool
-		   :type commodity-pool)
-   (root-account   :accessor binder-root-account   :initarg :root-account
-		   :initform (make-instance 'account :name "") :type account)
-   (journals	   :accessor binder-journals	   :initarg :journals
-		   :initform nil)
-   (transactions   :accessor binder-transactions   :initarg :transactions
-		   :initform nil)
-   (data           :accessor binder-data           :initarg :data
-		   :initform nil)))
-
-(defgeneric add-transaction (item transaction))
-(defgeneric add-journal (binder journal))
-(defgeneric find-account (item account-path &key create-if-not-exists-p))
-(defgeneric entries-iterator (object))
-(defgeneric transactions-iterator (object &key entry-transform))
 
 ;; Textual journal parser
 
@@ -640,5 +424,7 @@ if there were an empty string between them."
 (defun scan-normalized-transactions (object)
   (declare (optimizable-series-function))
   (scan-transactions object :entry-transform #'normalize-entry))
+
+(provide 'ledger)
 
 ;; ledger.lisp ends here
