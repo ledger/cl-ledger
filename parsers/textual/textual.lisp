@@ -2,11 +2,11 @@
 
 (declaim (optimize (safety 3) (debug 3) (speed 1) (space 0)))
 
-(defpackage :ledger.textual
+(defpackage :ledger-textual
   (:use :common-lisp :ledger :local-time :periods :cambl :cl-ppcre)
   (:export *directive-handlers*))
 
-(in-package :ledger.textual)
+(in-package :ledger-textual)
 
 (defvar *date-regexp* "[0-9-./]+")
 
@@ -277,7 +277,7 @@
 ;;   }
 ;;   path = resolve_path(path);
 ;; 
-;;   DEBUG_PRINT("ledger.textual.include", "line " << linenum << ": " <<
+;;   DEBUG_PRINT("ledger-textual.include", "line " << linenum << ": " <<
 ;; 	      "Including path '" << path << "'");
 ;; 
 ;;   include_stack.push_back(std::pair<std::string, int>

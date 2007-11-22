@@ -1,6 +1,6 @@
 (declaim (optimize (safety 3) (debug 3) (speed 1) (space 0)))
 
-(in-package :ledger.textual)
+(in-package :ledger-textual)
 
 (defclass periodic-entry (entry)
   ((period :accessor entry-period :initarg :period :initform nil)))

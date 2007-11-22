@@ -1,12 +1,12 @@
-;; ledger.http.lisp
+;; ledger-http.lisp
 
 (declaim (optimize (safety 3) (debug 3)))
 
-(defpackage :ledger.http
+(defpackage :ledger-http
   (:use :common-lisp :local-time :cambl :ledger :cl-ppcre
 	:hunchentoot :cl-who))
 
-(in-package :ledger.http)
+(in-package :ledger-http)
 
 (defun print-html-balance (balance)
   (let* ((right-style "text-align: right; padding-left: 1em")
@@ -178,4 +178,4 @@
   (setf *show-lisp-errors-p* t
         *show-lisp-backtraces-p* t))
 
-;; ledger.http.lisp ends here
+;; ledger-http.lisp ends here

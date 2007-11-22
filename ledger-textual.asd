@@ -31,19 +31,21 @@
 
 (in-package :cl-user)
 
-(defpackage :ledger.http-asd
+(defpackage :ledger-textual-asd
   (:use :cl :asdf))
 
-(in-package :ledger.http-asd)
+(in-package :ledger-textual-asd)
 
-(defvar *ledger.http-version* "4.0.0-pre-0"
-  "A string denoting the current version of LEDGER.HTTP.  Used
+(defvar *ledger-textual-version* "4.0.0-pre-0"
+  "A string denoting the current version of LEDGER-TEXTUAL.  Used
 for diagnostic output.")
 
-(export '*ledger.http-version*)
+(export '*ledger-textual-version*)
 
-(asdf:defsystem :ledger.http
+(asdf:defsystem :ledger-textual
   :serial t
-  :version #.*ledger.http-version*
-  :depends-on (:ledger :hunchentoot :cl-who)
-  :components ((:file "ledger.http")))
+  :version #.*ledger-textual-version*
+  :depends-on (:ledger)
+  :components ((:file "parsers/textual/textual")
+	       (:file "parsers/textual/autoentry")
+	       (:file "parsers/textual/perentry")))
