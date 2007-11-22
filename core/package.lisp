@@ -63,6 +63,7 @@
 	   xact-uncleared-p
 	   xact-account
 	   xact-amount
+	   xact-resolve-amount
 	   xact-note
 	   xact-tags
 	   xact-virtualp
@@ -108,9 +109,12 @@
 	   map-transactions
 	   do-transactions
 	   scan-transactions
+	   scan-normalized-transactions
 	   
 	   read-value-expr
 	   parse-value-expr
+
+	   apply-filter
 	   compose-predicate
 
 	   register))

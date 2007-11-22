@@ -45,7 +45,7 @@ for diagnostic output.")
 (asdf:defsystem :ledger-textual
   :serial t
   :version #.*ledger-textual-version*
-  :depends-on (:ledger)
+  :depends-on (:ledger :cl-ppcre)
   :components ((:file "parsers/textual/textual")
 	       (:file "parsers/textual/autoentry")
 	       (:file "parsers/textual/perentry")))

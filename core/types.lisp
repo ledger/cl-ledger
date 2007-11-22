@@ -105,7 +105,7 @@
 (defgeneric add-journal (binder journal))
 (defgeneric find-account (item account-path &key create-if-not-exists-p))
 (defgeneric entries-iterator (object))
-(defgeneric transactions-iterator (object &key entry-transform))
+(defgeneric transactions-iterator (object &optional entry-transform))
 
 (provide 'types)
 

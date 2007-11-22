@@ -70,15 +70,13 @@
 	      (format-value (or (xact-value xact :running-total)
 				0) :width 12 :latter-width 80)))))
 
-(defun register-report (xact-series &key (output-stream *standard-output*))
+(defun print-register (xact-series &key (output-stream *standard-output*))
   (let ((reporter (register-reporter :output-stream output-stream))
 	(count 0))
     (iterate ((xact xact-series))
 	     (funcall reporter xact)
 	     (incf count))
     count))
-
-(export 'register-report)
 
 (defun extract-keywords (keyword-or-list args)
   (declare (type (or list keyword) keyword-or-list))
@@ -96,7 +94,7 @@
 				   (eq cons value))) args))
 	(values nil args))))
 
-(defun register (binder &rest args)
+(defun register-report (binder &rest args)
   "This is a convenience function for quickly making register reports.
 
   A typical usage might be:
@@ -133,16 +131,16 @@
       
       (cond
 	(head
-	 (register-report (choose (latch xacts :after head) xacts)))
+	 (print-register (choose (latch xacts :after head) xacts)))
 	(tail
 	 ;; Tail is expensive, because we don't know the length of the
 	 ;; transaction series until every element has been seen (and hence
 	 ;; computed).  Expect a large pause for giant data sets.
 	 (let ((length (collect-length xacts)))
-	   (register-report (choose (latch xacts :after (- length tail)
-						 :pre nil) xacts))))
+	   (print-register (choose (latch xacts :after (- length tail)
+						:pre nil) xacts))))
 	(t
-	 (register-report xacts))))))
+	 (print-register xacts))))))
 
 (provide 'register)
 

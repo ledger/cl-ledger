@@ -6,11 +6,8 @@
 
 (defvar *transformer-keys*
   `(((:total :amount :always) . ,#'calculate-totals)
-    ((:account :not-account
-	       :payee :not-payee
-	       :note :not-note
-	       :expr
-	       :begin :end) . ,#'apply-filter)
+    ((:account :not-account :payee :not-payee :note :not-note
+	       :expr :begin :end) . ,#'apply-filter)
     (:period . ,#'periodic-transform)))
 
 ;; jww (2007-11-21): Still need a better way to determine ordering

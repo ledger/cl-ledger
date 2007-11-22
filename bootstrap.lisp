@@ -21,10 +21,9 @@
 (asdf:operate 'asdf:load-op :rfc2388)
 (asdf:operate 'asdf:load-op :cl-base64)
 (asdf:operate 'asdf:load-op :chunga)
-(push  :hunchentoot-no-ssl *features*)
 (asdf:operate 'asdf:load-op :hunchentoot)
 (asdf:operate 'asdf:load-op :cl-who)
 
 (asdf:operate 'asdf:load-op :ledger)
-(asdf:operate 'asdf:load-op :ledger.textual)
-(asdf:operate 'asdf:load-op :ledger.http)
+(asdf:operate 'asdf:load-op :ledger-textual)
+(asdf:operate 'asdf:load-op :ledger-http)

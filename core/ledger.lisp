@@ -337,7 +337,7 @@ if there were an empty string between them."
       (map-fn '(or entry null) (entries-iterator object))
     (until-if #'null entries)))
 
-(defmethod transactions-iterator ((binder binder) &key (entry-transform nil))
+(defmethod transactions-iterator ((binder binder) &optional entry-transform)
   (let ((xacts (binder-transactions binder)))
     (if xacts
 	(list-iterator xacts)
@@ -351,18 +351,17 @@ if there were an empty string between them."
 		       (let ((next-journal (funcall journals-iterator)))
 			 (when next-journal
 			   (setf xacts-iterator
-				 (transactions-iterator
-				  next-journal
-				  :entry-transform entry-transform))
+				 (transactions-iterator next-journal
+							entry-transform))
 			   (next-xact))))))
 	      (next-xact)))))))
 
 ;; jww (2007-11-19): implement
-(defmethod transactions-iterator ((account account) &key (entry-transform nil))
+(defmethod transactions-iterator ((account account) &optional entry-transform)
   (declare (ignore entry-transform))
   (list-iterator (account-transactions account)))
 
-(defmethod transactions-iterator ((journal journal) &key (entry-transform nil))
+(defmethod transactions-iterator ((journal journal) &optional entry-transform)
   (let ((entries-iterator (entries-iterator journal))
 	(xacts-iterator (constantly nil)))
     (lambda ()
@@ -372,33 +371,30 @@ if there were an empty string between them."
 		 (let ((next-entry (funcall entries-iterator)))
 		   (when next-entry
 		     (setf xacts-iterator
-			   (transactions-iterator
-			    next-entry :entry-transform entry-transform))
+			   (transactions-iterator next-entry
+						  entry-transform))
 		     (next-xact))))))
 	(next-xact)))))
 
-(defmethod transactions-iterator ((entry entry) &key (entry-transform nil))
+(defmethod transactions-iterator ((entry entry) &optional entry-transform)
   (declare (type (or function null) entry-transform))
   (list-iterator (entry-transactions (if entry-transform
 					 (funcall entry-transform entry)
 					 entry))))
 
 (defmethod transactions-iterator ((transaction transaction)
-				  &key (entry-transform nil))
+				  &optional entry-transform)
   (declare (ignore entry-transform))
   (list-iterator (list transaction)))
 
 (defun transactions-list (object &key (entry-transform nil))
   (loop
-     with iterator =
-       (transactions-iterator object :entry-transform entry-transform)
+     with iterator = (transactions-iterator object entry-transform)
      for xact = (funcall iterator)
      while xact collect xact))
 
 (defmacro map-transactions (callable object &key (entry-transform nil))
-  `(map-iterator ,callable
-		 (transactions-iterator ,object
-					:entry-transform ,entry-transform)))
+  `(map-iterator ,callable (transactions-iterator ,object ,entry-transform)))
 
 ;; jww (2007-11-19): deprecated?
 (defmacro do-transactions ((var object &optional (result nil)) &body body)
@@ -406,24 +402,20 @@ if there were an empty string between them."
     `(loop
 	with ,iterator = (transactions-iterator ,object)
 	for ,var = (funcall ,iterator)
-	while ,var
-	do (progn
-	     ,@body
-	     ,result))))
+	while ,var do (progn ,@body ,result))))
 
 (declaim (inline scan-transactions))
-(defun scan-transactions (object &key (entry-transform nil))
+(defun scan-transactions (object &optional entry-transform)
   (declare (optimizable-series-function))
   (multiple-value-bind (transactions)
       (map-fn '(or transaction null)
-	      (transactions-iterator object
-				     :entry-transform entry-transform))
+	      (transactions-iterator object entry-transform))
     (until-if #'null transactions)))
 
 (declaim (inline scan-transactions))
 (defun scan-normalized-transactions (object)
   (declare (optimizable-series-function))
-  (scan-transactions object :entry-transform #'normalize-entry))
+  (scan-transactions object #'normalize-entry))
 
 (provide 'ledger)
 

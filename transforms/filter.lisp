@@ -60,68 +60,73 @@
 	(funcall operator (xact-date xact) string-or-fixed-time))))
 
 (defun compose-predicate (&rest args)
-  (if args
-      (let* ((first-arg (first args))
-	     remainder
-	     (function
-	      (if (functionp first-arg)
-		  (progn
-		    (setf remainder (rest args))
-		    first-arg)
-		  (let ((value (first (rest args))))
-		    (setf remainder (rest (rest args)))
-		    (when value
-		      (case first-arg
+  (let (function)
+    (do ((arg args))
+	((null arg))
+      (let ((next-function
+	     (cond
+	       ((keywordp (first arg))
+		(let ((value (car (rest arg))))
+		  (prog1
+		      (case (first arg)
 			(:account
-			 (assert (or (stringp value)
-				     (typep value 'account)))
-			 (account-matcher value))
+			 (if (or (stringp value)
+				 (typep value 'account))
+			     (account-matcher value)))
 			(:not-account
-			 (assert (or (stringp value)
-				     (typep value 'account)))
-			 (not-matcher (account-matcher value)))
+			 (if (or (stringp value)
+				 (typep value 'account))
+			     (not-matcher (account-matcher value))))
 			(:payee
-			 (assert (stringp value))
-			 (payee-matcher value))
+			 (if (stringp value)
+			     (payee-matcher value)))
 			(:not-payee
-			 (assert (stringp value))
-			 (not-matcher (payee-matcher value)))
+			 (if (stringp value)
+			     (not-matcher (payee-matcher value))))
 			(:note
-			 (assert (stringp value))
-			 (note-matcher value)) 
+			 (if (stringp value)
+			     (note-matcher value))) 
 			(:not-note
-			 (assert (stringp value))
-			 (not-matcher (note-matcher value))) 
+			 (if (stringp value)
+			     (not-matcher (note-matcher value)))) 
 			(:expr
-			 (assert (or (stringp value)
-				     (functionp value)))
-			 (value-expr-matcher value))
+			 (if (or (stringp value)
+				 (functionp value))
+			     (value-expr-matcher value)))
 			(:begin
-			 (assert (or (stringp value)
-				     (typep value 'fixed-time)))
-			 (fixed-time-matcher value #'local-time>=))
+			 (if (or (stringp value)
+				 (typep value 'fixed-time))
+			     (fixed-time-matcher value #'local-time>=)))
 			(:end
-			 (assert (or (stringp value)
-				     (typep value 'fixed-time)))
-			 (fixed-time-matcher value #'local-time<=))
+			 (if (or (stringp value)
+				 (typep value 'fixed-time))
+			     (fixed-time-matcher value #'local-time<=)))
 			(otherwise
 			 (error "Unrecognized predicate keyword '~S'"
-				first-arg))))))))
-	(if remainder
-	    (let ((next-matcher (apply #'compose-predicate remainder)))
-	      (if next-matcher
-		  (if function
-		      (lambda (xarg)
-			(and (funcall function xarg)
-			     (funcall next-matcher xarg)))
-		      next-matcher)
-		  function))
-	    function))
-      (constantly t)))
+				(first arg))))
+		    (setf arg (rest (rest arg))))))
+
+	       ((functionp (car arg))
+		(prog1
+		    (car arg)
+		 (setf arg (rest arg))))
+
+	       (t
+		(setf arg (rest arg))
+		nil))))
+
+	(when next-function
+	  (setf function
+		(if function
+		    (lambda (xarg)
+		      (and (funcall function xarg)
+			   (funcall next-function xarg)))
+		    next-function)))))
+
+    (or function (constantly t))))
 
 (declaim (inline apply-filter))
 (defun apply-filter (xacts &rest args)
-  (declare (optimizable-series-function))
   (choose-if (apply #'compose-predicate args) xacts))
 
 (provide 'filter)
