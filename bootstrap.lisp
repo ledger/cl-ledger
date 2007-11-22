@@ -25,5 +25,4 @@
 (asdf:operate 'asdf:load-op :cl-who)
 
 (asdf:operate 'asdf:load-op :ledger)
-(asdf:operate 'asdf:load-op :ledger-textual)
 (asdf:operate 'asdf:load-op :ledger-http)

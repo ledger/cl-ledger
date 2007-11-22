@@ -43,7 +43,7 @@ for diagnostic output.")
 (export '*ledger-http-version*)
 
 (asdf:defsystem :ledger-http
-  :serial t
   :version #.*ledger-http-version*
   :depends-on (:ledger :hunchentoot :cl-who)
-  :components ((:file "http/ledger-http")))
+  :components ((:module "http"
+			:components ((:file "ledger-http")))))
