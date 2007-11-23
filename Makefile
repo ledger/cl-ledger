@@ -1,34 +1,82 @@
-SBCL = sbcl
-CORE = sbcl.core
-
+#INIT  = $(HOME)/Library/Lisp/init.lisp
+INIT  = init.lisp
+#BOOT  = $(HOME)/Library/Lisp/bootstrap.lisp
+BOOT  = bootstrap.lisp
 HELLO = "(format t \"Ledger server started at http://localhost:4242/~%\")"
+START = "(ledger-http)"
 
-all: run-server
+# Running with SBCL
 
-run-server:
-	if [ -f $(CORE) ]; then \
-	    $(SBCL) --core $(CORE) --noinform --noprint \
-		    --eval $(HELLO) \
-		    --eval "(hunchentoot:start-server :port 4242)"; \
+SBCL	  = sbcl
+SBCL_CORE = sbcl.core
+
+all: sbcl-server
+
+sbcl-server:
+	if [ -f $(SBCL_CORE) ]; then \
+	    $(SBCL) --core $(SBCL_CORE) \
+		    --noinform --noprint \
+		    --eval $(HELLO) --eval $(START); \
 	else \
-	    $(SBCL) --noinform --noprint --load bootstrap.lisp \
-		    --eval $(HELLO) \
-		    --eval "(hunchentoot:start-server :port 4242)"; \
+	    $(SBCL) --noinform --noprint \
+		    --load $(INIT) --load $(BOOT) \
+		    --eval $(HELLO) --eval $(START); \
 	fi
 
-core: $(CORE)
-
-$(CORE): bootstrap.lisp
-	$(SBCL) --noinform --noprint --load bootstrap.lisp \
+$(SBCL_CORE): $(INIT) $(BOOT)
+	$(SBCL) --noinform --noprint \
+		--load $(INIT) --load $(BOOT) \
 		--eval "(sb-ext:save-lisp-and-die \"$@\")"
 
 fasl: clean
-	$(SBCL) --eval "(require 'asdf)" \
-		--eval "(asdf:oos 'asdf:load-op :ledger)" \
-		--eval "(quit)"
+	$(SBCL) --load $(INIT) --load $(BOOT) --eval "(quit)"
+
+# Running with CMUCL
+
+CMUCL	   = lisp
+CMUCL_CORE = cmucl.core
+
+# jww (2007-11-22): This fails because periods won't build.
+
+cmucl-server:
+	if [ -f $(CMUCL_CORE) ]; then \
+	    $(CMUCL) -core $(CMUCL_CORE) \
+		-eval $(HELLO) -eval $(START); \
+	else \
+	    $(CMUCL) -load $(INIT) -load $(BOOT) \
+		-eval $(HELLO) -eval $(START); \
+	fi
+
+cmucl-core: $(CMUCL_CORE)
+
+$(CMUCL_CORE): $(BOOT)
+	$(CMUCL) -load $(INIT) -load $(BOOT) \
+		 -eval "(need-to-save-lisp-and-die \"$@\")"
+
+x86f: clean
+	$(CMUCL) -load $(INIT) -load $(BOOT) -eval "(quit)"
+
+# Running with CMUCL
+
+ECL = ecl
+
+# jww (2007-11-22): This doesn't work just now because gray-streams
+# won't load
+
+ecl-server:
+	$(ECL)  -load $(INIT) -load $(BOOT) \
+		-eval $(HELLO) -eval $(START); \
+
+# jww (2007-11-22): And this doesn't work because ECL can't grok SERIES.
+
+fas:
+	$(ECL) -load $(INIT) -load $(BOOT) -eval "(quit)"
+
+# General rules
 
 clean:
-	rm -f $(CORE) *.fasl
-	test -d ../red-black && rm -f ../red-black/*.fasl
-	test -d ../periods && rm -f ../periods/*.fasl
-	test -d ../cambl && rm -f ../cambl/*.fasl
+	rm -f $(SBCL_CORE) $(CMUCL_CORE)
+	find . ../red-black ../periods ../cambl \
+	    \(  -name '*.fasl' -o -name '*.fas' -o \
+		-name '*.fsl' -o -name '*.x86f' -o \
+		-name '*.xfasl' \) -type f | xargs rm -f

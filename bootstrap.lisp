@@ -1,13 +1,8 @@
+#+sbcl
 (mapc 'require
-      '(sb-bsd-sockets
-	sb-posix
-	sb-introspect
-	sb-cltl2
-	asdf
-	asdf-install))
-
-(dolist (libdir (directory "./lib/*/"))
-  (pushnew libdir asdf:*central-registry*))
+      '(sb-bsd-sockets sb-posix
+	sb-introspect sb-cltl2
+	asdf asdf-install))
 
 (asdf:operate 'asdf:load-op :cffi)
 (push "/usr/local/lib" cffi:*foreign-library-directories*)
@@ -24,5 +19,10 @@
 (asdf:operate 'asdf:load-op :hunchentoot)
 (asdf:operate 'asdf:load-op :cl-who)
 
-(asdf:operate 'asdf:load-op :ledger)
-(asdf:operate 'asdf:load-op :ledger-http)
+(defun ledger ()
+  (load-or-install :ledger))
+
+(defun ledger-http ()
+  (ledger)
+  (load-or-install :ledger-http)
+  (hunchentoot:start-server :port 4242))
