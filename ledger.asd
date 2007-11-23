@@ -70,8 +70,9 @@ for diagnostic output.")
 			 (:file "balance" :depends-on ("report"))))
 
    (:module "parsers"
-	    :components ((:module "textual"
-			  :components ((:file "textual")
-				       (:file "autoentry" :depends-on ("textual"))
-				       (:file "perentry" :depends-on ("textual")))
-			  :serial t)))))
+	    :components
+	    ((:module "textual"
+	      :components ((:file "textual")
+			   (:file "autoentry" :depends-on ("textual"))
+			   (:file "perentry" :depends-on ("textual")))
+	      :serial t)))))

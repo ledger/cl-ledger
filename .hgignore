@@ -2,3 +2,4 @@
 \.fsl$
 \.x?fasl$
 \.x86f$
+^baseline/

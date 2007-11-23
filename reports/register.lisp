@@ -50,16 +50,16 @@
 (defun register-reporter (&key (output-stream *standard-output*))
   (let (last-entry)
     (lambda (xact)
+      ;; First display the entry details, if it would not be repeated
       (if (or (null last-entry)
 	      (not (eq last-entry (xact-entry xact))))
 	  (progn
-	    (format output-stream "~10A ~20A "
-		    ;; jww (2007-11-19): What if the transaction has its own date
-		    ;; set?
-		    (strftime (xact-date xact))
+	    (format output-stream "~10A ~20A " (strftime (xact-date xact))
 		    (abbreviate-string (entry-payee (xact-entry xact)) 20))
 	    (setf last-entry (xact-entry xact)))
 	  (format output-stream "~32A" " "))
+
+      ;; Then display the transaction details
       (format output-stream "~22A ~A ~A~%"
 	      (abbreviate-string (account-fullname (xact-account xact)) 22
 				 :account-p t)
@@ -69,15 +69,12 @@
 				0) :width 12 :latter-width 80)))))
 
 (defun print-register (xact-series &key (reporter nil))
-  (let ((reporter (or reporter (register-reporter)))
-	(count 0))
+  (let ((reporter (or reporter (register-reporter))))
     (iterate ((xact xact-series))
-	     (funcall reporter xact)
-	     (incf count))
-    count))
+	     (funcall reporter xact))))
 
 (defun register-report (&rest args)
-  "This is a convenience function for quickly making register reports.
+  "This is a function for easily print register reports.
 
   A typical usage might be:
 

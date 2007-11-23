@@ -33,6 +33,49 @@
 	 xact)
      xact-series)))
 
-(export 'calculate-totals)
+(defun calculate-account-totals (xact-series)
+  (let (root-account)
+    (iterate
+     ((xact xact-series))
+
+     ;; After the first transaction, reset the binder since we're going to
+     ;; store temporary data that might exist from a previous calculation.
+     (unless root-account
+       (let ((binder (journal-binder (entry-journal (xact-entry xact)))))
+	 (reset-binder binder)
+	 (setf root-account (binder-root-account binder))))
+
+     (add-transaction (xact-account xact) xact))
+
+    (labels
+	((calc-accounts (account)
+	   (let* ((subtotal
+		   (collect-fn 'cambl:balance #'cambl:balance
+			       #'(lambda (bal xact)
+				   (add* bal (xact-resolve-amount xact)))
+			       (scan-transactions account)))
+		  (total (copy-balance subtotal))
+		  (children-with-totals 0))
+
+	     (account-set-value account :subtotal subtotal)
+	     (account-set-value account :total    total)
+
+	     (let ((children (account-children account)))
+	       (when children
+		 (maphash #'(lambda (name account)
+			      (declare (ignore name))
+			      (let ((child-total (calc-accounts account)))
+				(add* total child-total)
+				(unless (value-zerop child-total)
+				  (incf children-with-totals))))
+			  children))
+
+	       (account-set-value account
+				  :children-with-totals children-with-totals))
+	     
+	     total)))
+
+      (calc-accounts root-account)
+      root-account)))
 
 (provide 'totals)
