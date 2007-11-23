@@ -51,7 +51,7 @@ for diagnostic output.")
   :depends-on (:local-time :periods :cambl :series :cl-ppcre)
   :components
   ((:module "core"
-	    :components ((:file "package")
+	    :components ((:file "packages")
 			 (:file "types")
 			 (:file "ledger")
 			 (:file "valexpr"))
@@ -65,12 +65,13 @@ for diagnostic output.")
 			 (:file "transform")))
 
    (:module "reports"
-	    :components ((:file "register")
-			 (:file "balance")))
+	    :components ((:file "report")
+			 (:file "register" :depends-on ("report"))
+			 (:file "balance" :depends-on ("report"))))
 
    (:module "parsers"
 	    :components ((:module "textual"
 			  :components ((:file "textual")
-				       (:file "autoentry")
-				       (:file "perentry"))
+				       (:file "autoentry" :depends-on ("textual"))
+				       (:file "perentry" :depends-on ("textual")))
 			  :serial t)))))

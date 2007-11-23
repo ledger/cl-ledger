@@ -53,6 +53,7 @@
 (defvar *use-effective-dates* nil)
 (defvar *registered-parsers* nil)
 (defvar *allow-embedded-lisp* nil)
+(defvar *last-binder* nil)
 
 ;;;_ * Code for construction of the LEDGER object tree
 
@@ -79,7 +80,7 @@ The result is of type JOURNAL."
 
 (declaim (inline read-binder))
 (defun read-binder (path-or-string)
-  (binder path-or-string))
+  (setf *last-binder* (binder path-or-string)))
 
 (defmethod add-journal ((binder binder) (journal journal))
   (pushend journal (binder-journals binder)))

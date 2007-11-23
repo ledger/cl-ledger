@@ -47,8 +47,6 @@
 	  (t
 	   (concatenate 'string (subseq name 0 (- width 2)) ".."))))))
 
-(export 'abbreviate-string)
-
 (defun register-reporter (&key (output-stream *standard-output*))
   (let (last-entry)
     (lambda (xact)
@@ -70,77 +68,22 @@
 	      (format-value (or (xact-value xact :running-total)
 				0) :width 12 :latter-width 80)))))
 
-(defun print-register (xact-series &key (output-stream *standard-output*))
-  (let ((reporter (register-reporter :output-stream output-stream))
+(defun print-register (xact-series &key (reporter nil))
+  (let ((reporter (or reporter (register-reporter)))
 	(count 0))
     (iterate ((xact xact-series))
 	     (funcall reporter xact)
 	     (incf count))
     count))
 
-(defun extract-keywords (keyword-or-list args)
-  (declare (type (or list keyword) keyword-or-list))
-  (declare (type list args))
-  (let ((cell (member-if #'(lambda (arg)
-			     (if (keywordp keyword-or-list)
-				 (eq keyword-or-list arg)
-				 (member arg keyword-or-list)))
-			 args))
-	value)
-    (if cell
-	(values (setf value (cadr cell))
-		(delete-if #'(lambda (cons)
-			       (or (eq cons (car cell))
-				   (eq cons value))) args))
-	(values nil args))))
-
-(defun register-report (binder &rest args)
+(defun register-report (&rest args)
   "This is a convenience function for quickly making register reports.
 
   A typical usage might be:
 
-    (ledger:register \"/path/to/ledger.dat\"
-                     :begin \"2007/08/26\" :account \"food\")
-
-  "
-  (let ((binder (etypecase binder
-		  ((or string pathname) (read-binder binder))
-		  (binder binder)))
-	total amount
-	head tail
-	period)
-
-    (multiple-value-setq (total args)
-      (extract-keywords :total args))
-    (multiple-value-setq (amount args)
-      (extract-keywords :amount args))
-    (multiple-value-setq (head args)
-      (extract-keywords '(:head :first :top) args))
-    (multiple-value-setq (tail args)
-      (extract-keywords '(:tail :last :bottom) args))
-    (multiple-value-setq (period args)
-      (extract-keywords '(:period :group) args))
-
-    (let ((xacts (scan-normalized-transactions binder)))
-
-      (if args
-	  (setf xacts (choose-if (apply #'compose-predicate args)
-				 xacts)))
-
-      (setf xacts (calculate-totals xacts :amount amount :total total))
-      
-      (cond
-	(head
-	 (print-register (choose (latch xacts :after head) xacts)))
-	(tail
-	 ;; Tail is expensive, because we don't know the length of the
-	 ;; transaction series until every element has been seen (and hence
-	 ;; computed).  Expect a large pause for giant data sets.
-	 (let ((length (collect-length xacts)))
-	   (print-register (choose (latch xacts :after (- length tail)
-						:pre nil) xacts))))
-	(t
-	 (print-register xacts))))))
+    (ledger:register-report \"/path/to/ledger.dat\"
+                            :begin \"2007/08/26\" :account \"food\")"
+  (basic-reporter #'print-register args))
 
 (provide 'register)
 

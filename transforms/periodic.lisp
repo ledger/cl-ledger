@@ -9,16 +9,17 @@
 	(artificial-journal (make-instance 'journal)))
     (add-journal artificial-binder artificial-journal)
     (iterate
-     ((group (collate-by-time-period xact-series period :key #'xact-date)))
+     (((begin end xacts)
+       (collate-by-time-period xact-series period :key #'xact-date)))
      (let* ((entry
 	     (make-instance 'entry
 			    :journal artificial-journal
-			    :actual-date (nth 0 group)
-			    :payee (format nil "- ~A" (strftime (nth 1 group)))))
+			    :actual-date begin
+			    :payee (format nil "- ~A" (strftime end))))
 	    (account-hash (make-hash-table :test #'eq)))
        (add-to-contents artificial-journal entry)
        (iterate
-	((xact (nth 2 group)))
+	((xact xacts))
 	(let* ((acct (xact-account xact))
 	       (acct-xact (gethash acct account-hash)))
 	  (unless acct-xact

@@ -1,7 +1,7 @@
-#INIT  = $(HOME)/Library/Lisp/init.lisp
-INIT  = init.lisp
-#BOOT  = $(HOME)/Library/Lisp/bootstrap.lisp
-BOOT  = bootstrap.lisp
+INIT  = $(HOME)/Library/Lisp/init.lisp
+#INIT  = init.lisp
+BOOT  = $(HOME)/Library/Lisp/bootstrap.lisp
+#BOOT  = bootstrap.lisp
 HELLO = "(format t \"Ledger server started at http://localhost:4242/~%\")"
 START = "(ledger-http)"
 
@@ -29,7 +29,8 @@ $(SBCL_CORE): $(INIT) $(BOOT)
 		--eval "(sb-ext:save-lisp-and-die \"$@\")"
 
 fasl: clean
-	$(SBCL) --load $(INIT) --load $(BOOT) --eval "(quit)"
+	$(SBCL) --load $(INIT) --load $(BOOT) \
+		--eval "(ledger)" --eval "(quit)"
 
 # Running with CMUCL
 

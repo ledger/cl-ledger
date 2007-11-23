@@ -1,4 +1,4 @@
-;; package.lisp
+;; packages.lisp
 
 (in-package :common-lisp)
 
@@ -98,6 +98,7 @@
 	   *post-normalization-functions*
 	   *registered-parsers*
 	   *allow-embedded-lisp*
+	   *last-binder*
 
 	   entries-iterator
 	   entries-list
@@ -114,8 +115,10 @@
 	   read-value-expr
 	   parse-value-expr
 
+	   *predicate-keywords*
+	   parse-predicate-keywords
 	   apply-filter
-	   compose-predicate
+	   choose-if-value-expr
 
 	   register))
 
@@ -125,6 +128,6 @@
 
 (setf *suppress-series-warnings* t)
 
-(provide 'package)
+(provide 'packages)
 
-;; package.lisp ends here
+;; packages.lisp ends here

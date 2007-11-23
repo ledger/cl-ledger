@@ -1,22 +1,22 @@
-;; register.lisp
+;; balance.lisp
 
 (declaim (optimize (safety 3) (debug 3) (speed 1) (space 0)))
 
 (in-package :ledger)
 
-(defun print-balance (xact-series &key (output-stream *standard-output*))
-  (let ((count 0)
-	root-account)
+(defun calculate-accounts (xact-series)
+  (let (root-account)
     (iterate
      ((xact xact-series))
 
+     ;; After the first transaction, reset the binder since we're going to
+     ;; store temporary data that might exist from a previous calculation.
      (unless root-account
        (let ((binder (journal-binder (entry-journal (xact-entry xact)))))
 	 (reset-binder binder)
 	 (setf root-account (binder-root-account binder))))
 
-     (add-transaction (xact-account xact) xact)
-     (incf count))
+     (add-transaction (xact-account xact) xact))
 
     (labels
 	((calc-accounts (account)
@@ -48,67 +48,60 @@
 				  (not (and (value-zerop subtotal)
 					    (<= children-with-totals 1)))))
 	     
-	     total))
+	     total)))
 
-	 (get-partial-name (string account count)
-	   (if (zerop count)
-	       string
-	       (progn
-		 (setf account (account-parent account))
-		 (get-partial-name
-		  (concatenate 'string (account-name account)
-			       ":" string)
-		  account (1- count)))))
+      (calc-accounts root-account)
+      root-account)))
 
-	 (print-accounts (account name elided real-depth)
+(defun balance-reporter (&key (output-stream *standard-output*))
+  (labels
+      ((get-partial-name (string account count)
+	 (if (zerop count)
+	     string
+	     (progn
+	       (setf account (account-parent account))
+	       (get-partial-name (concatenate 'string (account-name account)
+					      ":" string)
+				 account (1- count))))))
+    (lambda (account real-depth elided &optional finalp)
+      (if (not finalp)
+	  (format output-stream "~12A  ~vA~A~%"
+		  (format-value (account-value account :total) :width 12)
+		  (* (- (1- real-depth) elided) 2) ""
+		  (get-partial-name (account-name account) account elided))
+	  (format output-stream
+		  "-----------------------------------------------------~%~12A~%"
+		  (format-value (account-value account :total) :width 12))))))
+
+(defun print-balance (xact-series &key (reporter nil))
+  (let ((root-account (calculate-accounts xact-series))
+	(reporter (or reporter (balance-reporter))))
+    (labels
+	((print-accounts (account name elided real-depth)
 	   (if (plusp real-depth)
 	       (if (account-value account :displayp)
-		   (format
-		    output-stream "~12A  ~vA~A~%"
-		    (format-value (account-value account :total)
-				  :width 12)
-		    (* (- (1- real-depth) elided) 2) ""
-		    (get-partial-name name account elided))
+		   (funcall reporter account real-depth elided)
 		   (incf elided)))
 
 	   (if (account-children account)
 	       (locally #+sbcl(declare (sb-ext:muffle-conditions
 					sb-ext:code-deletion-note))
-		 (mapc #'(lambda (cell)
-			   (print-accounts (cdr cell) (car cell)
-					   elided (1+ real-depth)))
-		       (sort (let (lst)
-			       (maphash #'(lambda (key value)
-					    (push (cons key value) lst))
-					(account-children account))
-			       lst)
-			     #'string< :key #'car))))))
+			(mapc #'(lambda (cell)
+				  (print-accounts (cdr cell) (car cell)
+						  elided (1+ real-depth)))
+			      (sort (let (lst)
+				      (maphash #'(lambda (key value)
+						   (push (cons key value) lst))
+					       (account-children account))
+				      lst)
+				    #'string< :key #'car))))))
 
-      (calc-accounts root-account)
       (print-accounts root-account "" 0 0)
+      (funcall reporter root-account 0 0 t))))
 
-      (format output-stream
-	      "-----------------------------------------------------~%~12A~%"
-	      (format-value (account-value root-account :total) :width 12)))
-    count))
+(defun balance-report (&rest args)
+  (basic-reporter #'print-balance args))
 
-(defun balance-report (binder &rest args)
-  "This is a convenience function for quickly making register reports.
+(provide 'balance)
 
-  A typical usage might be:
-
-    (ledger:balance-report \"/path/to/ledger.dat\"
-                           :begin \"2007/08/26\" :account \"food\")"
-  (let ((binder (etypecase binder
-		  ((or string pathname) (read-binder binder))
-		  (binder binder)))
-	(transforms (determine-transforms args)))
-
-    (let ((xacts (scan-normalized-transactions binder)))
-      (dolist (transform transforms)
-	(setf xacts (apply (car transform) xacts (cdr transform))))
-      (print-balance xacts))))
-
-(provide 'register)
-
-;; register.lisp ends here
+;; balance.lisp ends here

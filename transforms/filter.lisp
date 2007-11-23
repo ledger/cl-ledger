@@ -4,15 +4,15 @@
 
 (in-package :ledger)
 
+(defun eq-matcher (object)
+  (lambda (other-object)
+    (eq object other-object)))
+
 (defun regex-matcher (regex)
   (declare (type string regex))
   (let ((scanner (cl-ppcre:create-scanner regex :case-insensitive-mode t)))
     (lambda (string)
       (cl-ppcre:scan scanner string))))
-
-(defun eq-matcher (object)
-  (lambda (other-object)
-    (eq object other-object)))
 
 (defun account-matcher (regex-or-account)
   (declare (type (or string account) regex-or-account))
@@ -59,75 +59,83 @@
       (lambda (xact)
 	(funcall operator (xact-date xact) string-or-fixed-time))))
 
-(defun compose-predicate (&rest args)
-  (let (function)
+(defvar *predicate-keywords*
+  `((:account (or string account)
+	      ,#'account-matcher)
+    (:not-account (or string account)
+		  ,#'(lambda (value)
+		       (not-matcher (account-matcher value))))
+    (:payee string
+	    ,#'payee-matcher)
+    (:not-payee string
+		,#'(lambda (value)
+		     (not-matcher (payee-matcher value))))
+    (:note string
+	   ,#'note-matcher)
+    (:not-note string
+	       ,#'(lambda (value)
+		    (not-matcher (note-matcher value))))
+    (:begin (or string fixed-time)
+	    ,#'(lambda (value)
+		 (fixed-time-matcher value #'local-time>=)))
+    (:end (or string fixed-time)
+	  ,#'(lambda (value)
+	       (fixed-time-matcher value #'local-time<=)))
+    (:expr (or string function)
+	   ,#'value-expr-matcher))
+  "*predicate-keywords* associates keywords that may be passed to
+  `apply-filter' or `parse-predicate-keywords' with matcher functions that are
+  called to produce the closures used to ascertain the match.
+
+  The format of each member of this list is (KEYWORD TYPE FUNCTION).
+
+  For example, in the case of allowing :ACCOUNT to specify an account to match
+  against in a value expression predicate, the require type is either a string
+  specifying a regular expression, or an actual account object to compare
+  against.  The function used to create the matcher is `account-matcher',
+  which takes the string/account argument passed in after the :ACCOUNT
+  keyword, and returns a closure which can verify whether a transaction is
+  indeed in that account.
+
+  This means that every matcher function takes a value argument to base the
+  match on, and returns a closure *that takes a transaction* for which it will
+  ascertain that match.")
+
+(defun parse-predicate-keywords (args)
+  (let (functions)
     (do ((arg args))
 	((null arg))
-      (let ((next-function
-	     (cond
-	       ((keywordp (first arg))
-		(let ((value (car (rest arg))))
-		  (prog1
-		      (case (first arg)
-			(:account
-			 (if (or (stringp value)
-				 (typep value 'account))
-			     (account-matcher value)))
-			(:not-account
-			 (if (or (stringp value)
-				 (typep value 'account))
-			     (not-matcher (account-matcher value))))
-			(:payee
-			 (if (stringp value)
-			     (payee-matcher value)))
-			(:not-payee
-			 (if (stringp value)
-			     (not-matcher (payee-matcher value))))
-			(:note
-			 (if (stringp value)
-			     (note-matcher value))) 
-			(:not-note
-			 (if (stringp value)
-			     (not-matcher (note-matcher value)))) 
-			(:expr
-			 (if (or (stringp value)
-				 (functionp value))
-			     (value-expr-matcher value)))
-			(:begin
-			 (if (or (stringp value)
-				 (typep value 'fixed-time))
-			     (fixed-time-matcher value #'local-time>=)))
-			(:end
-			 (if (or (stringp value)
-				 (typep value 'fixed-time))
-			     (fixed-time-matcher value #'local-time<=)))
-			(otherwise
-			 (error "Unrecognized predicate keyword '~S'"
-				(first arg))))
-		    (setf arg (rest (rest arg))))))
+      (if (keywordp (first arg))
+	  (progn
+	    (if (first (rest arg))
+		(let ((entry (assoc (first arg) *predicate-keywords*)))
+		  (unless (typep (first (rest arg)) (cadr entry))
+		    (error "Argument of invalid type ~S passed to ~
+                            predicate keyword ~S (expected ~S)"
+			   (type-of (first (rest arg))) (first arg)
+			   (cadr entry)))
+		  (push (funcall (caddr entry)
+				 (first (rest arg))) functions)))
+	    (setf arg (cddr arg)))
+	  (setf arg (cdr arg))))
 
-	       ((functionp (car arg))
-		(prog1
-		    (car arg)
-		 (setf arg (rest arg))))
-
-	       (t
-		(setf arg (rest arg))
-		nil))))
-
-	(when next-function
-	  (setf function
-		(if function
-		    (lambda (xarg)
-		      (and (funcall function xarg)
-			   (funcall next-function xarg)))
-		    next-function)))))
-
-    (or function (constantly t))))
+    (and functions
+	 (lambda (xact)
+	   (dolist (predicate functions t)
+	     (unless (funcall predicate xact)
+	       (return nil)))))))
 
 (declaim (inline apply-filter))
 (defun apply-filter (xacts &rest args)
-  (choose-if (apply #'compose-predicate args) xacts))
+  (let ((predicate (parse-predicate-keywords args)))
+    (if predicate
+	(choose-if predicate xacts)
+	xacts)))
+
+(declaim (inline choose-if-value-expr))
+(defun choose-if-value-expr (xacts expr)
+  (choose-if (if (functionp expr) expr
+		 (parse-value-expr expr)) xacts))
 
 (provide 'filter)
 

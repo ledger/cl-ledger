@@ -19,7 +19,7 @@
           (make-instance 'automated-entry
                          :journal journal
                          :predicate-expr predicate-expr
-                         :predicate (compose-predicate function))))
+                         :predicate function)))
     (loop
        for transaction = (read-transaction in entry)
        while transaction do

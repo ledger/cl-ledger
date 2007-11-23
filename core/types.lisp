@@ -101,6 +101,10 @@
    (data           :accessor binder-data           :initarg :data
 		   :initform nil)))
 
+(declaim (inline binderp))
+(defun binderp (binder)
+  (typep binder 'binder))
+
 (defgeneric add-transaction (item transaction))
 (defgeneric add-journal (binder journal))
 (defgeneric find-account (item account-path &key create-if-not-exists-p))
