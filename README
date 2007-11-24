@@ -4,40 +4,32 @@ implementations will be tested soon.
 
 The first thing to do is install the prerequisites.  You may do this quite
 easily using asdf-install (note that if Hunchentoot gives you compilation
-                                error on the file port-sbcl, just select the restart for ACCEPT):
+error on the file port-sbcl, just select the restart for ACCEPT):
 
-$ sbcl
-* (require 'asdf-install)
-* (push  :hunchentoot-no-ssl *features*)
-* (asdf-install:install :hunchentoot)
-* (asdf-install:install :cl-who)
-* (asdf-install:install :cl-ppcre)
-* (asdf-install:install :local-time)
-* (quit)
+  $ sbcl
+  * (require 'asdf-install)
+  * (push  :hunchentoot-no-ssl *features*)
+  * (asdf-install:install :hunchentoot)
+  * (asdf-install:install :cl-who)
+  * (asdf-install:install :cl-ppcre)
+  * (asdf-install:install :local-time)
+  * (asdf-install:install :series)
+  * (quit)
 
 Now you need to pull all of the projects relating to Ledger.  Here's what I do
-for Darcs:
+for Mercurial:
 
-$ darcs get http://darcs.newartisans.com/ledger
-$ darcs get http://darcs.newartisans.com/cambl
-$ darcs get http://darcs.newartisans.com/periods
-$ darcs get http://darcs.newartisans.com/red-black
-
-And for Mercurial users:
-
-$ hg clone http://hg.newartisans.com/ledger
-$ hg clone http://hg.newartisans.com/cambl
-$ hg clone http://hg.newartisans.com/periods
-$ hg clone http://hg.newartisans.com/red-black
+  $ hg clone http://hg.newartisans.com/ledger
+  $ hg clone http://hg.newartisans.com/cambl
+  $ hg clone http://hg.newartisans.com/periods
+  $ hg clone http://hg.newartisans.com/red-black
 
 The next step is to configure SBCL so it knows where to load ledger from.
 Create a file called ~/.sbclrc and add these contents:
 
   ;; -*- lisp -*-
   
-  (mapc 'require
-        '(sb-bsd-sockets sb-posix
-          asdf asdf-install))
+  (mapc 'require '(sb-bsd-sockets sb-posix asdf asdf-install))
   
   (dolist (project '("red-black/"
                      "cambl/"
@@ -55,24 +47,34 @@ Now you can run Ledger at the REPL like this:
   $ sbcl
   * (require 'asdf)
   * (asdf:oos 'asdf:load-op :ledger)
-  * (asdf:oos 'asdf:load-op :ledger.textual)
 
 This compiles and loads the Ledger core, and also the textual parser package,
 for parsing standard Ledger text files (other parser packages soon to come).
 
 Once in the REPL, try out this command:
 
-  * (ledger:register "/path/to/src/ledger/doc/sample.dat")
+  * (ledger:register-report "/path/to/src/ledger/doc/sample.dat")
 
 You should see a register printed representing the contents of sample.dat.
 You can constrain this report using keyword modifiers:
 
-  * (ledger:register "/path/to/src/ledger/doc/sample.dat" :account "books")
+  * (ledger:register-report "/path/to/src/ledger/doc/sample.dat"
+                            :account "books")
+
+Ledger also supports the notion of a "Last binder".  For example:
+
+  * (ledger:read-binder "/path/to/sample.dat")
+  * (ledger:register-report :account "books")
+
+After the call to `read-binder', the variable `*last-binder*' contains the
+contents of what was read.  From that point forward, if no binder or string is
+passed to the reporting function, they will assume you wish to report on the
+contents of `*last-binder*'.
 
 If you prefer to use the HTTP interface, just cd to where you have Ledger
 pulled and type "make".  If this works, you can quit, then type "make core" to
 build a core file just for the Ledger web server.  After it's built, type
-"make" to run the server using that core.  Once a core is built, Ledger should
+"make" to run the server using the core.  Once a core is built, Ledger should
 start up in a split second.
 
 That's it for now, expect more in this file as things progress!
@@ -84,6 +86,6 @@ p.s. For fans of the SERIES library, you can apply `scan-transactions' or
      `scan-entries' to a binder/account/journal/entry in order to produce
      a SERIES of the corresponding type.  Example:
 
-       (collect (ledger:scan-transactions
+       (collect (ledger:scan-normalized-transactions
        		 (read-binder "doc/sample.dat")))
 	  => [a list of all transactions, in sequence, within sample.dat]
