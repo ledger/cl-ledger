@@ -30,8 +30,7 @@
 		  (gethash acct account-hash)
 		  acct-xact)
 	    (add-transaction entry acct-xact))
-	  (add* (xact-amount acct-xact)
-		(xact-resolve-amount xact))))))
+	  (add* (xact-amount acct-xact) (xact-amount xact))))))
     (scan-transactions artificial-journal)))
 
 (defun periodic-transform (xact-series &rest args)

@@ -112,9 +112,12 @@
 	     (:td "&nbsp;")))))
 
       (when journal-path
-	(let* ((binder (read-binder journal-path))
-	       (xacts (scan-normalized-transactions binder)))
+	(let ((binder (make-instance 'binder))
+	      xacts)
 
+	  (add-journal binder journal-path)
+
+	  (setf xacts (scan-transactions binder))
 	  (when calculate-before-p
 	    (setf xacts (calculate-totals xacts)))
 	  (if (or account payee begin-date end-date value-expr)
@@ -138,7 +141,7 @@
 
 	     (iterate
 	      ((xact xacts))
-	      (let* ((amt (xact-resolve-amount xact))
+	      (let* ((amt (xact-amount xact))
 		     (right-style "text-align: right; padding-left: 1em")
 		     (red-right-style
 		      (format nil "~A; color: red" right-style))

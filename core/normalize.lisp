@@ -26,14 +26,15 @@
         (no-amounts t)
         saw-null)
     (do-transactions (x entry)
-      (let ((amt (xact-amount x)))
-	(if (functionp amt)
-	    (setf (xact-amount x) (funcall amt x))))
+      (let ((amt (get-xact-amount x)))
+	(if (value-expr-p amt)
+	    (setf (get-xact-amount x)
+		  (value-expr-call amt x))))
 
       (when (or (not (xact-virtualp x))
 		(xact-must-balance-p x))
 	(let ((p (or (xact-cost x)
-		     (xact-amount x))))
+		     (get-xact-amount x))))
 	  (if p
 	      (progn
 		(add* balance p)
@@ -43,24 +44,24 @@
 		(if no-amounts
 		    (setf no-amounts nil))
 
-		(assert (xact-amount x))
+		(assert (get-xact-amount x))
 
 		(if (and (xact-cost x)
 			 (commodity-annotated-p
-			  (amount-commodity (xact-amount x))))
-		    (let* ((commodity (amount-commodity (xact-amount x)))
+			  (amount-commodity (get-xact-amount x))))
+		    (let* ((commodity (amount-commodity (get-xact-amount x)))
 			   (price (annotation-price
 				   (commodity-annotation commodity))))
 		      (if price
 			  (progn
 			    ;;(format t " balance before = ~S~%" (format-value balance))
 			    ;;(format t " price = ~S~%" price)
-			    ;;(format t " (xact-amount x) = ~S~%" (xact-amount x))
-			    ;;(format t " (multiply price (xact-amount x)) = ~S~%" (multiply price (xact-amount x)))
+			    ;;(format t " (get-xact-amount x) = ~S~%" (get-xact-amount x))
+			    ;;(format t " (multiply price (get-xact-amount x)) = ~S~%" (multiply price (get-xact-amount x)))
 			    ;;(format t " (xact-cost x) = ~S~%" (xact-cost x))
-			    ;;(format t " (subtract (multiply price (xact-amount x)) (xact-cost x)) = ~S~%" (subtract (multiply price (xact-amount x)) (xact-cost x)))
+			    ;;(format t " (subtract (multiply price (get-xact-amount x)) (xact-cost x)) = ~S~%" (subtract (multiply price (get-xact-amount x)) (xact-cost x)))
 			    (add* balance
-				  (subtract (multiply price (xact-amount x))
+				  (subtract (multiply price (get-xact-amount x))
 					    (xact-cost x)))
 			    ;;(format t " balance after = ~S~%" (format-value balance))
 			    )))))
@@ -90,7 +91,7 @@
 		 (not (value-zerop* balance))
 		 (= 2 (balance-commodity-count balance)))
 	(let* ((x (first (entry-transactions entry)))
-	       (commodity (amount-commodity (xact-amount x)))
+	       (commodity (amount-commodity (get-xact-amount x)))
 	       (amount (copy-amount
 			(amount-in-balance balance commodity)))
 	       (balancing-amount
@@ -137,8 +138,7 @@
 	     ;;(format t "   (multiply per-unit-cost amount) = ~S~%" (multiply per-unit-cost amount))
 	     ;;(format t "   (negate (multiply per-unit-cost amount)) = ~S~%" (negate (multiply per-unit-cost amount)))
 	     ;;(format t " 4.balance        = ~S~%" (format-value balance))
-	     (setf (xact-cost x)
-		   (negate (multiply per-unit-cost amount)))
+	     (setf (xact-cost x) (negate (multiply per-unit-cost amount)))
 	     ;;(format t " 5.balance        = ~S~%" (format-value balance))
 	     ;;(format t " adding ~S to balance~%" (xact-cost x))
 	     (add* balance (xact-cost x))
@@ -149,7 +149,7 @@
       ;; can, and performing any on-the-fly calculations.
       (let ((empty-allowed t))
 	(do-transactions (x entry)
-	  (unless (or (xact-amount x)
+	  (unless (or (get-xact-amount x)
 		      (and (xact-virtualp x)
 			   (not (xact-must-balance-p x))))
 	    (unless empty-allowed
@@ -172,8 +172,7 @@
 		     do
 		     (let ((amt (negate (cdr pair))))
 		       (if first
-			   (setf (xact-amount x) amt
-				 first nil)
+			   (setf (get-xact-amount x) amt first nil)
 			   (let ((new-xact
 				  (make-transaction :entry entry
 						    :account (xact-account x)
@@ -182,9 +181,9 @@
 			     (add-transaction entry new-xact)))
 		       (add* balance amt))))
 		(progn
-		  (setf (xact-amount x) (negate balance)
+		  (setf (get-xact-amount x) (negate balance)
 			(xact-calculatedp x) t)
-		  (add* balance (xact-amount x)))))))
+		  (add* balance (get-xact-amount x)))))))
 
       (if *post-normalization-functions*
 	  (dolist (function *post-normalization-functions*)

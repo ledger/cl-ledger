@@ -72,7 +72,11 @@
 
     (,#'digit-char-p
      . ,#'(lambda (in journal)
-	    (add-to-contents journal (read-plain-entry in journal))))
+	    (let ((entry (read-plain-entry in journal)))
+	      (if entry
+		  (add-to-contents journal entry)
+		  (error "Failed to read entry at position ~S~%"
+			 (file-position in))))))
 
     ((#\@ #\!)
      . ,#'(lambda (in journal)
@@ -85,7 +89,11 @@
 			  (find-symbol (format nil "ledger-text-directive/~A"
 					       (symbol-name symbol))))
 		    (if (and symbol (functionp symbol))
-			(funcall (fdefinition symbol) argument)
+			(funcall (locally
+				     #+sbcl(declare (sb-ext:muffle-conditions
+						     sb-ext:code-deletion-note))
+				     (fdefinition symbol))
+				 argument)
 			argument))
 		  argument))))
 
@@ -118,13 +126,17 @@
 	    (setf amount (cambl:read-amount in))
 	    (when (peek-char t in nil)
 	      (file-position in 0)
-	      (setf amount (read-value-expr in)))))
+	      (setf amount
+		    (make-value-expr :string   amount-expr
+				     :function (read-value-expr in))))))
 	(when cost-expr
 	  (with-input-from-string (in cost-expr)
 	    (setf cost (cambl:read-amount* in))
 	    (when (peek-char t in nil)
 	      (file-position in 0)
-	      (setf cost (read-value-expr in)))
+	      (setf cost
+		    (make-value-expr :string   cost-expr
+				     :function (read-value-expr in))))
 	    (unless cost
 	      (error "Failed to read cost expression: ~S" cost-expr))))
 
@@ -212,7 +224,8 @@
 	     for transaction = (read-transaction in entry)
 	     while transaction do
 	     (add-transaction entry transaction))
-	  entry)))))
+
+	  (normalize-entry entry))))))
 
 (defun read-journal (in binder)
   (declare (type stream in))

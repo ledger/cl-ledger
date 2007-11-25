@@ -1,0 +1,187 @@
+;; transaction.lisp
+
+(declaim (optimize (safety 3) (debug 3) (speed 1) (space 0)))
+
+(in-package :ledger)
+
+(require 'types)
+
+(declaim (inline xact-entry set-xact-entry))
+(defun xact-entry (xact)
+  (get-xact-entry xact))
+(defun set-xact-entry (xact value)
+  (setf (get-xact-entry xact) value))
+(defsetf xact-entry set-xact-entry)
+
+(declaim (inline xact-actual-date set-xact-actual-date))
+(defun xact-actual-date (xact)
+  (get-xact-actual-date xact))
+(defun set-xact-actual-date (xact value)
+  (setf (get-xact-actual-date xact) value))
+(defsetf xact-entry set-xact-entry)
+
+(declaim (inline xact-effective-date set-xact-effective-date))
+(defun xact-effective-date (xact)
+  (get-xact-effective-date xact))
+(defun set-xact-effective-date (xact value)
+  (setf (get-xact-effective-date xact) value))
+(defsetf xact-effective-date set-xact-effective-date)
+
+(declaim (inline xact-status set-xact-status))
+(defun xact-status (xact)
+  (get-xact-status xact))
+(defun set-xact-status (xact value)
+  (setf (get-xact-status xact) value))
+(defsetf xact-status set-xact-status)
+
+(declaim (inline xact-account set-xact-account))
+(defun xact-account (xact)
+  (get-xact-account xact))
+(defun set-xact-account (xact value)
+  (setf (get-xact-account xact) value))
+(defsetf xact-account set-xact-account)
+
+(declaim (inline xact-cost set-xact-cost))
+(defun xact-cost (xact)
+  (get-xact-cost xact))
+(defun set-xact-cost (xact value)
+  (setf (get-xact-cost xact) value))
+(defsetf xact-cost set-xact-cost)
+
+(declaim (inline xact-note set-xact-note))
+(defun xact-note (xact)
+  (get-xact-note xact))
+(defun set-xact-note (xact value)
+  (setf (get-xact-note xact) value))
+(defsetf xact-note set-xact-note)
+
+(declaim (inline xact-tags set-xact-tags))
+(defun xact-tags (xact)
+  (get-xact-tags xact))
+(defun set-xact-tags (xact value)
+  (setf (get-xact-tags xact) value))
+(defsetf xact-tags set-xact-tags)
+
+(declaim (inline xact-virtualp set-xact-virtualp))
+(defun xact-virtualp (xact)
+  (get-xact-virtualp xact))
+(defun set-xact-virtualp (xact value)
+  (setf (get-xact-virtualp xact) value))
+(defsetf xact-virtualp set-xact-virtualp)
+
+(declaim (inline xact-generatedp set-xact-generatedp))
+(defun xact-generatedp (xact)
+  (get-xact-generatedp xact))
+(defun set-xact-generatedp (xact value)
+  (setf (get-xact-generatedp xact) value))
+(defsetf xact-generatedp set-xact-generatedp)
+
+(declaim (inline xact-calculatedp set-xact-calculatedp))
+(defun xact-calculatedp (xact)
+  (get-xact-calculatedp xact))
+(defun set-xact-calculatedp (xact value)
+  (setf (get-xact-calculatedp xact) value))
+(defsetf xact-calculatedp set-xact-calculatedp)
+
+(declaim (inline xact-must-balance-p set-xact-must-balance-p))
+(defun xact-must-balance-p (xact)
+  (get-xact-must-balance-p xact))
+(defun set-xact-must-balance-p (xact value)
+  (setf (get-xact-must-balance-p xact) value))
+(defsetf xact-must-balance-p set-xact-must-balance-p)
+
+(declaim (inline xact-position set-xact-position))
+(defun xact-position (xact)
+  (get-xact-position xact))
+(defun set-xact-position (xact value)
+  (setf (get-xact-position xact) value))
+(defsetf xact-position set-xact-position)
+
+(declaim (inline xact-data set-xact-data))
+(defun xact-data (xact)
+  (get-xact-data xact))
+(defun set-xact-data (xact value)
+  (setf (get-xact-data xact) value))
+(defsetf xact-data set-xact-data)
+
+(defun print-transaction (transaction stream depth)
+  (declare (ignore depth))
+  (print-unreadable-object (transaction stream :type t)
+    (format stream
+	    ":DATE ~S :ACCT ~S :AMT ~S :V ~S :M ~S :G ~S :C ~S :POS ~S"
+	    (let ((date (xact-date transaction)))
+	      (and date (strftime date)))
+	    (account-fullname (xact-account transaction))
+	    (let ((amt (xact-amount transaction)))
+	      (and (typep amt 'value)
+		   (format-value amt)))
+	    (xact-virtualp transaction)
+	    (xact-must-balance-p transaction)
+	    (xact-generatedp transaction)
+	    (xact-calculatedp transaction)
+	    (let ((pos (xact-position transaction)))
+	      (and pos (item-position-begin-char pos))))))
+
+(declaim (inline xact-value))
+(defun xact-value (xact key)
+  (let ((value-cell (assoc key (xact-data xact))))
+    (values (cdr value-cell) value-cell)))
+
+(defsetf xact-value (xact key) (value)
+  (let ((xact-sym (gensym))
+	(key-sym (gensym)))
+    `(let* ((,xact-sym ,xact)
+	    (,key-sym ,key)
+	    (value-cell (assoc ,key-sym (xact-data ,xact-sym))))
+       (if value-cell
+	   (rplacd value-cell ,value)
+	   (push (cons ,key-sym ,value)
+		 (xact-data ,xact-sym))))))
+
+(defun xact-date (xact)
+  (declare (type transaction xact))
+  (if *use-effective-dates*
+      (or (xact-effective-date xact)
+	  (entry-date (xact-entry xact)))
+      (or (xact-actual-date xact)
+	  (entry-date (xact-entry xact)))))
+
+(defun xact-amount (xact)
+  (declare (type transaction xact))
+  (or (xact-value xact :computed-amount)
+      (let ((amount (get-xact-amount xact)))
+	(cond
+	  ((valuep amount)
+	   amount)
+	  ((null amount)
+	   (error "Resolving transaction amount for unnormalized data"))
+	  ((value-expr-p amount)
+	   (setf (xact-value xact :computed-amount)
+		 (value-expr-call amount xact)))
+	  (t
+	   (error "impossible"))))))
+
+(declaim (inline set-xact-amount))
+(defun set-xact-amount (xact value)
+  (setf (xact-value xact :computed-amount) nil)
+  (setf (get-xact-amount xact) value))
+(defsetf xact-amount set-xact-amount)
+
+(declaim (inline xact-cleared-p))
+(defun xact-cleared-p (xact)
+  (declare (type transaction xact))
+  (eq (xact-status xact) 'cleared))
+
+(declaim (inline xact-pending-p))
+(defun xact-pending-p (xact)
+  (declare (type transaction xact))
+  (eq (xact-status xact) 'pending))
+
+(declaim (inline xact-uncleared-p))
+(defun xact-uncleared-p (xact)
+  (declare (type transaction xact))
+  (eq (xact-status xact) 'uncleared))
+
+(provide 'transaction)
+
+;; transaction.lisp ends here

@@ -60,29 +60,46 @@
 	(funcall operator (xact-date xact) string-or-fixed-time))))
 
 (defvar *predicate-keywords*
-  `((:account (or string account)
-	      ,#'account-matcher)
-    (:not-account (or string account)
-		  ,#'(lambda (value)
-		       (not-matcher (account-matcher value))))
-    (:payee string
-	    ,#'payee-matcher)
-    (:not-payee string
-		,#'(lambda (value)
-		     (not-matcher (payee-matcher value))))
-    (:note string
-	   ,#'note-matcher)
-    (:not-note string
-	       ,#'(lambda (value)
-		    (not-matcher (note-matcher value))))
-    (:begin (or string fixed-time)
-	    ,#'(lambda (value)
-		 (fixed-time-matcher value #'local-time>=)))
-    (:end (or string fixed-time)
-	  ,#'(lambda (value)
-	       (fixed-time-matcher value #'local-time<=)))
-    (:expr (or string function)
-	   ,#'value-expr-matcher))
+  `((:account
+     (or string account)
+     ,#'account-matcher)
+
+    (:not-account
+     (or string account)
+     ,#'(lambda (value)
+	  (not-matcher (account-matcher value))))
+
+    (:payee
+     string
+     ,#'payee-matcher)
+
+    (:not-payee
+     string
+     ,#'(lambda (value)
+	  (not-matcher (payee-matcher value))))
+
+    (:note
+     string
+     ,#'note-matcher)
+
+    (:not-note
+     string
+     ,#'(lambda (value)
+	  (not-matcher (note-matcher value))))
+
+    (:begin
+     (or string fixed-time)
+     ,#'(lambda (value)
+	  (fixed-time-matcher value #'local-time>=)))
+
+    (:end
+     (or string fixed-time)
+     ,#'(lambda (value)
+	  (fixed-time-matcher value #'local-time<=)))
+
+    (:expr
+     (or string function)
+     ,#'value-expr-matcher))
   "*predicate-keywords* associates keywords that may be passed to
   `apply-filter' or `parse-predicate-keywords' with matcher functions that are
   called to produce the closures used to ascertain the match.

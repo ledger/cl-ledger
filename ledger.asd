@@ -53,13 +53,15 @@ for diagnostic output.")
   ((:module "core"
 	    :components ((:file "packages")
 			 (:file "types")
+			 (:file "general")
 			 (:file "ledger")
+			 (:file "transaction")
+			 (:file "normalize")
 			 (:file "valexpr"))
 	    :serial t)
 
    (:module "transforms"
-	    :components ((:file "normalize")
-			 (:file "totals")
+	    :components ((:file "totals")
 			 (:file "filter")
 			 (:file "periodic")
 			 (:file "transform")))

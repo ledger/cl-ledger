@@ -27,12 +27,14 @@
 	    (nconc (cdr periodic-entries) (list entry))
 	    (push (cons :periodic-entries (list entry))
 		  (journal-data journal))))
-
-      (add-to-contents journal entry)
       entry)))
 
 (pushnew `(#\~ . ,#'(lambda (in journal)
-		      (add-to-contents journal (read-periodic-entry in journal))))
+		      (let ((entry (read-periodic-entry in journal)))
+			(if entry
+			    (add-to-contents journal entry)
+			    (error "Failed to read entry at position ~S~%"
+				   (file-position in))))))
 	 *directive-handlers*)
 
 (provide 'perentry)

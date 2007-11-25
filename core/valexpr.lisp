@@ -4,6 +4,17 @@
 
 (in-package :ledger)
 
+(defstruct (value-expr)
+  (string nil :type string)
+  (function nil))
+
+(declaim (inline value-expr-call))
+(defun value-expr-call (valexpr xact)
+  (declare (type value-expr valexpr))
+  (declare (type transaction xact))
+  (assert (functionp (value-expr-function valexpr)))
+  (funcall (value-expr-function valexpr) xact))
+
 (defvar *value-expr-observe-properties-p* nil)
 (defvar *value-expr-reduce-to-smallest-units-p* nil)
 (defvar *value-expr-commodity-pool* nil)
@@ -121,13 +132,12 @@
 		      (constantly (local-time:now)))
 
 		     ((member symbol '(|t| |a| |amount|) :test #'eq)
-		      (ignore-rest #'xact-resolve-amount))
+		      (ignore-rest #'xact-amount))
 
 		     ((member symbol '(|i| |price|) :test #'eq)
 		      (lambda (xact &rest args)
 			(declare (ignore args))
-			(divide (xact-cost xact)
-				(xact-resolve-amount xact))))
+			(divide (xact-cost xact) (xact-amount xact))))
 
 		     ((member symbol '(|b| |cost|) :test #'eq)
 		      (ignore-rest #'xact-cost))
@@ -183,14 +193,14 @@
 		     ((member symbol '(|S| |quant| |quantity|) :test #'eq)
 		      (lambda (xact &rest args)
 			(declare (ignore args))
-			(cambl:amount-quantity (xact-resolve-amount xact))))
+			(cambl:amount-quantity (xact-amount xact))))
 
 		     ((member symbol '(|comm| |commodity|) :test #'eq)
 		      (lambda (xact &rest args)
 			(declare (ignore args))
 			(let ((one (amount 1)))
 			  (setf (amount-commodity one)
-				(amount-commodity (xact-resolve-amount xact)))
+				(amount-commodity (xact-amount xact)))
 			  one)))
 
 		     ((member symbol '(|setcomm| |set_commodity|) :test #'eq)
@@ -443,9 +453,11 @@
 			 (reduce-to-smallest-units-p nil)
 			 (pool *default-commodity-pool*))
   (with-input-from-string (in string)
-    (read-value-expr in :observe-properties-p observe-properties-p
-		     :reduce-to-smallest-units-p reduce-to-smallest-units-p
-		     :pool pool)))
+    (make-value-expr
+     :string string :function
+     (read-value-expr in :observe-properties-p observe-properties-p
+			 :reduce-to-smallest-units-p reduce-to-smallest-units-p
+			 :pool pool))))
 
 (provide 'valexpr)
 

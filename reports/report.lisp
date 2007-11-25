@@ -7,9 +7,10 @@
 (defun basic-reporter (printer args)
   (let ((binder (typecase (first args)
 		  ((or string pathname)
-		   (prog1
-		       (read-binder (first args))
-		     (setf args (rest args))))
+		   (setf *last-binder* (make-instance 'binder))
+		   (add-journal *last-binder* (first args))
+		   (setf args (rest args))
+		   *last-binder*)
 		  (binder
 		   (prog1
 		       (first args)
@@ -17,7 +18,7 @@
 		  (otherwise *last-binder*))))
     (if (binderp binder)
 	(funcall printer (apply-key-transforms
-			  (scan-normalized-transactions binder) args)
+			  (scan-transactions binder) args)
 		 :reporter (getf args :reporter)))
     (values)))
 

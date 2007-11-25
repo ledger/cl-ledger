@@ -63,7 +63,7 @@
       (format output-stream "~22A ~A ~A~%"
 	      (abbreviate-string (account-fullname (xact-account xact)) 22
 				 :account-p t)
-	      (format-value (xact-resolve-amount xact)
+	      (format-value (xact-amount xact)
 			    :width 12 :latter-width 67)
 	      (format-value (or (xact-value xact :running-total)
 				0) :width 12 :latter-width 80)))))

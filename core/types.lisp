@@ -15,15 +15,15 @@
   source)
 
 (defstruct (transaction
-	     (:conc-name xact-)
+	     (:conc-name get-xact-)
 	     (:print-function print-transaction))
   entry
   (actual-date nil     :type (or fixed-time null))
   (effective-date nil  :type (or fixed-time null))
   (status 'uncleared   :type item-status)
   account
-  (amount nil	       :type (or value function null))
-  (cost nil	       :type (or value function null))
+  (amount nil	       :type (or value value-expr null))
+  (cost nil	       :type (or value value-expr null))
   (note nil	       :type (or string null))
   (tags nil)
   (virtualp nil        :type boolean)

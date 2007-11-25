@@ -12,14 +12,14 @@
   (declare (type journal journal))
   (declare (type stream in))
   (let* ((predicate-expr (read-line in))
-         (function (or (parse-value-expr predicate-expr)
-                       (error "Failed to parse predicate value expression: ~S"
-                              predicate-expr)))
+         (value-expr (or (parse-value-expr predicate-expr)
+			 (error "Failed to parse predicate value expression: ~S"
+				predicate-expr)))
          (entry
           (make-instance 'automated-entry
                          :journal journal
-                         :predicate-expr predicate-expr
-                         :predicate function)))
+                         :predicate-expr (value-expr-string value-expr)
+                         :predicate (value-expr-function value-expr))))
     (loop
        for transaction = (read-transaction in entry)
        while transaction do
@@ -36,7 +36,11 @@
 
 (pushnew `(#\= . ,#'(lambda (in journal)
                       (read-char in)
-                      (add-to-contents journal (read-automated-entry in journal))))
+		      (let ((entry (read-automated-entry in journal)))
+			(if entry
+			    (add-to-contents journal entry)
+			    (error "Failed to read entry at position ~S~%"
+				   (file-position in))))))
          *directive-handlers*)
 
 (defun apply-automated-entries (entry &optional postp)

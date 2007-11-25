@@ -6,35 +6,10 @@
 
 (require 'types)
 
-(defun print-transaction (transaction stream depth)
-  (declare (ignore depth))
-  (print-unreadable-object (transaction stream :type t)
-    (format stream
-	    ":DATE ~S :ACCT ~S :AMT ~S :V ~S :M ~S :G ~S :C ~S :POS ~S"
-	    (let ((date (xact-date transaction)))
-	      (and date (strftime date)))
-	    (account-fullname (xact-account transaction))
-	    (let ((amt (xact-amount transaction)))
-	      (and (typep amt 'value)
-		   (format-value amt)))
-	    (xact-virtualp transaction)
-	    (xact-must-balance-p transaction)
-	    (xact-generatedp transaction)
-	    (xact-calculatedp transaction)
-	    (let ((pos (xact-position transaction)))
-	      (and pos (item-position-begin-char pos))))))
-
-(declaim (inline xact-value))
-(defun xact-value (xact key)
-  (let ((value-cell (assoc key (xact-data xact))))
-    (values (cdr value-cell) value-cell)))
-
-(declaim (inline xact-value))
-(defun xact-set-value (xact key value)
-  (let ((value-cell (assoc key (xact-data xact))))
-    (if value-cell
-	(rplacd value-cell value)
-	(push (cons key value) (xact-data xact)))))
+(defvar *use-effective-dates* nil)
+(defvar *registered-parsers* nil)
+(defvar *allow-embedded-lisp* nil)
+(defvar *last-binder* nil)
 
 (declaim (inline account-value))
 (defun account-value (account key)
@@ -48,16 +23,9 @@
 	(rplacd value-cell value)
 	(push (cons key value) (account-data account)))))
 
-;; Textual journal parser
-
-(defvar *use-effective-dates* nil)
-(defvar *registered-parsers* nil)
-(defvar *allow-embedded-lisp* nil)
-(defvar *last-binder* nil)
-
 ;;;_ * Code for construction of the LEDGER object tree
 
-(defun add-journal-file (binder path)
+(defun read-journal (binder path)
   "Read in a textual Ledger journal from the given PATH.
 The result is of type JOURNAL."
   (with-open-file (in path :direction :input)
@@ -68,27 +36,24 @@ The result is of type JOURNAL."
 	      (return-from nil journal)
 	      (file-position in start-position)))))))
 
-(defun binder (path-or-string)
-  (let ((binder
-	 (make-instance 'binder :commodity-pool *default-commodity-pool*)))
-    (if (typep path-or-string '(or pathname string))
-	(let ((journal (add-journal-file binder path-or-string)))
-	  (if journal
-	      (add-journal binder journal)))
-	(error "unknown"))
-    binder))
-
-(declaim (inline read-binder))
-(defun read-binder (path-or-string)
-  (setf *last-binder* (binder path-or-string)))
-
 (defmethod add-journal ((binder binder) (journal journal))
   (pushend journal (binder-journals binder)))
 
-(defmethod add-journal ((journal journal) (child journal))
-  (pushend child (journal-contents journal)))
+(defmethod add-journal ((binder binder) (path string))
+  (let ((journal (read-journal binder path)))
+    (if journal
+	(pushend journal (binder-journals binder)))))
 
-(defun reset-binder (binder)
+(defmethod add-journal ((binder binder) (path pathname))
+  (let ((journal (read-journal binder path)))
+    (if journal
+	(pushend journal (binder-journals binder)))))
+
+(defmethod add-journal ((journal journal) (child journal))
+  (pushend child (journal-contents journal)
+	   (journal-last-content-cell journal)))
+
+(defun reset-accounts (binder)
   (setf (binder-transactions binder) nil)
   (labels ((undo-filter-in-account (name account)
 	     (declare (ignore name))
@@ -122,16 +87,6 @@ The result is of type JOURNAL."
 		  (make-instance 'account :parent account
 				 :name account-name
 				 :fullname fullname)))))))
-
-(defun split-string-at-char (string char)
-  "Returns a list of substrings of string
-divided by ONE colon each.
-Note: Two consecutive colons will be seen as
-if there were an empty string between them."
-  (loop for i = 0 then (1+ j)
-     as j = (position char string :start i)
-     collect (subseq string i j)
-     while j))
 
 (defmethod find-account ((binder binder) (account-path string)
 			 &key (create-if-not-exists-p nil))
@@ -172,106 +127,11 @@ if there were an empty string between them."
 	  (entry-actual-date entry))
       (entry-actual-date entry)))
 
-(defun xact-date (xact)
-  (declare (type transaction xact))
-  (if *use-effective-dates*
-      (or (xact-effective-date xact)
-	  (entry-date (xact-entry xact)))
-      (or (xact-actual-date xact)
-	  (entry-date (xact-entry xact)))))
-
-(defun xact-resolve-amount (xact)
-  (declare (type transaction xact))
-  (or (xact-value xact :computed-amount)
-      (let ((amount (xact-amount xact)))
-	(cond
-	  ((valuep amount)
-	   amount)
-	  ((null amount)
-	   (error "Resolving transaction amount for unnormalized data"))
-	  ((functionp amount)
-	   (xact-set-value xact :computed-amount (funcall amount xact)))
-	  (t
-	   (error "impossible"))))))
-
-(declaim (inline xact-cleared-p))
-(defun xact-cleared-p (xact)
-  (declare (type transaction xact))
-  (eq (xact-status xact) 'cleared))
-
-(declaim (inline xact-pending-p))
-(defun xact-pending-p (xact)
-  (declare (type transaction xact))
-  (eq (xact-status xact) 'pending))
-
-(declaim (inline xact-uncleared-p))
-(defun xact-uncleared-p (xact)
-  (declare (type transaction xact))
-  (eq (xact-status xact) 'uncleared))
-
 (declaim (inline parse-journal-date))
 (defun parse-journal-date (journal string)
   (strptime string :format (or (journal-date-format journal)
 			       *input-time-format*)
 	    :default-year (journal-default-year journal)))
-
-;;;_ * General utility functions
-
-(defmacro while (test-form &body body)
-  `(do () ((not ,test-form))
-     ,@body))
-
-(declaim (inline list-iterator))
-(defun list-iterator (list)
-  (lambda ()
-    (prog1
-	(first list)
-      (setf list (rest list)))))
-
-(declaim (inline ignore-args))
-(defun ignore-args (closure)
-  (lambda (&rest args)
-    (declare (ignore args))
-    (funcall closure)))
-
-(declaim (inline map-iterator))
-(defun map-iterator (callable iterator)
-  ;; This makes the assumption that iterator returns NIL when it reaches end
-  ;; of series.
-  (loop
-     for value = (funcall iterator)
-     while value do (funcall callable value)))
-
-(defmacro do-iterator ((var iterator &optional (result nil)) &body body)
-  `(block nil
-     (map-iterator #'(lambda (,var) ,@body) ,iterator)
-     ,result))
-
-(defun chain-functions (first-arg &rest args)
-  "Call a group of functions by chaining, passing all keyword args.
-
-  This function allows you to call a set of functions like this:
-
-    (chain-functions arg #'foo :foo 10 :foo2 20
-                         #'bar :bar 30)
-
-  This is equivalent to:
-
-    (bar (foo arg :foo 10 :foo2 20) :bar 30)"
-  (if args
-      (apply
-       #'chain-functions
-       (apply (first args)
-	      (cons first-arg
-		    (when (rest args)
-		      (setf args (rest args))
-		      (loop
-			 while (keywordp (first args))
-			 collect (first args)
-			 collect (first (rest args))
-			 do (setf args (rest (rest args)))))))
-       args)
-      first-arg))
 
 ;;;_ * Code to walk the LEDGER object tree
 
@@ -412,11 +272,6 @@ if there were an empty string between them."
       (map-fn '(or transaction null)
 	      (transactions-iterator object entry-transform))
     (until-if #'null transactions)))
-
-(declaim (inline scan-transactions))
-(defun scan-normalized-transactions (object)
-  (declare (optimizable-series-function))
-  (scan-transactions object #'normalize-entry))
 
 (provide 'ledger)
 

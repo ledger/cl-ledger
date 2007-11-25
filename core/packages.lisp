@@ -50,6 +50,7 @@
 	   entry-transactions
 	   entry-position
 	   entry-data
+	   normalize-entry
 
 	   make-transaction
 	   transaction
@@ -63,7 +64,6 @@
 	   xact-uncleared-p
 	   xact-account
 	   xact-amount
-	   xact-resolve-amount
 	   xact-note
 	   xact-tags
 	   xact-virtualp
@@ -71,7 +71,6 @@
 	   xact-position
 	   xact-data
 	   xact-value
-	   xact-set-value
 
 	   make-item-position
 	   copy-item-position
@@ -110,10 +109,13 @@
 	   map-transactions
 	   do-transactions
 	   scan-transactions
-	   scan-normalized-transactions
 	   
 	   read-value-expr
 	   parse-value-expr
+	   make-value-expr
+	   value-expr-p
+	   value-expr-string
+	   value-expr-function
 
 	   *predicate-keywords*
 	   parse-predicate-keywords

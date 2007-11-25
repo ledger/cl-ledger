@@ -24,12 +24,12 @@
      #'(lambda (xact)
 	 (let ((amt (if amount
 			(funcall amount xact)
-			(xact-resolve-amount xact))))
-	   (xact-set-value xact :running-total
-			   (copy-from-balance (add* running-total amt)))
+			(xact-amount xact))))
+	   (setf (xact-value xact :running-total)
+		 (copy-from-balance (add* running-total amt)))
 	   (if total
-	       (xact-set-value xact :running-total
-			       (funcall total xact))))
+	       (setf (xact-value xact :running-total)
+		     (funcall total xact))))
 	 xact)
      xact-series)))
 
@@ -42,7 +42,7 @@
      ;; store temporary data that might exist from a previous calculation.
      (unless root-account
        (let ((binder (journal-binder (entry-journal (xact-entry xact)))))
-	 (reset-binder binder)
+	 (reset-accounts binder)
 	 (setf root-account (binder-root-account binder))))
 
      (add-transaction (xact-account xact) xact))
@@ -52,15 +52,15 @@
 	   (let* ((subtotal
 		   (collect-fn 'cambl:balance #'cambl:balance
 			       #'(lambda (bal xact)
-				   (add* bal (xact-resolve-amount xact)))
+				   (add* bal (xact-amount xact)))
 			       (scan-transactions account)))
-		  (total (copy-balance subtotal))
-		  (children-with-totals 0))
+		  (total (copy-balance subtotal)))
 
 	     (account-set-value account :subtotal subtotal)
 	     (account-set-value account :total    total)
 
-	     (let ((children (account-children account)))
+	     (let ((children (account-children account))
+		   (children-with-totals 0))
 	       (when children
 		 (maphash #'(lambda (name account)
 			      (declare (ignore name))
@@ -75,7 +75,8 @@
 	     
 	     total)))
 
-      (calc-accounts root-account)
-      root-account)))
+      (calc-accounts root-account))
+
+    root-account))
 
 (provide 'totals)
