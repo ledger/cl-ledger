@@ -4,15 +4,15 @@
 
 (in-package :ledger)
 
-(deftype item-status ()
-  '(member uncleared pending cleared))
-
 (defstruct (item-position)
   begin-char
   end-char
   begin-line
   end-line
   source)
+
+(deftype item-status ()
+  '(member uncleared pending cleared))
 
 (defstruct (transaction
 	     (:conc-name get-xact-)
@@ -65,9 +65,6 @@
 		   :type string)
    (fullname	   :accessor account-fullname	   :initarg :fullname
 		   :type string)
-   (transactions   :accessor account-transactions  :initarg :transactions
-		   :initform nil)
-   (last-transaction-cell :accessor account-last-transaction-cell :initform nil)
    (data           :accessor account-data          :initarg :data
 		   :initform nil)))
 
@@ -75,9 +72,6 @@
   ((binder	   :accessor journal-binder	   :initarg :binder)
    (contents       :accessor journal-contents      :initform nil)
    (last-content-cell :accessor journal-last-content-cell :initform nil)
-   (entries	   :accessor journal-entries	   :initarg :entries
-		   :initform nil)
-   (last-entry-cell :accessor journal-last-entry-cell :initform nil)
    (date-format    :accessor journal-date-format  :initform nil
 		   :type (or string null))
    (default-year   :accessor journal-default-year  :initform nil
@@ -95,8 +89,6 @@
    (root-account   :accessor binder-root-account   :initarg :root-account
 		   :initform (make-instance 'account :name "") :type account)
    (journals	   :accessor binder-journals	   :initarg :journals
-		   :initform nil)
-   (transactions   :accessor binder-transactions   :initarg :transactions
 		   :initform nil)
    (data           :accessor binder-data           :initarg :data
 		   :initform nil)))

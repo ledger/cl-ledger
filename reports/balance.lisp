@@ -19,18 +19,20 @@
     ;; value for "elided" representing how many generations elected not to
     ;; display.
     (lambda (account real-depth elided &optional finalp)
-      (when (or finalp
-		(not (and (value-zerop (account-value account :subtotal))
-			  (<= (account-value account :children-with-totals) 1))))
-	(if (not finalp)
-	    (format output-stream "~12A  ~vA~A~%"
-		    (format-value (account-value account :total) :width 12)
-		    (* (- (1- real-depth) elided) 2) ""
-		    (get-partial-name (account-name account) account elided))
-	    (format output-stream
-		    "-----------------------------------------------------~%~12A~%"
-		    (format-value (account-value account :total) :width 12)))
-	t))))
+      (let ((subtotal (account-value account :subtotal)))
+	(when (or finalp
+		  (or (and subtotal
+			   (not (value-zerop (account-value account :subtotal))))
+		      (> (account-value account :children-with-totals) 1)))
+	  (if (not finalp)
+	      (format output-stream "~12A  ~vA~A~%"
+		      (format-value (account-value account :total) :width 12)
+		      (* (- (1- real-depth) elided) 2) ""
+		      (get-partial-name (account-name account) account elided))
+	      (format output-stream
+		      "-----------------------------------------------------~%~12A~%"
+		      (format-value (account-value account :total) :width 12)))
+	  t)))))
 
 (defun print-balance (xact-series &key (reporter nil))
   (let ((root-account (calculate-account-totals xact-series))

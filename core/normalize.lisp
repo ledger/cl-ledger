@@ -1,8 +1,6 @@
-;; This is a Ledger transform whose job is to normalize a binder.  This means
-;; ensuring that it follows double-entry accounting rules, such that *all*
-;; entries balance in terms of their cost basis.
-
-;; jww (2007-11-06): This is not yet ported; at all.
+;; This function ensures that an entry follows double-entry accounting rules,
+;; so that it must balance in terms of its cost basis.  It also computes the
+;; cost where this has no been explicitly specified.
 
 (declaim (optimize (safety 3) (debug 3) (speed 1) (space 0)))
 
@@ -38,9 +36,6 @@
 	  (if p
 	      (progn
 		(add* balance p)
-		;;(format t " xact amount = ~S~%" (xact-amount x))
-		;;(format t " xact cost = ~S~%" (xact-cost x))
-		;;(format t " balance after add = ~S~%" (format-value balance))
 		(if no-amounts
 		    (setf no-amounts nil))
 
@@ -54,17 +49,10 @@
 				   (commodity-annotation commodity))))
 		      (if price
 			  (progn
-			    ;;(format t " balance before = ~S~%" (format-value balance))
-			    ;;(format t " price = ~S~%" price)
-			    ;;(format t " (get-xact-amount x) = ~S~%" (get-xact-amount x))
-			    ;;(format t " (multiply price (get-xact-amount x)) = ~S~%" (multiply price (get-xact-amount x)))
-			    ;;(format t " (xact-cost x) = ~S~%" (xact-cost x))
-			    ;;(format t " (subtract (multiply price (get-xact-amount x)) (xact-cost x)) = ~S~%" (subtract (multiply price (get-xact-amount x)) (xact-cost x)))
 			    (add* balance
-				  (subtract (multiply price (get-xact-amount x))
-					    (xact-cost x)))
-			    ;;(format t " balance after = ~S~%" (format-value balance))
-			    )))))
+				  (subtract (multiply price
+						      (get-xact-amount x))
+					    (xact-cost x))))))))
 	      (setf saw-null t)))))
 
     ;; If it's a null entry, then let the user have their fun
@@ -100,14 +88,7 @@
 		      (cdr (nth 1 amounts-map))
 		      (cdr (nth 0 amounts-map)))))
 	       (per-unit-cost (divide balancing-amount amount)))
-	  ;;(format t "Auto-balancing at position ~S~%" (item-position-begin-char (entry-position entry)))
-	  ;;(format t " amount	       = ~S~%" amount)
-	  ;;(format t " cost	       = ~S~%" (xact-cost x))
-	  ;;(format t " commodity        = ~S~%" commodity)
-	  ;;(format t " balancing-amount = ~S~%" balancing-amount)
-	  ;;(format t " per-unit-cost    = ~S~%" per-unit-cost)
 	  (setf (amount-keep-precision-p amount) t)
-	  ;;(format t " balance          = ~S~%" (format-value balance))
 	  (loop
 	     for x in (entry-transactions entry)
 	     while x
@@ -116,34 +97,16 @@
 			(not (eq (amount-commodity amount)
 				 commodity)))
 	     do
-	     ;;(format t " subtract ~S from balance~%" amount)
 	     (subtract* balance amount)
-	     ;;(format t " balance          = ~S~%" (format-value balance))
 	     (if (and commodity (not (commodity-annotated-p commodity)))
-		 (progn
-		   ;;(format t "   amount before annotation = ~S~%" amount)
-		   ;;(format t " 2.balance        = ~S~%" (format-value balance))
-		   (setf (amount-commodity amount)
-			 (annotate-commodity commodity
-					     (make-commodity-annotation
-					      :price (value-abs per-unit-cost)
-					      :date  (entry-date entry)
-					      :tag   (entry-code entry))))
-		   ;;(format t " 3.balance        = ~S~%" (format-value balance))
-		   ;;(format t "   amount before annotation = ~S~%" amount) 
-		   ;;(format t " annotated commodity: ~S~%" (amount-commodity amount))
-		   ))
-	     ;;(format t "   per-unit-cost = ~S~%" per-unit-cost)
-	     ;;(format t "   amount = ~S~%" amount)
-	     ;;(format t "   (multiply per-unit-cost amount) = ~S~%" (multiply per-unit-cost amount))
-	     ;;(format t "   (negate (multiply per-unit-cost amount)) = ~S~%" (negate (multiply per-unit-cost amount)))
-	     ;;(format t " 4.balance        = ~S~%" (format-value balance))
+		 (setf (amount-commodity amount)
+		       (annotate-commodity commodity
+					   (make-commodity-annotation
+					    :price (value-abs per-unit-cost)
+					    :date  (entry-date entry)
+					    :tag   (entry-code entry)))))
 	     (setf (xact-cost x) (negate (multiply per-unit-cost amount)))
-	     ;;(format t " 5.balance        = ~S~%" (format-value balance))
-	     ;;(format t " adding ~S to balance~%" (xact-cost x))
-	     (add* balance (xact-cost x))
-	     ;;(format t " 6.balance        = ~S~%" (format-value balance))
-	     )))
+	     (add* balance (xact-cost x)))))
 
       ;; Walk through each of the transactions, fixing up any that we
       ;; can, and performing any on-the-fly calculations.

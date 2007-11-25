@@ -16,8 +16,9 @@
 
 	   filter-transactions
 	   calculate-totals
-	   register-report
 	   abbreviate-string
+	   register-report
+	   balance-report
 
 	   journal
 	   journal-binder

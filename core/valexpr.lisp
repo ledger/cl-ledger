@@ -18,6 +18,7 @@
 (defvar *value-expr-observe-properties-p* nil)
 (defvar *value-expr-reduce-to-smallest-units-p* nil)
 (defvar *value-expr-commodity-pool* nil)
+(defvar *value-expr-series-offset* 0)
 
 (defparameter *value-expr-readtable* (copy-readtable nil))
 
@@ -35,11 +36,6 @@
 		#\{ #\} #\[ #\] #\( #\)
 		#\" #\@ #\;))
   (set-macro-character char #'ignore-character nil *value-expr-readtable*))
-
-(defun ignore-rest (function)
- (lambda (arg &rest args)
-   (declare (ignore args))
-   (funcall function arg)))
 
 (defun read-value-term (in)
   (let ((c (peek-char t in nil))
@@ -163,8 +159,10 @@
 		     ((member symbol '(|L| |actual|) :test #'eq)
 		      )
 
-		     ((member symbol '(|N| |count|) :test #'eq)
-		      )
+		     ((member symbol '(|n| |count|) :test #'eq)
+		      (lambda (&rest args)
+			(declare (ignore args))
+			*value-expr-series-offset*))
 
 		     ((member symbol '(|l| |depth|) :test #'eq)
 		      )

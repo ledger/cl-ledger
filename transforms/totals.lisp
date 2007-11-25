@@ -14,22 +14,23 @@
 
 (defun calculate-totals (xact-series &key (amount nil) (total nil))
   (declare (type series xact-series))
-  (declare (type (or string function null) amount))
-  (declare (type (or string function null) total))
-  (if (stringp amount) (setf amount (parse-value-expr amount)))
-  (if (stringp total)  (setf total (parse-value-expr total)))
-  (let ((running-total (cambl:balance)))
+  (let ((running-total (cambl:balance))
+	(*value-expr-series-offset* 0))
     (map-fn
      'transaction
      #'(lambda (xact)
-	 (let ((amt (if amount
-			(funcall amount xact)
-			(xact-amount xact))))
+	 (incf *value-expr-series-offset*)
+	 (let ((amt (typecase amount
+		      (function (funcall amount xact))
+		      (value-expr (value-expr-call amount xact))
+		      (otherwise (xact-amount xact)))))
 	   (setf (xact-value xact :running-total)
 		 (copy-from-balance (add* running-total amt)))
 	   (if total
 	       (setf (xact-value xact :running-total)
-		     (funcall total xact))))
+		     (etypecase total
+		       (function (funcall total xact))
+		       (value-expr (value-expr-call total xact))))))
 	 xact)
      xact-series)))
 
@@ -45,19 +46,21 @@
 	 (reset-accounts binder)
 	 (setf root-account (binder-root-account binder))))
 
-     (add-transaction (xact-account xact) xact))
+     (let* ((account (xact-account xact))
+	    (balance (account-value account :subtotal)))
+       (if balance
+	   (add* balance (xact-amount xact))
+	   (account-set-value account
+			      :subtotal (balance (xact-amount xact))))))
 
     (labels
 	((calc-accounts (account)
-	   (let* ((subtotal
-		   (collect-fn 'cambl:balance #'cambl:balance
-			       #'(lambda (bal xact)
-				   (add* bal (xact-amount xact)))
-			       (scan-transactions account)))
-		  (total (copy-balance subtotal)))
+	   (let* ((subtotal (account-value account :subtotal))
+		  (total (if subtotal
+			     (copy-balance subtotal)
+			     (balance))))
 
-	     (account-set-value account :subtotal subtotal)
-	     (account-set-value account :total    total)
+	     (account-set-value account :total total)
 
 	     (let ((children (account-children account))
 		   (children-with-totals 0))

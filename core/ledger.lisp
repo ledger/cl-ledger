@@ -6,24 +6,14 @@
 
 (require 'types)
 
+;;;_ * Global variables
+
 (defvar *use-effective-dates* nil)
 (defvar *registered-parsers* nil)
 (defvar *allow-embedded-lisp* nil)
 (defvar *last-binder* nil)
 
-(declaim (inline account-value))
-(defun account-value (account key)
-  (let ((value-cell (assoc key (account-data account))))
-    (values (cdr value-cell) value-cell)))
-
-(declaim (inline account-value))
-(defun account-set-value (account key value)
-  (let ((value-cell (assoc key (account-data account))))
-    (if value-cell
-	(rplacd value-cell value)
-	(push (cons key value) (account-data account)))))
-
-;;;_ * Code for construction of the LEDGER object tree
+;;;_ * Journals
 
 (defun read-journal (binder path)
   "Read in a textual Ledger journal from the given PATH.
@@ -53,6 +43,32 @@ The result is of type JOURNAL."
   (pushend child (journal-contents journal)
 	   (journal-last-content-cell journal)))
 
+(declaim (inline add-to-contents))
+(defun add-to-contents (journal item)
+  (declare (type journal journal))
+  (pushend item (journal-contents journal)
+	   (journal-last-content-cell journal)))
+
+(declaim (inline parse-journal-date))
+(defun parse-journal-date (journal string)
+  (strptime string :format (or (journal-date-format journal)
+			       *input-time-format*)
+	    :default-year (journal-default-year journal)))
+
+;;;_ * Accounts
+
+(declaim (inline account-value))
+(defun account-value (account key)
+  (let ((value-cell (assoc key (account-data account))))
+    (values (cdr value-cell) value-cell)))
+
+(declaim (inline account-value))
+(defun account-set-value (account key value)
+  (let ((value-cell (assoc key (account-data account))))
+    (if value-cell
+	(rplacd value-cell value)
+	(push (cons key value) (account-data account)))))
+
 (defun reset-accounts (binder)
   (setf (binder-transactions binder) nil)
   (labels ((undo-filter-in-account (name account)
@@ -65,12 +81,6 @@ The result is of type JOURNAL."
 		   (maphash #'undo-filter-in-account children)))))
     (undo-filter-in-account "" (binder-root-account binder)))
   binder)
-
-(declaim (inline add-to-contents))
-(defun add-to-contents (journal item)
-  (declare (type journal journal))
-  (pushend item (journal-contents journal)
-	   (journal-last-content-cell journal)))
 
 (defun find-child-account (account account-name &key
 			   (create-if-not-exists-p nil)
@@ -111,14 +121,7 @@ The result is of type JOURNAL."
   (find-account (journal-binder journal) account-path
 		:create-if-not-exists-p create-if-not-exists-p))
 
-(defmethod add-transaction ((entry entry) (transaction transaction))
-  (pushend transaction (entry-transactions entry)))
-
-(defmethod add-transaction ((account account) (transaction transaction))
-  (pushend transaction (account-transactions account)
-	   (account-last-transaction-cell account)))
-
-;;;_ * Code to access and change object details
+;;;_ * Entries
 
 (defun entry-date (entry)
   (declare (type entry entry))
@@ -126,12 +129,6 @@ The result is of type JOURNAL."
       (or (entry-effective-date entry)
 	  (entry-actual-date entry))
       (entry-actual-date entry)))
-
-(declaim (inline parse-journal-date))
-(defun parse-journal-date (journal string)
-  (strptime string :format (or (journal-date-format journal)
-			       *input-time-format*)
-	    :default-year (journal-default-year journal)))
 
 ;;;_ * Code to walk the LEDGER object tree
 
@@ -198,6 +195,15 @@ The result is of type JOURNAL."
       (map-fn '(or entry null) (entries-iterator object))
     (until-if #'null entries)))
 
+;;;_ * Transactions
+
+(defmethod add-transaction ((entry entry) (transaction transaction))
+  (pushend transaction (entry-transactions entry)))
+
+(defmethod add-transaction ((account account) (transaction transaction))
+  (pushend transaction (account-transactions account)
+	   (account-last-transaction-cell account)))
+
 (defmethod transactions-iterator ((binder binder) &optional entry-transform)
   (let ((xacts (binder-transactions binder)))
     (if xacts
@@ -217,9 +223,9 @@ The result is of type JOURNAL."
 			   (next-xact))))))
 	      (next-xact)))))))
 
-;; jww (2007-11-19): implement
 (defmethod transactions-iterator ((account account) &optional entry-transform)
   (declare (ignore entry-transform))
+  ;; jww (2007-11-19): implement
   (list-iterator (account-transactions account)))
 
 (defmethod transactions-iterator ((journal journal) &optional entry-transform)

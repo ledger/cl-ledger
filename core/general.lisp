@@ -21,10 +21,16 @@ if there were an empty string between them."
      ,@body))
 
 (declaim (inline ignore-args))
-(defun ignore-args (closure)
+(defun ignore-args (function)
   (lambda (&rest args)
     (declare (ignore args))
-    (funcall closure)))
+    (funcall function)))
+
+(declaim (inline ignore-rest))
+(defun ignore-rest (function)
+  (lambda (arg &rest args)
+    (declare (ignore args))
+    (funcall function arg)))
 
 (declaim (inline list-iterator))
 (defun list-iterator (list)
