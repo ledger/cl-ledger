@@ -157,7 +157,7 @@
 				  right-style)
 		       (print-value amt))
 
-		  (if (balancep running-total)
+		  (if (balance-p running-total)
 		      (htm
 		       (:td :style right-style
 			    (print-html-balance running-total)))

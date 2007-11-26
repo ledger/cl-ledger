@@ -70,12 +70,9 @@ The result is of type JOURNAL."
 	(push (cons key value) (account-data account)))))
 
 (defun reset-accounts (binder)
-  (setf (binder-transactions binder) nil)
   (labels ((undo-filter-in-account (name account)
 	     (declare (ignore name))
-	     (setf (account-data account) nil
-		   (account-transactions account) nil
-		   (account-last-transaction-cell account) nil)
+	     (setf (account-data account) nil)
 	     (let ((children (account-children account)))
 	       (if children
 		   (maphash #'undo-filter-in-account children)))))
@@ -197,36 +194,21 @@ The result is of type JOURNAL."
 
 ;;;_ * Transactions
 
-(defmethod add-transaction ((entry entry) (transaction transaction))
-  (pushend transaction (entry-transactions entry)))
-
-(defmethod add-transaction ((account account) (transaction transaction))
-  (pushend transaction (account-transactions account)
-	   (account-last-transaction-cell account)))
-
 (defmethod transactions-iterator ((binder binder) &optional entry-transform)
-  (let ((xacts (binder-transactions binder)))
-    (if xacts
-	(list-iterator xacts)
-	(let ((journals-iterator
-	       (list-iterator (binder-journals binder)))
-	      (xacts-iterator (constantly nil)))
-	  (lambda ()
-	    (labels
-		((next-xact ()
-		   (or (funcall xacts-iterator)
-		       (let ((next-journal (funcall journals-iterator)))
-			 (when next-journal
-			   (setf xacts-iterator
-				 (transactions-iterator next-journal
-							entry-transform))
-			   (next-xact))))))
-	      (next-xact)))))))
-
-(defmethod transactions-iterator ((account account) &optional entry-transform)
-  (declare (ignore entry-transform))
-  ;; jww (2007-11-19): implement
-  (list-iterator (account-transactions account)))
+  (let ((journals-iterator
+	 (list-iterator (binder-journals binder)))
+	(xacts-iterator (constantly nil)))
+    (lambda ()
+      (labels
+	  ((next-xact ()
+	     (or (funcall xacts-iterator)
+		 (let ((next-journal (funcall journals-iterator)))
+		   (when next-journal
+		     (setf xacts-iterator
+			   (transactions-iterator next-journal
+						  entry-transform))
+		     (next-xact))))))
+	(next-xact)))))
 
 (defmethod transactions-iterator ((journal journal) &optional entry-transform)
   (let ((entries-iterator (entries-iterator journal))

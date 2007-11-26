@@ -126,7 +126,7 @@
 
 	    (setf balance (optimize-value balance))
 
-	    (if (balancep balance)
+	    (if (balance-p balance)
 		(let ((first t))
 		  (loop
 		     for pairs = (get-amounts-map balance) then (cdr pairs)
