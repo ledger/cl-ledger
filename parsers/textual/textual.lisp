@@ -154,7 +154,9 @@
 			  'pending)
 			 (t
 			  'uncleared))
-	   :account (find-account (entry-journal entry) account-name
+	   :account (find-account (entry-journal entry)
+				  (string-right-trim '(#\Space #\Tab)
+						     account-name)
 				  :create-if-not-exists-p t)
 	   :amount amount
 	   :cost (if cost
@@ -215,7 +217,7 @@
 				    (t
 				     'uncleared))
 		      :code code
-		      :payee payee
+		      :payee (string-right-trim '(#\Space #\Tab) payee)
 		      :note note
 		      :position
 		      (make-item-position :begin-char beg-pos
@@ -227,7 +229,7 @@
 
 	  (normalize-entry entry))))))
 
-(defun read-journal (in binder)
+(defun read-textual-journal (in binder)
   (declare (type stream in))
   (declare (type binder binder))
   (let ((journal (make-instance 'journal :binder binder)))
@@ -332,7 +334,7 @@
 ;;   parse_value_definition(p);
 ;; }
 
-(pushnew #'read-journal *registered-parsers*)
+(pushnew #'read-textual-journal *registered-parsers*)
 
 (provide 'textual)
 

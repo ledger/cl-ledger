@@ -29,6 +29,7 @@
 	   journal-default-account
 	   journal-source
 	   journal-data
+	   read-journal
 	   parse-journal-date
 
 	   account

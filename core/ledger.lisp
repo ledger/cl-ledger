@@ -23,7 +23,9 @@ The result is of type JOURNAL."
       (dolist (parser *registered-parsers*)
 	(let ((journal (funcall parser in binder)))
 	  (if journal
-	      (return-from nil journal)
+	      (progn
+		(add-journal binder journal)
+		(return-from nil journal))
 	      (file-position in start-position)))))))
 
 (defmethod add-journal ((binder binder) (journal journal))
@@ -193,6 +195,10 @@ The result is of type JOURNAL."
     (until-if #'null entries)))
 
 ;;;_ * Transactions
+
+(defmethod add-transaction ((entry entry) (transaction transaction))
+  ;; jww (2007-11-28): This might be a bottleneck
+  (pushend transaction (entry-transactions entry)))
 
 (defmethod transactions-iterator ((binder binder) &optional entry-transform)
   (let ((journals-iterator

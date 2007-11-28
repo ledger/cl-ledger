@@ -48,11 +48,10 @@
 			   (price (annotation-price
 				   (commodity-annotation commodity))))
 		      (if price
-			  (progn
-			    (add* balance
-				  (subtract (multiply price
-						      (get-xact-amount x))
-					    (xact-cost x))))))))
+			  (add* balance
+				(subtract (multiply price
+						    (get-xact-amount x))
+					  (xact-cost x)))))))
 	      (setf saw-null t)))))
 
     ;; If it's a null entry, then let the user have their fun
@@ -94,8 +93,7 @@
 	     while x
 	     unless (or (xact-cost x)
 			(xact-virtualp x)
-			(not (eq (amount-commodity amount)
-				 commodity)))
+			(not (eq (amount-commodity amount) commodity)))
 	     do
 	     (subtract* balance amount)
 	     (if (and commodity (not (commodity-annotated-p commodity)))
