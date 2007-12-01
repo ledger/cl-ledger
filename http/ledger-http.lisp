@@ -179,9 +179,8 @@
   (setf *dispatch-table*
         (list #'dispatch-easy-handlers
               (create-prefix-dispatcher "/hello" #'hello-world)
-              #'default-dispatcher))
+	      #'default-dispatcher))
 
-  (setf *show-lisp-errors-p* t
-        *show-lisp-backtraces-p* t))
+  (setf *catch-errors-p* nil))
 
 ;; ledger-http.lisp ends here
