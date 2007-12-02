@@ -47,7 +47,8 @@
 	  (t
 	   (concatenate 'string (subseq name 0 (- width 2)) ".."))))))
 
-(defun register-reporter (&key (output-stream *standard-output*))
+(defun register-reporter (&key (output-stream *standard-output*)
+			  (no-total nil))
   (let (last-entry)
     (lambda (xact)
       ;; First display the entry details, if it would not be repeated
@@ -65,11 +66,12 @@
 				 :account-p t)
 	      (format-value (xact-amount xact)
 			    :width 12 :latter-width 67)
-	      (format-value (or (xact-value xact :running-total)
-				0) :width 12 :latter-width 80)))))
+	      (if no-total ""
+		  (format-value (or (xact-value xact :running-total)
+				    0) :width 12 :latter-width 80))))))
 
-(defun print-register (xact-series &key (reporter nil))
-  (let ((reporter (or reporter (register-reporter))))
+(defun print-register (xact-series &key (reporter nil) (no-total nil))
+  (let ((reporter (or reporter (register-reporter :no-total no-total))))
     (iterate ((xact xact-series))
 	     (funcall reporter xact))))
 

@@ -19,7 +19,8 @@
     (if (binderp binder)
 	(funcall printer (apply-key-transforms
 			  (scan-transactions binder) args)
-		 :reporter (getf args :reporter)))
+		 :reporter (getf args :reporter)
+		 :no-total (getf args :no-total)))
     (values)))
 
 (provide 'report)

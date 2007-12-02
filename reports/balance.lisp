@@ -4,7 +4,8 @@
 
 (in-package :ledger)
 
-(defun balance-reporter (&key (output-stream *standard-output*))
+(defun balance-reporter (&key (output-stream *standard-output*)
+			 (no-total nil))
   (labels
       ((get-partial-name (string account count)
 	 (if (zerop count)
@@ -28,15 +29,17 @@
 	      (format output-stream "~12A  ~vA~A~%"
 		      (format-value (account-value account :total) :width 12)
 		      (* (- (1- real-depth) elided) 2) ""
-		      (get-partial-name (account-name account) account elided))
-	      (format output-stream
-		      "-----------------------------------------------------~%~12A~%"
-		      (format-value (account-value account :total) :width 12)))
+		      (get-partial-name (account-name account) account
+					elided))
+	      (unless no-total
+		(format output-stream
+			"-----------------------------------------------------~%~12A~%"
+			(format-value (account-value account :total) :width 12))))
 	  t)))))
 
-(defun print-balance (xact-series &key (reporter nil))
+(defun print-balance (xact-series &key (reporter nil) (no-total nil))
   (let ((root-account (calculate-account-totals xact-series))
-	(reporter (or reporter (balance-reporter))))
+	(reporter (or reporter (balance-reporter :no-total no-total))))
     (labels
 	((print-accounts (account elided real-depth)
 	   (if (plusp real-depth)
