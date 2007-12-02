@@ -63,7 +63,7 @@
 	(funcall reporter root-account 0 0 t)))))
 
 (defun balance-report (&rest args)
-  (basic-reporter #'print-balance args))
+  (basic-reporter #'print-balance (append (list :balance-report t) args)))
 
 (provide 'balance)
 

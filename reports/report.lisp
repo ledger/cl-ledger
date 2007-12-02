@@ -25,9 +25,11 @@
 	   ((or string pathname journal)
 	    (push (first args) objects)))
 	 (setf args (cdr args)))
+
     (if binder
 	(setf *last-binder* nil)
 	(setf binder *last-binder*))
+
     (unless (and *last-binder*
 		 (compare-path-lists
 		  (mapcar #'(lambda (obj)
@@ -41,6 +43,7 @@
       (setf binder (make-instance 'binder))
       (dolist (object objects)
 	(add-journal binder object)))
+
     (when binder
       (loop for journal-cell on (binder-journals binder) do
 	   (when (or (null (journal-read-date (car journal-cell)))
@@ -50,11 +53,13 @@
 		   (read-journal binder (journal-source
 					 (car journal-cell))))
 	     (assert (car journal-cell))))
+
       (if (binderp binder)
 	  (funcall printer (apply-key-transforms
 			    (scan-transactions binder) args)
 		   :reporter (getf args :reporter)
 		   :no-total (getf args :no-total))))
+
     (setf *last-binder* binder)
     (values)))
 
