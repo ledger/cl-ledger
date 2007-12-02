@@ -32,14 +32,10 @@ The result is of type JOURNAL."
   (pushend journal (binder-journals binder)))
 
 (defmethod add-journal ((binder binder) (path string))
-  (let ((journal (read-journal binder path)))
-    (if journal
-	(pushend journal (binder-journals binder)))))
+  (read-journal binder path))
 
 (defmethod add-journal ((binder binder) (path pathname))
-  (let ((journal (read-journal binder path)))
-    (if journal
-	(pushend journal (binder-journals binder)))))
+  (read-journal binder path))
 
 (defmethod add-journal ((journal journal) (child journal))
   (pushend child (journal-contents journal)
@@ -201,8 +197,7 @@ The result is of type JOURNAL."
   (pushend transaction (entry-transactions entry)))
 
 (defmethod transactions-iterator ((binder binder) &optional entry-transform)
-  (let ((journals-iterator
-	 (list-iterator (binder-journals binder)))
+  (let ((journals-iterator (list-iterator (binder-journals binder)))
 	(xacts-iterator (constantly nil)))
     (lambda ()
       (labels
