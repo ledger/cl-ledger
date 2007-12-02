@@ -106,7 +106,7 @@
 (defun read-transaction (in entry)
   (declare (type stream in))
   (let* ((beg-pos (file-position in))
-	 (xact-line (read-line in nil))
+	 (xact-line (string-right-trim '(#\Space #\Tab) (read-line in nil)))
 	 (groups (and xact-line
 		      (nth-value 1 (cl-ppcre:scan-to-strings
 				    *transaction-scanner* xact-line)))))
