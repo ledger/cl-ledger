@@ -9,12 +9,13 @@
 	(artificial-journal (make-instance 'journal)))
     (add-journal artificial-binder artificial-journal)
     (iterate (((begin end xacts)
-	       (collate-by-time-period xact-series period :key #'xact-date)))
-      (let* ((entry
-	      (make-instance 'entry
-			     :journal artificial-journal
-			     :actual-date begin
-			     :payee (format nil "- ~A" (strftime end))))
+	       (collate-by-time-period xact-series period
+				       :key #'xact-date)))
+      (let* ((entry (make-instance 'entry
+				   :journal artificial-journal
+				   :actual-date begin
+				   :payee (format nil "- ~A"
+						  (strftime end))))
 	     (account-hash (make-hash-table :test #'eq)))
 	(add-to-contents artificial-journal entry)
 	(iterate ((xact xacts))
@@ -22,9 +23,12 @@
 		 (acct-xact (gethash acct account-hash)))
 	    (unless acct-xact
 	      (setf acct-xact
-		    (make-transaction :entry entry
-				      :account acct
-				      :amount (balance))
+		    (make-transaction
+		     :entry entry
+		     :account (find-account artificial-binder
+					    (account-fullname acct)
+					    :create-if-not-exists-p t)
+		     :amount (balance))
 		    (gethash acct account-hash)
 		    acct-xact)
 	      (add-transaction entry acct-xact))

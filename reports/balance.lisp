@@ -58,9 +58,9 @@
 					       (account-children account))
 				      lst)
 				    #'string< :key #'car))))))
-
-      (print-accounts root-account 0 0)
-      (funcall reporter root-account 0 0 t))))
+      (when root-account
+	(print-accounts root-account 0 0)
+	(funcall reporter root-account 0 0 t)))))
 
 (defun balance-report (&rest args)
   (basic-reporter #'print-balance args))

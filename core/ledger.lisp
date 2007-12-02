@@ -29,7 +29,8 @@ The result is of type JOURNAL."
 	      (file-position in start-position)))))))
 
 (defmethod add-journal ((binder binder) (journal journal))
-  (pushend journal (binder-journals binder)))
+  (pushend journal (binder-journals binder))
+  (setf (journal-binder journal) binder))
 
 (defmethod add-journal ((binder binder) (path string))
   (read-journal binder path))
