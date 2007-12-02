@@ -114,7 +114,9 @@
 		      (and (xact-virtualp x)
 			   (not (xact-must-balance-p x))))
 	    (unless empty-allowed
-	      (error "Only one transaction with null amount allowed per entry"))
+	      (error "Only one transaction with null amount allowed per entry (beg ~S end ~S)"
+		     (item-position-begin-char (entry-position entry))
+		     (item-position-end-char (entry-position entry))))
 	    (setf empty-allowed nil)
 
 	    ;; If one transaction gives no value at all, its value will become
