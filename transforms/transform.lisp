@@ -6,6 +6,11 @@
 
 (defun apply-key-transforms (xacts args)
   (setf xacts (apply #'apply-filter xacts args))
+  (let ((period (getf args :period)))
+    (when period
+      ;; jww (2007-12-01): This should call group-by-period directly, once
+      ;; things are working
+      (setf xacts (periodic-transform xacts period))))
   (setf xacts (calculate-totals xacts
 				:amount (getf args :amount)
 				:total  (getf args :total)))

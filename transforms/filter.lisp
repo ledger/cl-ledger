@@ -59,6 +59,14 @@
       (lambda (xact)
 	(funcall operator (xact-date xact) string-or-fixed-time))))
 
+(defun time-range-matcher (string-or-time-range)
+  (declare (type (or string time-range) string-or-time-range))
+  (let ((range (if (stringp string-or-time-range)
+		   (parse-time-range string-or-time-range)
+		   string-or-time-range)))
+    (lambda (xact)
+      (funcall #'time-within-range-p (xact-date xact) range))))
+
 (defvar *predicate-keywords*
   `((:account
      (or string account)
@@ -96,6 +104,9 @@
      (or string fixed-time)
      ,#'(lambda (value)
 	  (fixed-time-matcher value #'local-time<=)))
+
+    (:range
+     (or string time-range) ,#'time-range-matcher)
 
     (:expr
      (or string function)
