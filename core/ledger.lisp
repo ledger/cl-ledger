@@ -11,7 +11,6 @@
 (defvar *use-effective-dates* nil)
 (defvar *registered-parsers* nil)
 (defvar *allow-embedded-lisp* nil)
-(defvar *last-binder* nil)
 
 ;;;_ * Journals
 
@@ -21,22 +20,43 @@ The result is of type JOURNAL."
   (with-open-file (in path :direction :input)
     (let ((start-position (file-position in)))
       (dolist (parser *registered-parsers*)
+	(format t "Parsing journal!~%")
 	(let ((journal (funcall parser in binder)))
-	  (if journal
-	      (progn
-		(add-journal binder journal)
-		(return-from nil journal))
-	      (file-position in start-position)))))))
+	  (when journal
+	    (setf (journal-read-date journal)
+		  (file-write-date path))
+	    (return-from read-journal journal))))
+      (file-position in start-position)
+      nil)))
+
+(defun add-journal-from-path (binder path)
+  (let ((journal (read-journal binder path)))
+    (when journal
+      (setf (journal-source journal)
+	    (if (stringp path)
+		(pathname path)
+		path))
+      (add-journal binder journal))))
 
 (defmethod add-journal ((binder binder) (journal journal))
+  (dolist (j (binder-journals binder))
+    (if (eq j journal)
+	(return-from add-journal)))
   (pushend journal (binder-journals binder))
   (setf (journal-binder journal) binder))
 
-(defmethod add-journal ((binder binder) (path string))
-  (read-journal binder path))
+(defmethod add-journal ((binder binder) (path-string string))
+  (let ((path (pathname path-string)))
+    (dolist (j (binder-journals binder))
+      (if (equal path (journal-source j))
+	  (return-from add-journal)))
+    (add-journal-from-path binder path)))
 
 (defmethod add-journal ((binder binder) (path pathname))
-  (read-journal binder path))
+  (dolist (j (binder-journals binder))
+    (if (equal path (journal-source j))
+	(return-from add-journal)))
+  (add-journal-from-path binder path))
 
 (defmethod add-journal ((journal journal) (child journal))
   (pushend child (journal-contents journal)

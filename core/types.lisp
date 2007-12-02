@@ -80,6 +80,8 @@
 		    :type (or account null))
    (source	   :accessor journal-source	   :initarg :source-path
 		   :type pathname)
+   (read-date      :accessor journal-read-date     :initarg :read-date
+		   :initform nil :type (or integer null))
    (data           :accessor journal-data          :initarg :data
 		   :initform nil)))
 
