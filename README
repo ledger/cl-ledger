@@ -8,9 +8,6 @@ error on the file port-sbcl, just select the restart for ACCEPT):
 
   $ sbcl
   * (require 'asdf-install)
-  * (push  :hunchentoot-no-ssl *features*)
-  * (asdf-install:install :hunchentoot)
-  * (asdf-install:install :cl-who)
   * (asdf-install:install :cl-ppcre)
   * (asdf-install:install :local-time)
   * (asdf-install:install :series)
@@ -29,12 +26,9 @@ Create a file called ~/.sbclrc and add these contents:
 
   ;; -*- lisp -*-
   
-  (mapc 'require '(sb-bsd-sockets sb-posix asdf asdf-install))
+  (mapc 'require '(asdf asdf-install))
   
-  (dolist (project '("red-black/"
-                     "cambl/"
-                     "periods/"
-                     "ledger/"))
+  (dolist (project '("red-black/" "cambl/" "periods/" "ledger/"))
     (push (merge-pathnames project "/path/to/src/")
           asdf:*central-registry*))
 
@@ -61,10 +55,27 @@ You can constrain this report using keyword modifiers:
   * (ledger:register-report "/path/to/src/ledger/doc/sample.dat"
                             :account "books")
 
-Ledger also supports the notion of a "Last binder".  For example:
+Ledger only reads the file past on the first run, and if it changes, so feel
+free to repeat the same command several times even for large journal filse.
 
-  * (ledger:read-binder "/path/to/sample.dat")
-  * (ledger:register-report :account "books")
+The following reports are supported:
+
+  * (ledger:register-report "/path/to/src/ledger/doc/sample.dat" [OPTIONS])
+  * (ledger:balance-report "/path/to/src/ledger/doc/sample.dat" [OPTIONS])
+  * (ledger:print-report "/path/to/src/ledger/doc/sample.dat" [OPTIONS])
+
+As for OPTIONS, any of the following keyword pairs is allowed:
+
+  :account "REGEXP"       :not-account "REGEXP"
+  :payee "REGEXP"         :not-payee "REGEXP"
+  :note "REGEXP"          :not-note "REGEXP"
+
+  :begin "YYYY/MM/DD"
+  :end "YYYY/MM/DD"
+  :range "TIME EXPRESION"     ; like "this month"
+  :period "PERIOD EXPRESION"  ; like "every month this year"
+  :expr "VALUE-EXPR"          ; most Ledger 2.x value exprs allowed
+  :no-total T/NIL             ; don't show totals
 
 After the call to `read-binder', the variable `*last-binder*' contains the
 contents of what was read.  From that point forward, if no binder or string is
