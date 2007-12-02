@@ -62,3 +62,10 @@ Archived entries from file /Users/johnw/src/ledger/TODO
   2. Read one or more journals into the binder
      (Normalization happens at this time)
   3. Walk all transactions in the binder
+
+* DONE Complete the CAMBL unit tests
+  - State "DONE"       [2007-11-28 Wed 05:04]
+  :PROPERTIES:
+    :ARCHIVE_TIME: 2007-12-02 Sun 15:09
+    :ARCHIVE_CATEGORY: TODO
+  :END:
