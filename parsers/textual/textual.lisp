@@ -12,7 +12,7 @@
 
 (defvar *spacing-regexp* (format nil "(?:  |~C| ~C)\\s*" #\Tab #\Tab))
 
-(defvar *comment-regexp* (format nil "(?:~A;(.+))" *spacing-regexp*))
+(defvar *comment-regexp* (format nil "(?:[ ~C]+;(.+))" #\Tab))
 
 (defvar *entry-heading-scanner*
   (cl-ppcre:create-scanner

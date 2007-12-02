@@ -16,7 +16,7 @@ Y 2004
   Equity:Opening Balances
 
 05/14 * Pay day
-  Assets:Bank:Checking          $500.00 * 2
+  Assets:Bank:Checking          $500.00 * 2  ; this is a comment
   Income:Salary
 
 05/27 Book Store
