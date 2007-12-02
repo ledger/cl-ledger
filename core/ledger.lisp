@@ -20,7 +20,6 @@ The result is of type JOURNAL."
   (with-open-file (in path :direction :input)
     (let ((start-position (file-position in)))
       (dolist (parser *registered-parsers*)
-	(format t "Parsing journal!~%")
 	(let ((journal (funcall parser in binder)))
 	  (when journal
 	    (setf (journal-read-date journal)
