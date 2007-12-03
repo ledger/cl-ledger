@@ -15,14 +15,18 @@
       (cl-ppcre:scan scanner string))))
 
 (defun account-matcher (regex-or-account)
-  (declare (type (or string account) regex-or-account))
-  (if (stringp regex-or-account)
-      (let ((matcher (regex-matcher regex-or-account)))
-	(lambda (xact)
-	  (funcall matcher (account-fullname (xact-account xact)))))
-      (let ((matcher (eq-matcher regex-or-account)))
-	(lambda (xact)
-	  (funcall matcher (xact-account xact))))))
+  (etypecase regex-or-account
+    (function				; a pre-compiled cl-ppcre scanner
+     (lambda (xact)
+      (funcall regex-or-account (account-fullname (xact-account xact)))))
+    (string
+     (let ((matcher (regex-matcher regex-or-account)))
+       (lambda (xact)
+	 (funcall matcher (account-fullname (xact-account xact))))))
+    (account
+     (let ((matcher (eq-matcher regex-or-account)))
+       (lambda (xact)
+	 (funcall matcher (xact-account xact)))))))
 
 (defun payee-matcher (regex)
   (declare (type string regex))
@@ -69,29 +73,29 @@
 
 (defvar *predicate-keywords*
   `((:account
-     (or string account)
+     (or string function account)
      ,#'account-matcher)
 
     (:not-account
-     (or string account)
+     (or string function account)
      ,#'(lambda (value)
 	  (not-matcher (account-matcher value))))
 
     (:payee
-     string
+     (or string function)
      ,#'payee-matcher)
 
     (:not-payee
-     string
+     (or string function)
      ,#'(lambda (value)
 	  (not-matcher (payee-matcher value))))
 
     (:note
-     string
+     (or string function)
      ,#'note-matcher)
 
     (:not-note
-     string
+     (or string function)
      ,#'(lambda (value)
 	  (not-matcher (note-matcher value))))
 

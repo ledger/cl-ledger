@@ -64,12 +64,14 @@ for diagnostic output.")
 	    :components ((:file "totals")
 			 (:file "filter")
 			 (:file "periodic")
+			 (:file "sort")
 			 (:file "transform")))
 
    (:module "reports"
 	    :components ((:file "report")
 			 (:file "register" :depends-on ("report"))
-			 (:file "balance" :depends-on ("report"))))
+			 (:file "balance" :depends-on ("report"))
+			 (:file "print" :depends-on ("report"))))
 
    (:module "parsers"
 	    :components
