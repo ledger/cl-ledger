@@ -85,6 +85,12 @@ As for OPTIONS, any of the following keyword pairs is allowed:
     :no-total BOOL               ; don't show totals
     :collapse BOOL               ; collapse multiline entries
     :subtotal BOOL               ; group all transactions by account
+    :invert BOOL                 ; negate all transaction values
+                                 ; (same as saying :amount "-a")
+
+    :amount "VALUE-EXPR"         ; use EXPR as the amount for transactions
+                                 ;   when computing the running total
+    :total "VALUE-EXPR"          ; use EXPR to compute the running total
 
 After the call to `read-binder', the variable `*last-binder*' contains the
 contents of what was read.  From that point forward, if no binder or string is

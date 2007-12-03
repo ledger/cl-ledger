@@ -5,6 +5,13 @@
 (in-package :ledger)
 
 (defun apply-key-transforms (xacts args)
+  ;; Reset the computed values of all transactions
+  (setf xacts (map-fn 'transaction
+		      #'(lambda (xact)
+			  (setf (xact-value xact :computed-amount) nil)
+			  xact)
+		      xacts))
+
   ;; (if comm_as_payee
   ;;     SET_COMM_AS_PAYEE
   ;;     (if code_as_payee
@@ -41,7 +48,8 @@
   ;; (if show_related RELATED_TRANSACTIONS)
 
   ;; invert_transactions inverts the value of the transactions it receives.
-  ;; (if show_inverted INVERT_TRANSACTIONS)
+  (if-let ((invert (getf args :invert)))
+    (setf xacts (invert-transactions xacts)))
 
   (if-let ((period (getf args :period)))
     ;; jww (2007-12-01): This should call group-by-period directly, once
