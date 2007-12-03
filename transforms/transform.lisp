@@ -20,6 +20,14 @@
 				      (string (value-expr-function
 					       (parse-value-expr sort)))
 				      (function sort)))))
+
+    (if-let ((sort (getf args :sort-entries)))
+      (setf xacts
+	    (sort-entries xacts
+			  :key (etypecase sort
+				 (string (value-expr-function
+					  (parse-value-expr sort)))
+				 (function sort)))))
     
     (setf xacts (calculate-totals xacts
 				  :amount (getf args :amount)
