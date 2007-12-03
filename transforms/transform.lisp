@@ -17,17 +17,17 @@
   ;; forecast_transactions is a lot like budget_transactions, except that it
   ;; adds entries only for the future, and does not balance them against
   ;; anything but the future balance.
-;;   (if budget_flags
-;;       (progn
-;; 	;; Apply the primary filter before the budget handler so that only
-;; 	;; matching transactions are calculated toward the budget.  The use of
-;; 	;; filter_transactions below will further clean the results so tha
-;; 	;; automated transactions not matching the filter don't get reported.
-;; 	(if predicate FILTER_TRANSACTIONS("limit"))
-;; 	BUDGET_TRANSACTIONS)
-;;       (when forecast_limit
-;; 	(if predicate FILTER_TRANSACTIONS("limit"))
-;; 	FORECAST_TRANSACTIONS))
+  ;;   (if budget_flags
+  ;;       (progn
+  ;; 	;; Apply the primary filter before the budget handler so that only
+  ;; 	;; matching transactions are calculated toward the budget.  The use of
+  ;; 	;; filter_transactions below will further clean the results so tha
+  ;; 	;; automated transactions not matching the filter don't get reported.
+  ;; 	(if predicate FILTER_TRANSACTIONS("limit"))
+  ;; 	BUDGET_TRANSACTIONS)
+  ;;       (when forecast_limit
+  ;; 	(if predicate FILTER_TRANSACTIONS("limit"))
+  ;; 	FORECAST_TRANSACTIONS))
 
   ;; `apply-filter' only passes through transactions matching the :expr (or
   ;; :limit) predicate.

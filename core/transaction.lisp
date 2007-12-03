@@ -148,18 +148,20 @@
 
 (defun xact-amount (xact)
   (declare (type transaction xact))
-  (or (xact-value xact :computed-amount)
-      (let ((amount (get-xact-amount xact)))
-	(cond
-	  ((valuep amount)
-	   amount)
-	  ((null amount)
-	   (error "Resolving transaction amount for unnormalized data"))
-	  ((value-expr-p amount)
-	   (setf (xact-value xact :computed-amount)
-		 (value-expr-call amount xact)))
-	  (t
-	   (error "impossible"))))))
+  (the value
+    (or (xact-value xact :computed-amount)
+	(let ((amount (get-xact-amount xact)))
+	  (cond
+	    ((valuep amount)
+	     amount)
+	    ((null amount)
+	     (error "Resolving transaction amount for unnormalized data"))
+	    ((value-expr-p amount)
+	     (setf amount (value-expr-call amount xact)
+		   (xact-value xact :computed-amount) amount)
+	     amount)
+	    (t
+	     (error "impossible")))))))
 
 (declaim (inline set-xact-amount))
 (defun set-xact-amount (xact value)

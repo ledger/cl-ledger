@@ -4,7 +4,7 @@
 
 (in-package :ledger)
 
-(defun sort-entries (xact-series &key (key #'xact-amount) (test #'value<))
+(defun sort-entries (xact-series &key (test #'value<) (key #'xact-amount))
   (scan-lists-of-lists-fringe
    (mapcar #'(lambda (entry-xacts)
 	       (sort entry-xacts test :key key))
@@ -20,10 +20,8 @@
 		    (collect xact-series)
 		    :initial-value '())))))
 
-(defun sort-transactions (xact-series &key (key #'xact-amount) (test #'value<))
-  (scan (sort (collect xact-series)
-	      #'(lambda (left right)
-		  (funcall test (funcall key left) (funcall key right))))))
+(defun sort-transactions (xact-series &key (test #'value<) (key #'xact-amount))
+  (scan (sort (collect xact-series) test :key key)))
 
 (provide 'sort)
 
