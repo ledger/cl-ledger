@@ -155,16 +155,16 @@
 	       (return nil)))))))
 
 (declaim (inline apply-filter))
-(defun apply-filter (xacts &rest args)
+(defun apply-filter (xact-series &rest args)
   (let ((predicate (parse-predicate-keywords args)))
     (if predicate
-	(choose-if predicate xacts)
-	xacts)))
+	(choose-if predicate xact-series)
+	xact-series)))
 
 (declaim (inline choose-if-value-expr))
-(defun choose-if-value-expr (xacts expr)
+(defun choose-if-value-expr (xact-series expr)
   (choose-if (if (functionp expr) expr
-		 (parse-value-expr expr)) xacts))
+		 (parse-value-expr expr)) xact-series))
 
 (provide 'filter)
 
