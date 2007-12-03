@@ -22,28 +22,29 @@
        (add-journal ,artificial-binder-sym ,var)
        ,@body)))
 
-(defun read-journal (binder path)
+(defun read-journal (path &optional binder)
   "Read in a textual Ledger journal from the given PATH.
 The result is of type JOURNAL."
+  (unless binder
+    (setf binder (or *last-binder* (make-instance 'binder))
+	  *last-binder* binder))
   (with-open-file (in path :direction :input)
     (let ((start-position (file-position in)))
       (dolist (parser *registered-parsers*)
-	(let ((journal (funcall parser in binder)))
-	  (when journal
-	    (setf (journal-read-date journal)
-		  (file-write-date path))
-	    (return-from read-journal journal))))
+	(if-let ((journal (funcall parser in binder)))
+	  (setf (journal-read-date journal)
+		(file-write-date path))
+	  (return-from read-journal journal)))
       (file-position in start-position)
       nil)))
 
 (defun add-journal-from-path (binder path)
-  (let ((journal (read-journal binder path)))
-    (when journal
-      (setf (journal-source journal)
-	    (if (stringp path)
-		(pathname path)
-		path))
-      (add-journal binder journal))))
+  (if-let ((journal (read-journal path binder)))
+    (setf (journal-source journal)
+	  (if (stringp path)
+	      (pathname path)
+	      path))
+    (add-journal binder journal)))
 
 (defmethod add-journal ((binder binder) (journal journal))
   (dolist (j (binder-journals binder))
@@ -145,6 +146,16 @@ The result is of type JOURNAL."
 		:create-if-not-exists-p create-if-not-exists-p))
 
 ;;;_ * Entries
+
+(defun copy-entry (entry &rest args)
+  (apply #'make-instance 'entry
+	 :actual-date    (entry-actual-date entry)
+	 :effective-date (entry-effective-date entry)
+	 :status	 (entry-status entry)
+	 :code		 (entry-code entry)
+	 :payee		 (entry-payee entry)
+	 :note		 (entry-note entry)
+	 args))
 
 (defun entry-date (entry)
   (declare (type entry entry))

@@ -57,13 +57,15 @@
     ;; subtotal_transactions combines all the transactions it receives into
     ;; one subtotal entry, which has one transaction for each commodity in
     ;; each account.
-    ;; (if show_subtotal SUBTOTAL_TRANSACTIONS)
+    (if-let ((subtotal (getf args :subtotal)))
+      (setf xacts (group-by-account xacts)))
 
     ;; collapse_transactions causes entries with multiple transactions to
     ;; appear as entries with a subtotaled transaction for each commodity
     ;; used.
-    ;; (if show_collapsed COLLAPSE_TRANSACTIONS)
-
+    (if-let ((collapse (getf args :collapse)))
+      (setf xacts (collapse-entries xacts)))
+    
     ;; changed_value_transactions adds virtual transactions to the list to
     ;; account for changes in market value of commodities, which otherwise
     ;; would affect the running total unpredictably.
@@ -96,9 +98,10 @@
     ;; `calculate-totals' computes the running total.  When this appears will
     ;; determine, for example, whether filtered transactions are included or
     ;; excluded from the running total.
-    (setf xacts (calculate-totals xacts
-				  :amount (getf args :amount)
-				  :total  (getf args :total)))
+    (unless (getf args :no-total)
+      (setf xacts (calculate-totals xacts
+				    :amount (getf args :amount)
+				    :total  (getf args :total))))
 
     ;; Only pass through transactions matching the :display predicate.
     (if-let ((display-expr (getf args :display)))

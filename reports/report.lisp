@@ -50,8 +50,8 @@
 		     (> (file-write-date (journal-source (car journal-cell)))
 			(journal-read-date (car journal-cell))))
 	     (setf (car journal-cell)
-		   (read-journal binder (journal-source
-					 (car journal-cell))))
+		   (read-journal (journal-source
+				  (car journal-cell)) binder))
 	     (assert (car journal-cell))))
 
       (if (binderp binder)

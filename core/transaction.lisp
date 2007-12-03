@@ -184,6 +184,31 @@
   (declare (type transaction xact))
   (eq (xact-status xact) 'uncleared))
 
+(defun group-transactions-by-entry (xacts-list)
+  "\"Clump\" the incoming stream of transactions into sublists, where adjacent
+  transactions with the same parent entry become part of the same sublist.
+
+  Consider the following input stream, with the first letter identifying the
+  entry and the second identifying the member transaction:
+
+    (A-X A-Y A-Z B-X B-Y C-X)
+
+  Given this input, the resulting list from `group-transactions-by-entry' will
+  be:
+
+    ((A-X A-Y A-Z) (B-X B-Y) (C-X))"
+  (nreverse
+   (reduce #'(lambda (entries xact)
+	       (if entries
+		   (if (eq (xact-entry (caar entries))
+			   (xact-entry xact))
+		       (cons (cons xact (first entries))
+			     (rest entries))
+		       (cons (list xact) entries))
+		   (list (list xact))))
+	   xacts-list
+	   :initial-value '())))
+
 (provide 'transaction)
 
 ;; transaction.lisp ends here

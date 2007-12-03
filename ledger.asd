@@ -65,6 +65,8 @@ for diagnostic output.")
 			 (:file "filter")
 			 (:file "periodic")
 			 (:file "sort")
+			 (:file "collapse")
+			 (:file "subtotal" :depends-on ("totals"))
 			 (:file "transform")))
 
    (:module "reports"

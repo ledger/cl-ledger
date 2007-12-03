@@ -41,6 +41,7 @@
 	   account-data
 
 	   entry
+	   copy-entry
 	   entry-journal
 	   entry-actual-date
 	   entry-effective-date
@@ -73,6 +74,7 @@
 	   xact-position
 	   xact-data
 	   xact-value
+	   group-transactions-by-entry
 
 	   make-item-position
 	   copy-item-position

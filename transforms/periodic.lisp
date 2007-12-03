@@ -13,7 +13,8 @@
 				   :journal journal
 				   :actual-date begin
 				   :payee (format nil "- ~A"
-						  (strftime end))))
+						  (strftime end))
+				   :normalizedp t))
 	     (account-hash (make-hash-table :test #'eq)))
 	(add-to-contents journal entry)
 
@@ -24,8 +25,7 @@
 	      (setf acct-xact
 		    (make-transaction
 		     :entry entry
-		     :account (find-account (journal-binder journal)
-					    (account-fullname acct)
+		     :account (find-account journal (account-fullname acct)
 					    :create-if-not-exists-p t)
 		     :amount (balance))
 		    (gethash acct account-hash)

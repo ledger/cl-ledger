@@ -6,31 +6,31 @@ The first thing to do is install the prerequisites.  You may do this quite
 easily using asdf-install (note that if Hunchentoot gives you compilation
 error on the file port-sbcl, just select the restart for ACCEPT):
 
-  $ sbcl
-  * (require 'asdf-install)
-  * (asdf-install:install :cl-ppcre)
-  * (asdf-install:install :local-time)
-  * (asdf-install:install :series)
-  * (quit)
+    $ sbcl
+    * (require 'asdf-install)
+    * (asdf-install:install :cl-ppcre)
+    * (asdf-install:install :local-time)
+    * (asdf-install:install :series)
+    * (quit)
 
 Now you need to pull all of the projects relating to Ledger.  Here's what I do
 for Mercurial:
 
-  $ hg clone http://hg.newartisans.com/ledger
-  $ hg clone http://hg.newartisans.com/cambl
-  $ hg clone http://hg.newartisans.com/periods
-  $ hg clone http://hg.newartisans.com/red-black
+    $ hg clone http://hg.newartisans.com/ledger
+    $ hg clone http://hg.newartisans.com/cambl
+    $ hg clone http://hg.newartisans.com/periods
+    $ hg clone http://hg.newartisans.com/red-black
 
 The next step is to configure SBCL so it knows where to load ledger from.
 Create a file called ~/.sbclrc and add these contents:
 
-  ;; -*- lisp -*-
-  
-  (mapc 'require '(asdf asdf-install))
-  
-  (dolist (project '("red-black/" "cambl/" "periods/" "ledger/"))
-    (push (merge-pathnames project "/path/to/src/")
-          asdf:*central-registry*))
+    ;; -*- lisp -*-
+    
+    (mapc 'require '(asdf asdf-install))
+    
+    (dolist (project '("red-black/" "cambl/" "periods/" "ledger/"))
+      (push (merge-pathnames project "/path/to/src/")
+            asdf:*central-registry*))
 
 Make sure you change /path/to/src/ to be the directory under which you're
 keeping all of the Ledger projects.  Also, be sure this pathname ends with a
@@ -38,44 +38,53 @@ slash!  In CL, directory names always end with/
 
 Now you can run Ledger at the REPL like this:
 
-  $ sbcl
-  * (require 'asdf)
-  * (asdf:oos 'asdf:load-op :ledger)
+    $ sbcl
+    * (require 'asdf)
+    * (asdf:oos 'asdf:load-op :ledger)
 
 This compiles and loads the Ledger core, and also the textual parser package,
 for parsing standard Ledger text files (other parser packages soon to come).
 
 Once in the REPL, try out this command:
 
-  * (ledger:register-report "/path/to/src/ledger/doc/sample.dat")
+    * (ledger:register-report "/path/to/src/ledger/doc/sample.dat")
 
 You should see a register printed representing the contents of sample.dat.
 You can constrain this report using keyword modifiers:
 
-  * (ledger:register-report "/path/to/src/ledger/doc/sample.dat"
-                            :account "books")
+    * (ledger:register-report "/path/to/src/ledger/doc/sample.dat"
+                              :account "books")
 
 Ledger only reads the file past on the first run, and if it changes, so feel
 free to repeat the same command several times even for large journal filse.
 
 The following reports are supported:
 
-  * (ledger:register-report "/path/to/src/ledger/doc/sample.dat" [OPTIONS])
-  * (ledger:balance-report "/path/to/src/ledger/doc/sample.dat" [OPTIONS])
-  * (ledger:print-report "/path/to/src/ledger/doc/sample.dat" [OPTIONS])
+    * (ledger:register-report "/path/to/src/ledger/doc/sample.dat" [OPTIONS])
+    * (ledger:balance-report "/path/to/src/ledger/doc/sample.dat" [OPTIONS])
+    * (ledger:print-report "/path/to/src/ledger/doc/sample.dat" [OPTIONS])
 
 As for OPTIONS, any of the following keyword pairs is allowed:
 
-  :account "REGEXP"       :not-account "REGEXP"
-  :payee "REGEXP"         :not-payee "REGEXP"
-  :note "REGEXP"          :not-note "REGEXP"
-
-  :begin "YYYY/MM/DD"
-  :end "YYYY/MM/DD"
-  :range "TIME EXPRESION"     ; like "this month"
-  :period "PERIOD EXPRESION"  ; like "every month this year"
-  :expr "VALUE-EXPR"          ; most Ledger 2.x value exprs allowed
-  :no-total T/NIL             ; don't show totals
+    :account "REGEXP"  :not-account "REGEXP"
+    :payee "REGEXP"    :not-payee "REGEXP"
+    :note "REGEXP"     :not-note "REGEXP"
+  
+    :begin "YYYY/MM/DD"
+    :end "YYYY/MM/DD"
+  
+    :range "RANGE EXPRESSION"    ; a range expression, like "this month"
+    :period "PERIOD EXPRESSION"  ; like "every month this year"
+  
+    :expr "VALUE-EXPR"           ; most Ledger 2.x value exprs allowed
+    :limit "VALUE-EXPR"          ; the same as 2.x's --limit or -l
+                                 ; this is a convenience alias for :expr
+    :only "VALUE-EXPR"           ; the same as 2.x's --only
+    :display "VALUE-EXPR"        ; the same as 2.x's -d or --display
+  
+    :no-total BOOL               ; don't show totals
+    :collapse BOOL               ; collapse multiline entries
+    :subtotal BOOL               ; group all transactions by account
 
 After the call to `read-binder', the variable `*last-binder*' contains the
 contents of what was read.  From that point forward, if no binder or string is
@@ -98,5 +107,5 @@ p.s. For fans of the SERIES library, you can apply `scan-transactions' or
      a SERIES of the corresponding type.  Example:
 
        (collect (ledger:scan-transactions
-       		 (read-binder "doc/sample.dat")))
+       		 (ledger:read-journal "doc/sample.dat")))
 	  => [a list of all transactions, in sequence, within sample.dat]
