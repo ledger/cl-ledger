@@ -16,6 +16,7 @@
 						  (strftime end))))
 	     (account-hash (make-hash-table :test #'eq)))
 	(add-to-contents journal entry)
+
 	(iterate ((xact xacts))
 	  (let* ((acct (xact-account xact))
 		 (acct-xact (gethash acct account-hash)))
