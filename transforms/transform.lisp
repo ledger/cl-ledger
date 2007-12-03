@@ -45,7 +45,8 @@
   ;; entry's transactions are passed; meaning that if one transaction of an
   ;; entry is to be printed, all the transaction for that entry will be
   ;; printed.
-  ;; (if show_related RELATED_TRANSACTIONS)
+  (if-let ((invert (getf args :related)))
+    (setf xacts (related-transactions xacts)))
 
   ;; invert_transactions inverts the value of the transactions it receives.
   (if-let ((invert (getf args :invert)))

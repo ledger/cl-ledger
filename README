@@ -70,11 +70,11 @@ As for OPTIONS, any of the following keyword pairs is allowed:
     :payee "REGEXP"    :not-payee "REGEXP"
     :note "REGEXP"     :not-note "REGEXP"
   
-    :begin "YYYY/MM/DD"
-    :end "YYYY/MM/DD"
+    :begin "YYYY/MM/DD"          ; (-b)
+    :end "YYYY/MM/DD"            ; (-e)
   
     :range "RANGE EXPRESSION"    ; a range expression, like "this month"
-    :period "PERIOD EXPRESSION"  ; like "every month this year"
+    :period "PERIOD EXPRESSION"  ; like "every month this year" (-p)
   
     :expr "VALUE-EXPR"           ; most Ledger 2.x value exprs allowed
     :limit "VALUE-EXPR"          ; the same as 2.x's --limit or -l
@@ -82,13 +82,14 @@ As for OPTIONS, any of the following keyword pairs is allowed:
     :only "VALUE-EXPR"           ; the same as 2.x's --only
     :display "VALUE-EXPR"        ; the same as 2.x's -d or --display
   
-    :no-total BOOL               ; don't show totals
-    :collapse BOOL               ; collapse multiline entries
-    :subtotal BOOL               ; group all transactions by account
+    :no-total BOOL               ; don't show totals (-n)
+    :collapse BOOL               ; collapse multiline entries (-n)
+    :subtotal BOOL               ; group all transactions by account (-s)
     :invert BOOL                 ; negate all transaction values
                                  ; (same as saying :amount "-a")
+    :related BOOL                ; show "other" transactions of each entry (-r)
 
-    :amount "VALUE-EXPR"         ; use EXPR as the amount for transactions
+    :amount "VALUE-EXPR"         ; use EXPR as the transaction amount
                                  ;   when computing the running total
     :total "VALUE-EXPR"          ; use EXPR to compute the running total
 
