@@ -17,8 +17,11 @@
 	   filter-transactions
 	   calculate-totals
 	   abbreviate-string
+
 	   register-report
 	   balance-report
+	   print-report
+	   equity-report
 
 	   journal
 	   journal-binder

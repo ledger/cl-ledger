@@ -63,6 +63,7 @@ The following reports are supported:
     * (ledger:register-report "/path/to/src/ledger/doc/sample.dat" [OPTIONS])
     * (ledger:balance-report "/path/to/src/ledger/doc/sample.dat" [OPTIONS])
     * (ledger:print-report "/path/to/src/ledger/doc/sample.dat" [OPTIONS])
+    * (ledger:equity-report "/path/to/src/ledger/doc/sample.dat" [OPTIONS])
 
 As for OPTIONS, any of the following keyword pairs is allowed:
 

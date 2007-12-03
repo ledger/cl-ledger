@@ -13,7 +13,7 @@
 	(return-from compare-path-lists nil))))
   t)
 
-(defun basic-reporter (printer args)
+(defun find-all-transactions (args)
   (let (binder objects)
     (loop while args do
 	 (etypecase (first args)
@@ -44,7 +44,9 @@
       (dolist (object objects)
 	(add-journal binder object)))
 
-    (when binder
+    (when (and binder (binderp binder))
+      (setf *last-binder* binder)
+
       (loop for journal-cell on (binder-journals binder) do
 	   (when (or (null (journal-read-date (car journal-cell)))
 		     (> (file-write-date (journal-source (car journal-cell)))
@@ -54,14 +56,15 @@
 				  (car journal-cell)) binder))
 	     (assert (car journal-cell))))
 
-      (if (binderp binder)
-	  (funcall printer (apply-key-transforms
-			    (scan-transactions binder) args)
-		   :reporter (getf args :reporter)
-		   :no-total (getf args :no-total))))
+      (values (apply-key-transforms (scan-transactions binder) args)
+	      args))))
 
-    (setf *last-binder* binder)
-    (values)))
+(defun basic-reporter (printer args)
+  (multiple-value-bind (xact-series plist)
+      (find-all-transactions args)
+    (funcall printer xact-series
+	     :reporter (getf plist :reporter)
+	     :no-total (getf plist :no-total))))
 
 (provide 'report)
 
