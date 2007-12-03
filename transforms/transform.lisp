@@ -7,13 +7,20 @@
 (defun apply-key-transforms (xacts args)
   (setf xacts (apply #'apply-filter xacts args))
 
-  (let ((period (getf args :period)))
-    (when period
-      ;; jww (2007-12-01): This should call group-by-period directly, once
-      ;; things are working
-      (setf xacts (periodic-transform xacts period))))
-
+  (if-let ((period (getf args :period)))
+    ;; jww (2007-12-01): This should call group-by-period directly, once
+    ;; things are working
+    (setf xacts (periodic-transform xacts period)))
+  
   (unless (getf args :balance-report)
+    (if-let ((sort (getf args :sort)))
+      (setf xacts
+	    (sort-transactions xacts
+			       :key (etypecase sort
+				      (string (value-expr-function
+					       (parse-value-expr sort)))
+				      (function sort)))))
+    
     (setf xacts (calculate-totals xacts
 				  :amount (getf args :amount)
 				  :total  (getf args :total)))

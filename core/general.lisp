@@ -6,6 +6,11 @@
 
 ;;;_ * General utility functions
 
+(defmacro if-let (((var value)) &body body)
+  `(let ((,var ,value))
+     (if ,var
+	 (progn ,@body))))
+
 (defun split-string-at-char (string char)
   "Returns a list of substrings of string
 divided by ONE char each.

@@ -5,19 +5,17 @@
 (in-package :ledger)
 
 (defun group-by-period (xact-series period)
-  (let ((artificial-binder (make-instance 'binder))
-	(artificial-journal (make-instance 'journal)))
-    (add-journal artificial-binder artificial-journal)
+  (with-temporary-journal (journal)
     (iterate (((begin end xacts)
 	       (collate-by-time-period xact-series period
 				       :key #'xact-date)))
       (let* ((entry (make-instance 'entry
-				   :journal artificial-journal
+				   :journal journal
 				   :actual-date begin
 				   :payee (format nil "- ~A"
 						  (strftime end))))
 	     (account-hash (make-hash-table :test #'eq)))
-	(add-to-contents artificial-journal entry)
+	(add-to-contents journal entry)
 	(iterate ((xact xacts))
 	  (let* ((acct (xact-account xact))
 		 (acct-xact (gethash acct account-hash)))
@@ -25,7 +23,7 @@
 	      (setf acct-xact
 		    (make-transaction
 		     :entry entry
-		     :account (find-account artificial-binder
+		     :account (find-account (journal-binder journal)
 					    (account-fullname acct)
 					    :create-if-not-exists-p t)
 		     :amount (balance))
@@ -33,7 +31,8 @@
 		    acct-xact)
 	      (add-transaction entry acct-xact))
 	    (add* (xact-amount acct-xact) (xact-amount xact))))))
-    (scan-transactions artificial-journal)))
+
+    (scan-transactions journal)))
 
 (defun periodic-transform (xact-series period)
   ;; jww (2007-12-01): this is a temporary hack

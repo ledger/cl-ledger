@@ -14,6 +14,14 @@
 
 ;;;_ * Journals
 
+(defmacro with-temporary-journal ((var) &body body)
+  "Creates a wrapper around BODY which binds VAR to a temporary journal."
+  (let ((artificial-binder-sym (gensym)))
+    `(let ((,artificial-binder-sym (make-instance 'binder))
+	   (,var (make-instance 'journal)))
+       (add-journal ,artificial-binder-sym ,var)
+       ,@body)))
+
 (defun read-journal (binder path)
   "Read in a textual Ledger journal from the given PATH.
 The result is of type JOURNAL."
