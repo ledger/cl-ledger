@@ -38,7 +38,8 @@
 
   ;; `apply-filter' only passes through transactions matching the :expr (or
   ;; :limit) predicate.
-  (setf xacts (apply #'apply-filter xacts args))
+  (unless (getf args :inhibit-filter)
+    (setf xacts (apply #'apply-filter xacts args)))
 
   ;; related_transactions will pass along all transactions related to the
   ;; transaction received.  If `show_all_related' is true, then all the
@@ -57,7 +58,7 @@
     ;; things are working
     (setf xacts (periodic-transform xacts period)))
   
-  (unless (getf args :balance-report)
+  (unless (getf args :accounts-report)
     ;; dow_transactions is like period_transactions, except that it reports
     ;; all the transactions that fall on each subsequent day of the week.
     ;; (if days_of_the_week DOW_TRANSACTIONS)

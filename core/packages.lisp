@@ -21,7 +21,9 @@
 	   register-report
 	   balance-report
 	   print-report
+	   print-entry
 	   equity-report
+	   derive-entry
 
 	   journal
 	   journal-binder

@@ -62,9 +62,7 @@
 (defun basic-reporter (printer args)
   (multiple-value-bind (xact-series plist)
       (find-all-transactions args)
-    (funcall printer xact-series
-	     :reporter (getf plist :reporter)
-	     :no-total (getf plist :no-total))))
+    (apply printer xact-series plist)))
 
 (provide 'report)
 

@@ -4,6 +4,25 @@
 
 (in-package :ledger)
 
+(defun print-entry (entry &key (output-stream *standard-output*))
+  (format output-stream "~&~A ~A~%" (strftime (entry-date entry))
+	  (entry-payee entry))
+
+  (dolist (xact (entry-transactions entry))
+    (let ((amount (if (entry-normalizedp entry)
+		      (xact-amount xact)
+		      (xact-amount-expr xact)))
+	  (cost (xact-cost xact)))
+      (format output-stream "    ~35A ~12A"
+	      (account-fullname (xact-account xact))
+	      (if (or (null amount) (xact-calculatedp xact)) ""
+		  (if (stringp amount) amount
+		      (format-value amount :width 12 :latter-width 52))))
+      (if cost
+	  (format output-stream " @ ~A"
+		  (format-value (divide cost amount))))
+      (format output-stream "~%"))))
+
 (defun print-reporter (&key (output-stream *standard-output*))
   (let (last-entry)
     (lambda (xact)
@@ -15,7 +34,7 @@
 	    (format output-stream "~&"))
 
 	(format output-stream "~A ~A~%"
-		(strftime (xact-date xact))
+		(strftime (entry-date (xact-entry xact)))
 		(entry-payee (xact-entry xact)))
 	(setf last-entry (xact-entry xact)))
 
@@ -36,7 +55,8 @@
 
       (format output-stream "~%"))))
 
-(defun print-transactions (xact-series &key (reporter nil) (no-total nil))
+(defun print-transactions (xact-series &key (reporter nil) (no-total nil)
+			   &allow-other-keys)
   (declare (ignore no-total))
   (let ((reporter (or reporter (print-reporter))))
     (iterate ((xact xact-series))
@@ -66,8 +86,7 @@
 			     (make-transaction :entry entry
 					       :account equity-account))
 	    entry))
-	(print-transactions (scan-transactions journal)
-			    :reporter (getf plist :reporter))))))
+	(apply #'print-transactions (scan-transactions journal) plist)))))
 
 (provide 'print)
 

@@ -40,7 +40,8 @@
 				       :width amounts-width))))
 	   t))))))
 
-(defun print-balance (xact-series &key (reporter nil) (no-total nil))
+(defun print-balance (xact-series &key (reporter nil) (no-total nil)
+		      &allow-other-keys)
   (let ((root-account (calculate-account-totals xact-series))
 	(reporter (or reporter (balance-reporter :no-total no-total))))
     (labels
@@ -66,7 +67,7 @@
 	(funcall reporter root-account 0 0 t)))))
 
 (defun balance-report (&rest args)
-  (basic-reporter #'print-balance (append args (list :balance-report t))))
+  (basic-reporter #'print-balance (append args (list :accounts-report t))))
 
 (provide 'balance)
 

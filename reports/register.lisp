@@ -70,7 +70,8 @@
 		  (format-value (or (xact-value xact :running-total)
 				    0) :width 12 :latter-width 80))))))
 
-(defun print-register (xact-series &key (reporter nil) (no-total nil))
+(defun print-register (xact-series &key (reporter nil) (no-total nil)
+		       &allow-other-keys)
   (let ((reporter (or reporter (register-reporter :no-total no-total))))
     (iterate ((xact xact-series))
 	     (funcall reporter xact))))

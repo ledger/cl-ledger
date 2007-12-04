@@ -2,6 +2,9 @@ This is a very brief README, since things are just beginning and still very
 much in flux.  First, this document assumes the use of SBCL for now.  Other
 implementations will be tested soon.
 
+
+* Installation
+
 The first thing to do is install the prerequisites.  You may do this quite
 easily using asdf-install (note that if Hunchentoot gives you compilation
 error on the file port-sbcl, just select the restart for ACCEPT):
@@ -45,6 +48,9 @@ Now you can run Ledger at the REPL like this:
 This compiles and loads the Ledger core, and also the textual parser package,
 for parsing standard Ledger text files (other parser packages soon to come).
 
+
+* Basic commands
+
 Once in the REPL, try out this command:
 
     * (ledger:register-report "/path/to/src/ledger/doc/sample.dat")
@@ -65,7 +71,10 @@ The following reports are supported:
     * (ledger:print-report "/path/to/src/ledger/doc/sample.dat" [OPTIONS])
     * (ledger:equity-report "/path/to/src/ledger/doc/sample.dat" [OPTIONS])
 
-As for OPTIONS, any of the following keyword pairs is allowed:
+    * (ledger:derive-entry "/path/to/src/ledger/doc/sample.dat" [OPTIONS])
+
+As for OPTIONS, any of the following keyword pairs is allowed.  There are some
+extra options allowed for `derive-entry', for which please see below.
 
     :account "REGEXP"  :not-account "REGEXP"
     :payee "REGEXP"    :not-payee "REGEXP"
@@ -114,16 +123,136 @@ corresponding CL-Ledger keywords:
      -S ARG       --sort ARG           :sort ARG
                   --sort-entries ARG   :sort-entries ARG
 
+
+* Options to `derive-entry'
+
+The reporting command `derive-entry' takes some special options.  Here is the
+docstring for derive-entry:
+
+The DERIVE-ENTRY report uses Ledger to intelligently create a new entry for
+you.  The possible keywords arguments are:
+
+    :DATE             <DATE-STRING>
+    :PAYEE            <REGEXP>
+    :ACCOUNT          <REGEXP>
+    :BALANCE-ACCOUNT  <REGEXP>
+    :AMOUNT           <VALUE-STRING>
+    :APPEND           <BOOLEAN>
+
+Except for :PAYEE, all of these keyword arguments are optional.  Here is what
+they mean:
+
+  :PAYEE REGEXP
+    Find the most recent entry whose payee matches REGEXP, and base the new
+    entry derivation on its details.  If no matching entry can be found, the
+    payee of the newly created entry will exactly match REGEXP.
+
+  :DATE DATE-STRING
+    The date of the new entry will be DATE-STRING, otherwise it is today.
+
+  :ACCOUNT REGEXP
+    Set the first account line in the new entry to be the most recently used
+    account which matches REGEXP.  If no such account can be found, an account
+    named REGEXP is used.  If no account is specified, the account
+    "Expenses:Unknown" is used.
+
+  :BALANCE-ACCOUNT REGEXP
+    Like :ACCOUNT, except this refers to the account used for the second
+    transaction in the newly derived entry.  If not specified, a calculated
+    "balance account" is looked for in the matching entry; if this does not
+    apply, the journal's default account is used; if this does not apply, the
+    account "Asets:Unknown" is used.
+
+  :AMOUNT VALUE-STRING
+    The amount of the first transaction.  If it has no commodity, the
+    correlated commodity from the discovered entry is used.
+
+  :APPEND BOOLEAN
+    If non-NIL, the new entry is written to the same journal where the
+    matching entry was found (for a binder that references many journals, this
+    is whichever file the discovered entry was in).
+
+  Here are a few examples, using sample.dat as a reference:
+
+  (ledger:derive-entry "doc/sample.dat" :payee "book")
+    =>
+    2007/12/04 Book Store
+        Expenses:Books                            $20.00
+        Liabilities:MasterCard
+
+  (ledger:derive-entry :payee "book" :amount "$125")
+    =>
+    2007/12/04 Book Store
+        Expenses:Books                           $125.00
+        Liabilities:MasterCard
+
+  (ledger:derive-entry :payee "Hello World")
+    =>
+    2007/12/04 Hello World
+        Expenses:Unknown
+        Assets:Unknown
+
+  (ledger:derive-entry :date "2004/01/01" :payee "Hello World")
+    =>
+    2004/01/01 Hello World
+        Expenses:Unknown
+        Assets:Unknown
+
+  (ledger:derive-entry :payee "book" :account "equ")
+    =>
+    2007/12/04 Book Store
+        Equity:Opening Balances                   $20.00
+        Liabilities:MasterCard
+
+  (ledger:derive-entry :payee "book" :account "Who Knows")
+    =>
+    2007/12/04 Book Store
+        Who Knows                                 $20.00
+        Liabilities:MasterCard
+
+  (ledger:derive-entry :payee "book" :balance-account "bank")
+    =>
+    2007/12/04 Book Store
+        Expenses:Books                            $20.00
+        Assets:Bank:Checking
+
+  (ledger:derive-entry :payee "book" :account "liab" 
+                       :balance-account "bank")
+    =>
+    2007/12/04 Book Store
+        Liabilities:MasterCard                   $-20.00
+        Assets:Bank:Checking
+
+  (ledger:derive-entry :payee "book" :account "bank" :amount 50)
+    =>
+    2007/12/04 Book Store
+        Assets:Bank:Checking                      $50.00
+        Liabilities:MasterCard
+
+  (ledger:derive-entry :payee "book" :account "bank" :amount "$125")
+    =>
+    2007/12/04 Book Store
+        Assets:Bank:Checking                     $125.00
+        Liabilities:MasterCard
+
+* Binder caching
+
 After the call to `read-binder', the variable `*last-binder*' contains the
 contents of what was read.  From that point forward, if no binder or string is
 passed to the reporting function, they will assume you wish to report on the
 contents of `*last-binder*'.
+
+
+* HTTP interface
 
 If you prefer to use the HTTP interface, just cd to where you have Ledger
 pulled and type "make".  If this works, you can quit, then type "make core" to
 build a core file just for the Ledger web server.  After it's built, type
 "make" to run the server using the core.  Once a core is built, Ledger should
 start up in a split second.
+
+
+* In closing
 
 That's it for now, expect more in this file as things progress!
 

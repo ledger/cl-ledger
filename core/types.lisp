@@ -79,7 +79,7 @@
    (default-account :accessor journal-default-account :initform nil
 		    :type (or account null))
    (source	   :accessor journal-source	   :initarg :source-path
-		   :type pathname)
+		   :initform nil :type (or pathname null))
    (read-date      :accessor journal-read-date     :initarg :read-date
 		   :initform nil :type (or integer null))
    (data           :accessor journal-data          :initarg :data
