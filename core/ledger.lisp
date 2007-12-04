@@ -12,6 +12,8 @@
 (defvar *registered-parsers* nil)
 (defvar *allow-embedded-lisp* nil)
 
+(defvar *last-binder* nil)
+
 ;;;_ * Journals
 
 (defmacro with-temporary-journal ((var) &body body)

@@ -67,14 +67,18 @@ for diagnostic output.")
 			 (:file "sort")
 			 (:file "collapse")
 			 (:file "invert")
-			 (:file "subtotal" :depends-on ("totals"))
-			 (:file "transform")))
+			 (:file "subtotal")
+			 (:file "related")
+			 (:file "transform"))
+	    :serial t)
 
    (:module "reports"
 	    :components ((:file "report")
-			 (:file "register" :depends-on ("report"))
-			 (:file "balance" :depends-on ("report"))
-			 (:file "print" :depends-on ("report"))))
+			 (:file "register")
+			 (:file "balance")
+			 (:file "print")
+			 (:file "entry"))
+	    :serial t)
 
    (:module "parsers"
 	    :components

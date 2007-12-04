@@ -50,7 +50,6 @@
 	     (read-amount
 	      in
 	      :observe-properties-p       *value-expr-observe-properties-p*
-	      :reduce-to-smallest-units-p *value-expr-reduce-to-smallest-units-p*
 	      :pool                       *value-expr-commodity-pool*)))
 	  (unless found-amount
 	    (file-position in position))))
@@ -59,9 +58,7 @@
 	  (constantly found-amount)
 	  (cond
 	    ((digit-char-p c)
-	     (assert (null "We should never get here"))
-	     ;; (constantly (cambl:integer-to-amount (read in)))
-	     )
+	     (constantly (cambl:integer-to-amount (read in))))
 
 	    ((char= c #\/)
 	     (let ((scanner-type :account))

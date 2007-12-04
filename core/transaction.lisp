@@ -164,15 +164,14 @@
 
 (defun xact-amount-expr (xact)
   (declare (type transaction xact))
-  (the (or null value string)
-    (let ((amount (get-xact-amount xact)))
-      (cond
-	((valuep amount) amount)
-	((null amount) nil)
-	((value-expr-p amount)
-	 (value-expr-string amount))
-	(t
-	 (error "impossible"))))))
+  (let ((amount (get-xact-amount xact)))
+    (cond
+      ((valuep amount) amount)
+      ((null amount) nil)
+      ((value-expr-p amount)
+       (value-expr-string amount))
+      (t
+       (error "impossible")))))
 
 (declaim (inline set-xact-amount))
 (defun set-xact-amount (xact value)
@@ -197,17 +196,17 @@
 
 (defun group-transactions-by-entry (xacts-list)
   "\"Clump\" the incoming stream of transactions into sublists, where adjacent
-  transactions with the same parent entry become part of the same sublist.
+transactions with the same parent entry become part of the same sublist.
 
   Consider the following input stream, with the first letter identifying the
-  entry and the second identifying the member transaction:
+entry and the second identifying the member transaction:
 
-    (A-X A-Y A-Z B-X B-Y C-X)
+  (A-X A-Y A-Z B-X B-Y C-X)
 
-  Given this input, the resulting list from `group-transactions-by-entry' will
-  be:
+Given this input, the resulting list from `group-transactions-by-entry' will
+be:
 
-    ((A-X A-Y A-Z) (B-X B-Y) (C-X))"
+  ((A-X A-Y A-Z) (B-X B-Y) (C-X))"
   (nreverse
    (reduce #'(lambda (entries xact)
 	       (if entries
