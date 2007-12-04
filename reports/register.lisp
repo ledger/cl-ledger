@@ -71,10 +71,12 @@
 				    0) :width 12 :latter-width 80))))))
 
 (defun print-register (xact-series &key (reporter nil) (no-total nil)
-		       &allow-other-keys)
-  (let ((reporter (or reporter (register-reporter :no-total no-total))))
+		       (output-stream *standard-output*) &allow-other-keys)
+  (let ((reporter (or reporter
+		      (register-reporter :no-total no-total
+					 :output-stream output-stream))))
     (iterate ((xact xact-series))
-	     (funcall reporter xact))))
+      (funcall reporter xact))))
 
 (defun register-report (&rest args)
   "This is a function for easily print register reports.

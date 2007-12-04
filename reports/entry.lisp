@@ -6,7 +6,7 @@
 
 (defun print-new-entry (xact-series &key (date nil) (payee nil) (account nil)
 			(amount nil) (balance-account nil) (append nil)
-			&allow-other-keys)
+			(output-stream *standard-output*) &allow-other-keys)
   (with-temporary-journal (journal)
     (let* ((entry (make-instance
 		   'entry :journal journal
@@ -113,7 +113,7 @@
 			       :direction :output :if-exists :append)
 	    (format out "~&~%")
 	    (print-entry entry :output-stream out))
-	  (print-entry entry))
+	  (print-entry entry :output-stream output-stream))
       entry))) 
 
 (defun derive-entry (&rest args)

@@ -55,10 +55,11 @@
 
       (format output-stream "~%"))))
 
-(defun print-transactions (xact-series &key (reporter nil) (no-total nil)
+(defun print-transactions (xact-series &key (reporter nil)
+			   (output-stream *standard-output*)
 			   &allow-other-keys)
-  (declare (ignore no-total))
-  (let ((reporter (or reporter (print-reporter))))
+  (let ((reporter (or reporter
+		      (print-reporter :output-stream output-stream))))
     (iterate ((xact xact-series))
       (funcall reporter xact))))
 

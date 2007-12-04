@@ -1,14 +1,14 @@
 ;;; ledger.el --- Major mode for editing Ledger data files
 
-;; Copyright (C) 2007 John Wiegley (johnw AT gnu DOT org)
+;; Copyright (C) 2007 John Wiegley (johnw AT newartisans DOT com)
 
 ;; Emacs Lisp Archive Entry
 ;; Filename: ledger.el
-;; Version: 2.6.0.90
-;; Date: Thu 16-Apr-2007
+;; Version: 4.0
+;; Date: Tue 04-Dec-2007
 ;; Keywords: data
-;; Author: John Wiegley (johnw AT gnu DOT org)
-;; Maintainer: John Wiegley (johnw AT gnu DOT org)
+;; Author: John Wiegley (johnw AT newartisans DOT com)
+;; Maintainer: John Wiegley (johnw AT newartisans DOT com)
 ;; Description: Helper code for using my "ledger" command-line tool
 ;; URL: http://www.newartisans.com/johnw/emacs.html
 ;; Compatibility: Emacs22
@@ -70,25 +70,133 @@
 ;;   r        redo the report
 ;;   k        kill the report buffer
 
+;;; Note:
+
+;; This code is designed to work in two completely separate scenarios: with
+;; Ledger 2.x by communicating with a subprocess, and with CL-Ledger by
+;; talking to your inferior Common Lisp process via SLIME.  Set the variable
+;; `ledger-backend' to `ledger-2' if you are using Ledger 2.x.  The default is
+;; set according to which package you downloaded this file with.
+
 (require 'esh-util)
 (require 'esh-arg)
 (require 'pcomplete)
 
-(defvar ledger-version "1.2"
+(defvar ledger-version "4.0"
   "The version of ledger.el currently loaded")
 
 (defgroup ledger nil
   "Interface to the Ledger command-line accounting program."
   :group 'data)
 
-(defcustom ledger-binary-path (executable-find "ledger")
+(defcustom ledger-backend 'cl-ledger
   "Path to the ledger executable."
+  :type '(choice (const :tag "CL-Ledger" cl-ledger
+			:tag "Ledger 2.x" ledger-2))
+  :group 'ledger)
+
+(defcustom ledger-file "~/src/ledger/doc/sample.dat"
+  "Path to the default ledger data file."
   :type 'file
   :group 'ledger)
 
 (defcustom ledger-clear-whole-entries nil
   "If non-nil, clear whole entries, not individual transactions."
   :type 'boolean
+  :group 'ledger)
+
+(defvar bold 'bold)
+(defvar ledger-font-lock-keywords
+  `((,(concat "^[0-9/.=-]+\\(\\s-+\\*\\)?\\(\\s-+(.*?)\\)?\\s-+"
+	      "\\(.+?\\)\\(\t\\|\n\\| [ \t]\\)") 3 bold)
+    (";.+" . font-lock-comment-face)
+    ("^\\s-+.+?\\(  \\|\t\\|\n\\|\\s-+$\\)" . font-lock-keyword-face))
+  "Default expressions to highlight in Ledger mode.")
+
+(defsubst ledger-current-year ()
+  (format-time-string "%Y"))
+(defsubst ledger-current-month ()
+  (format-time-string "%m"))
+
+(defvar ledger-year (ledger-current-year)
+  "Start a ledger session with the current year, but make it
+customizable to ease retro-entry.")
+(defvar ledger-month (ledger-current-month)
+  "Start a ledger session with the current month, but make it
+customizable to ease retro-entry.")
+
+(defun cl-ledger-iterate-entries (callback)
+  (goto-char (point-min))
+  (let* ((now (current-time))
+	 (current-year (nth 5 (decode-time now))))
+    (while (not (eobp))
+      (when (looking-at
+	     (concat "\\(Y\\s-+\\([0-9]+\\)\\|"
+		     "\\([0-9]\\{4\\}+\\)?[./]?"
+		     "\\([0-9]+\\)[./]\\([0-9]+\\)\\s-+"
+		     "\\(\\*\\s-+\\)?\\(.+\\)\\)"))
+	(let ((found (match-string 2)))
+	  (if found
+	      (setq current-year (string-to-number found))
+	    (let ((start (match-beginning 0))
+		  (year (match-string 3))
+		  (month (string-to-number (match-string 4)))
+		  (day (string-to-number (match-string 5)))
+		  (mark (match-string 6))
+		  (desc (match-string 7)))
+	      (if (and year (> (length year) 0))
+		  (setq year (string-to-number year)))
+	      (funcall callback start
+		       (encode-time 0 0 0 day month
+				    (or year current-year))
+		       mark desc)))))
+      (forward-line))))
+
+(defun eshell/ledger (&rest args)
+  (let ((cell args))
+    (while cell
+      (let ((arg (car cell)))
+	(if (and (stringp arg)
+		 (> (length arg) 0))
+	    (if (char-equal ?: (aref arg 0))
+		(setcar cell (make-symbol arg))
+	      (if (not (text-property-not-all
+			0 (length arg) 'number t arg))
+		  (setcar cell (string-to-number arg))))))
+      (setq cell (cdr cell))))
+
+  (let ((command (car args))
+	account-regexps
+	payee-regexps
+	in-payee-regexps)
+    (setq args (cdr args))
+
+    (dolist (arg args)
+      (if (string= arg "--")
+	  (setq in-payee-regexps t)
+	(if in-payee-regexps
+	    (push arg payee-regexps)
+	  (push arg account-regexps))))
+
+    (setq account-regexps (regexp-opt account-regexps)
+	  payee-regexps (regexp-opt payee-regexps))
+
+    (cond
+     ((or (string= "reg" command)
+	  (string= "register" command))
+      (slime-eval
+       `(cl:with-output-to-string
+	 (str)
+	 (ledger:register-report ,(expand-file-name ledger-file)
+				 :account ,account-regexps
+				 :payee ,payee-regexps
+				 :output-stream str)))))))
+
+;;; Code relating to Ledger 2.x:
+
+(defcustom ledger-binary-path (executable-find "ledger")
+  "Path to the ledger executable."
+  :type 'file
   :group 'ledger)
 
 (defcustom ledger-reports
@@ -126,26 +234,6 @@ text that should replace the format specifier."
   "Default indentation for account transactions in an entry."
   :type 'string
   :group 'ledger)
-
-(defvar bold 'bold)
-(defvar ledger-font-lock-keywords
-  `((,(concat "^[0-9/.=-]+\\(\\s-+\\*\\)?\\(\\s-+(.*?)\\)?\\s-+"
-	      "\\(.+?\\)\\(\t\\|\n\\| [ \t]\\)") 3 bold)
-    (";.+" . font-lock-comment-face)
-    ("^\\s-+.+?\\(  \\|\t\\|\n\\|\\s-+$\\)" . font-lock-keyword-face))
-  "Default expressions to highlight in Ledger mode.")
-
-(defsubst ledger-current-year ()
-  (format-time-string "%Y"))
-(defsubst ledger-current-month ()
-  (format-time-string "%m"))
-
-(defvar ledger-year (ledger-current-year)
-  "Start a ledger session with the current year, but make it
-customizable to ease retro-entry.")
-(defvar ledger-month (ledger-current-month)
-  "Start a ledger session with the current month, but make it
-customizable to ease retro-entry.")
 
 (defun ledger-iterate-entries (callback)
   (goto-char (point-min))
