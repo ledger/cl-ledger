@@ -44,7 +44,8 @@
 (defun value-expr-matcher (expr-or-function)
   (declare (type (or string function) expr-or-function))
   (if (stringp expr-or-function)
-      (let ((closure (parse-value-expr expr-or-function)))
+      (let ((closure (value-expr-function
+		      (parse-value-expr expr-or-function))))
 	(lambda (xact)
 	  (funcall closure xact)))
       expr-or-function))
@@ -127,6 +128,9 @@
      (or string time-range) ,#'time-range-matcher)
 
     (:expr
+     (or string function)
+     ,#'value-expr-matcher)
+    (:limit
      (or string function)
      ,#'value-expr-matcher))
   "*predicate-keywords* associates keywords that may be passed to

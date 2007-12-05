@@ -81,7 +81,7 @@
   "Interface to the Ledger command-line accounting program."
   :group 'data)
 
-(defcustom cl-ledger-file "~/src/ledger/doc/sample.dat"
+(defcustom cl-ledger-file nil
   "Path to the default ledger data file."
   :type 'file
   :group 'cl-ledger)
@@ -212,15 +212,18 @@
 
 (defun cl-ledger-total-at-point ()
   (interactive)
+  (cl-ledger-entries)
   (let ((xact (get-text-property (point) 'cl-ledger-xact)))
     (when xact
-      (let ((account (nth 2 xact)))
+      (let ((account (nth 2 xact))
+	    (entry (slime-eval `(ledger:sexp-report
+				 ,(buffer-file-name (current-buffer))
+				 :account ,(concat "^" account "$")
+				 :limit ,(format "line <= %d"
+						 (line-number-at-pos))
+				 :tail 1))))
 	(message "Account total at this transaction is %s"
-	 (nth 4 (car (nth 4 (car (slime-eval
-				  `(ledger:sexp-report
-				    ,(buffer-file-name (current-buffer))
-				    :account ,(concat "^" account "$")
-				    :tail 1)))))))))))
+		 (nth 4 (car (nth 4 (car entry)))))))))
 
 ;;;_* Context-sensitive completion
 
@@ -709,6 +712,78 @@ dropped."
     (define-key map [?q] 'cl-ledger-reconcile-quit)
     (use-local-map map)))
 
+;;;_* A command-line interface to CL-Ledger, in the style of 2.6
+
+(defun cl-ledger-eval (command &rest args)
+  (slime-eval
+   `(cl:with-output-to-string
+     (str)
+     (,command ,(expand-file-name cl-ledger-file)
+	       ,@args
+	       :output-stream str))))
+
+(defun eshell/ledger (&rest args)
+  ;; Convert the argument list to canonical Lisp form
+  (let ((cell args))
+    (while cell
+      (let ((arg (car cell)))
+	(if (and (stringp arg)
+		 (> (length arg) 0))
+	    (if (char-equal ?: (aref arg 0))
+		(setcar cell (make-symbol arg))
+	      (if (not (text-property-not-all
+			0 (length arg) 'number t arg))
+		  (setcar cell (string-to-number arg))))))
+      (setq cell (cdr cell))))
+
+  (let (keywords)
+    ;; Handle all of the option-like arguments
+    (while args
+      (when (and (plusp (length (car args)))
+		 (char-equal ?- (aref (car args) 0)))
+	(case (car args)
+	  (?b (push (list :begin (cadr args)) keywords)
+	      (setq args (cdr args)))))
+      (setq args (cdr args)))
+
+    (let ((command (car args))
+	  account-regexps
+	  payee-regexps
+	  in-payee-regexps)
+      (setq args (cdr args))
+
+      ;; Extract the account and payee regexps
+      (dolist (arg args)
+	(if (string= arg "--")
+	    (setq in-payee-regexps t)
+	  (if in-payee-regexps
+	      (push arg payee-regexps)
+	    (push arg account-regexps))))
+      (setq account-regexps (regexp-opt account-regexps)
+	    payee-regexps (regexp-opt payee-regexps))
+
+      ;; Execute the command
+      (cond ((or (string= "reg" command)
+		 (string= "register" command))
+	     (apply #'cl-ledger-eval
+		    'ledger:register-report keywords
+		    :account account-regexps
+		    :payee payee-regexps))
+
+	    ((or (string= "pr" command)
+		 (string= "print" command))
+	     (apply #'cl-ledger-eval
+		    'ledger:print-report keywords
+		    :account account-regexps
+		    :payee payee-regexps))
+
+	    ((or (string= "bal" command)
+		 (string= "balance" command))
+	     (apply #'cl-ledger-eval
+		    'ledger:balance-report keywords
+		    :account account-regexps
+		    :payee payee-regexps))))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defsubst cl-ledger-current-year ()
@@ -764,65 +839,6 @@ Return the difference in the format of a time value."
 		  `(ledger:register-sexp
 		    ,(buffer-file-name (current-buffer)))))
     (apply callback (butlast entry (- (length entry) 4)))))
-
-;; A command-line interface to CL-Ledger, in the style of 2.6
-
-(defun cl-ledger-eval (command &rest args)
-  (slime-eval
-   `(cl:with-output-to-string
-     (str)
-     (,command ,(expand-file-name cl-ledger-file)
-	       ,@args
-	       :output-stream str))))
-
-(defun eshell/ledger (&rest args)
-  ;; Convert the argument list to canonical Lisp form
-  (let ((cell args))
-    (while cell
-      (let ((arg (car cell)))
-	(if (and (stringp arg)
-		 (> (length arg) 0))
-	    (if (char-equal ?: (aref arg 0))
-		(setcar cell (make-symbol arg))
-	      (if (not (text-property-not-all
-			0 (length arg) 'number t arg))
-		  (setcar cell (string-to-number arg))))))
-      (setq cell (cdr cell))))
-
-  (let ((command (car args))
-	account-regexps
-	payee-regexps
-	in-payee-regexps)
-    (setq args (cdr args))
-
-    ;; Extract the account and payee regexps
-    (dolist (arg args)
-      (if (string= arg "--")
-	  (setq in-payee-regexps t)
-	(if in-payee-regexps
-	    (push arg payee-regexps)
-	  (push arg account-regexps))))
-    (setq account-regexps (regexp-opt account-regexps)
-	  payee-regexps (regexp-opt payee-regexps))
-
-    ;; Execute the command
-    (cond ((or (string= "reg" command)
-	       (string= "register" command))
-	   (cl-ledger-eval 'ledger:register-report
-			   :account account-regexps
-			   :payee payee-regexps))
-
-	  ((or (string= "pr" command)
-	       (string= "print" command))
-	   (cl-ledger-eval 'ledger:print-report
-			   :account account-regexps
-			   :payee payee-regexps))
-
-	  ((or (string= "bal" command)
-	       (string= "balance" command))
-	   (cl-ledger-eval 'ledger:balance-report
-			   :account account-regexps
-			   :payee payee-regexps)))))
 
 ;;; Code relating to Ledger 2.x:
 

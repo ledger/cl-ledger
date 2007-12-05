@@ -185,6 +185,11 @@
 			(declare (ignore xact))
 			(value-round value)))
 
+		     ((eq symbol '|line|)
+		      (lambda (xact &rest args)
+			(declare (ignore args))
+			(item-position-begin-line (xact-position xact))))
+
 		     ((member symbol '(|S| |quant| |quantity|) :test #'eq)
 		      (lambda (xact &rest args)
 			(declare (ignore args))

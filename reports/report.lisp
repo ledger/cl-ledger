@@ -40,7 +40,6 @@
 			  objects)
 		  (mapcar #'journal-source
 			  (binder-journals *last-binder*))))
-      (format t "Ack; tossing the salad~%")
       (setf binder (make-instance 'binder))
       (dolist (object objects)
 	(add-journal binder object)))
