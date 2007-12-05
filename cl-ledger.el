@@ -100,7 +100,7 @@
 
 (defvar bold 'bold)
 (defvar cl-ledger-font-lock-keywords
-  `((,cl-ledger-entry-regexp 3 bold)
+  `((,+cl-ledger-entry-regexp+ 3 bold)
     (";.+" . font-lock-comment-face)
     ("^\\s-+.+?\\(  \\|\t\\|\n\\|\\s-+$\\)" . font-lock-keyword-face))
   "Default expressions to highlight in Ledger mode.")
