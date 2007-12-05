@@ -94,10 +94,13 @@
 
 ;;;_ * CL-Ledger major-mode
 
+(defconst +cl-ledger-entry-regexp+
+  (concat "^[0-9/.=-]+\\(\\s-+[*!]\\)?\\(\\s-+(.*?)\\)?\\s-+"
+	  "\\(.+?\\)\\(\\s-+;\\(.+\\)\\)?$"))
+
 (defvar bold 'bold)
 (defvar cl-ledger-font-lock-keywords
-  `((,(concat "^[0-9/.=-]+\\(\\s-+\\*\\)?\\(\\s-+(.*?)\\)?\\s-+"
-	      "\\(.+?\\)\\(\t\\|\n\\| [ \t]\\)") 3 bold)
+  `((,cl-ledger-entry-regexp 3 bold)
     (";.+" . font-lock-comment-face)
     ("^\\s-+.+?\\(  \\|\t\\|\n\\|\\s-+$\\)" . font-lock-keyword-face))
   "Default expressions to highlight in Ledger mode.")
@@ -191,8 +194,8 @@
 (defun cl-ledger-thing-at-point ()
   (let ((here (point)))
     (goto-char (line-beginning-position))
-    (cond ((looking-at "^[0-9/.=-]+\\(\\s-+[*!]\\)?\\(\\s-+(.+?)\\)?\\s-+")
-	   (goto-char (match-end 0))
+    (cond ((looking-at +cl-ledger-entry-regexp+)
+	   (goto-char (match-beginning 3))
 	   'entry)
 	  ((looking-at "^\\s-+\\([*!]\\s-+\\)?[[(]?\\(.\\)")
 	   (goto-char (match-beginning 2))
