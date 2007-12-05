@@ -642,6 +642,13 @@ dropped."
       (cl-ledger-do-reconcile)
       (cl-ledger-reconcile-update-mode-string))))
 
+(defun cl-ledger-reconcile-isearch-backward ()
+  (interactive)
+  (let ((where (get-text-property (point) 'where)))
+    (switch-to-buffer-other-window cl-ledger-buf)
+    (goto-char (cdr where))
+    (call-interactively 'isearch-backward)))
+
 (defun cl-ledger-reconcile-update-mode-string ()
   (let ((cleared-total
 	 (nth 4 (car (nth 4 (car (slime-eval
@@ -678,6 +685,7 @@ dropped."
     (define-key map [(control ?c) (control ?c)] 'cl-ledger-reconcile-finish)
     (define-key map [(control ?x) (control ?s)] 'cl-ledger-reconcile-save)
     (define-key map [(control ?l)] 'cl-ledger-reconcile-refresh)
+    (define-key map [(control ?r)] 'cl-ledger-reconcile-isearch-backward)
     (define-key map [? ] 'cl-ledger-reconcile-toggle)
     (define-key map [space] 'cl-ledger-reconcile-toggle)
     (define-key map [?a] 'cl-ledger-reconcile-add)
