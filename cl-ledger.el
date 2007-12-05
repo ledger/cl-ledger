@@ -49,8 +49,7 @@
 ;;
 ;; In the reconcile buffer, use SPACE to toggle the cleared status of
 ;; a transaction, C-x C-s to save changes (to the ledger file as
-;; well), or C-c C-r to attempt an auto-reconcilation based on the
-;; statement's ending date and balance.
+;; well).
 ;;
 ;; The ledger reports command asks the user to select a report to run
 ;; then creates a report buffer containing the results of running the
@@ -124,7 +123,7 @@
        'cl-ledger-complete-at-point)
   (set (make-local-variable 'pcomplete-termination-string) "")
 
-  (add-hook 'after-save-hook #'cl-ledger-clear-cache-variables)
+  (add-hook 'after-save-hook #'cl-ledger-clear-cache-variables nil t)
 
   (let ((map (current-local-map)))
     (define-key map [(control ?c) (control ?a)] 'cl-ledger-add-entry)
@@ -505,25 +504,6 @@ dropped."
 (defvar cl-ledger-buf nil)
 (defvar cl-ledger-acct nil)
 
-(defun cl-ledger-reconcile-toggle ()
-  (interactive)
-  (let ((where (get-text-property (point) 'where))
-	(account cl-ledger-acct)
-	(inhibit-read-only t)
-	cleared)
-    (when (equal (car where) "<stdin>")
-      (with-current-buffer cl-ledger-buf
-	  (goto-char (cdr where))
-	(setq cleared (cl-ledger-toggle-current :pending)))
-      (if cleared
-	  (add-text-properties (line-beginning-position)
-			       (line-end-position)
-			       (list 'face 'bold))
-	(remove-text-properties (line-beginning-position)
-				(line-end-position)
-				(list 'face))))
-    (forward-line)))
-
 (defun cl-ledger-reconcile-refresh ()
   (interactive)
   (let ((inhibit-read-only t)
@@ -533,6 +513,25 @@ dropped."
     (set-buffer-modified-p t)
     (goto-char (point-min))
     (forward-line line)))
+
+(defun cl-ledger-reconcile-toggle ()
+  (interactive)
+  (let ((where (get-text-property (point) 'where))
+	(account cl-ledger-acct)
+	(inhibit-read-only t)
+	cleared)
+    (with-current-buffer cl-ledger-buf
+      (goto-char (cdr where))
+      (setq cleared (cl-ledger-toggle-current :pending)))
+    (if cleared
+	(add-text-properties (line-beginning-position)
+			     (line-end-position)
+			     (list 'face 'bold))
+      (remove-text-properties (line-beginning-position)
+			      (line-end-position)
+			      (list 'face)))
+    (forward-line)
+    (cl-ledger-reconcile-update-mode-string)))
 
 (defun cl-ledger-reconcile-refresh-after-save ()
   (let ((buf (get-buffer "*Reconcile*")))
@@ -550,28 +549,25 @@ dropped."
 (defun cl-ledger-reconcile-delete ()
   (interactive)
   (let ((where (get-text-property (point) 'where)))
-    (when (equal (car where) "<stdin>")
-      (with-current-buffer cl-ledger-buf
-	(goto-char (cdr where))
-	(cl-ledger-delete-current-entry))
-      (let ((inhibit-read-only t))
-	(goto-char (line-beginning-position))
-	(delete-region (point) (1+ (line-end-position)))
-	(set-buffer-modified-p t)))))
+    (with-current-buffer cl-ledger-buf
+      (goto-char (cdr where))
+      (cl-ledger-delete-current-entry))
+    (let ((inhibit-read-only t))
+      (goto-char (line-beginning-position))
+      (delete-region (point) (1+ (line-end-position)))
+      (set-buffer-modified-p t))))
 
 (defun cl-ledger-reconcile-visit ()
   (interactive)
   (let ((where (get-text-property (point) 'where)))
-    (when (equal (car where) "<stdin>")
-      (switch-to-buffer-other-window cl-ledger-buf)
-      (goto-char (cdr where)))))
+    (switch-to-buffer-other-window cl-ledger-buf)
+    (goto-char (cdr where))))
 
 (defun cl-ledger-reconcile-save ()
   (interactive)
   (with-current-buffer cl-ledger-buf
     (save-buffer))
-  (set-buffer-modified-p nil)
-  (cl-ledger-display-balance))
+  (set-buffer-modified-p nil))
 
 (defun cl-ledger-reconcile-quit ()
   (interactive)
@@ -584,47 +580,45 @@ dropped."
     (while (not (eobp))
       (let ((where (get-text-property (point) 'where))
 	    (face  (get-text-property (point) 'face)))
-	(if (and (eq face 'bold)
-		 (equal (car where) "<stdin>"))
+	(if (eq face 'bold)
 	    (with-current-buffer cl-ledger-buf
-	      (goto-char (cdr where))
-	      (cl-ledger-toggle-current :cleared))))
+	      (goto-char (car where))
+	      (unless (eq (cl-ledger-transaction-state) :cleared)
+		(cl-ledger-toggle-current :cleared)))))
       (forward-line 1)))
   (cl-ledger-reconcile-save))
 
 (defun cl-ledger-do-reconcile ()
-  (let* ((buf cl-ledger-buf)
-	 (account cl-ledger-acct)
-	 (items
-	  (with-temp-buffer
-	    (let ((exit-code
-		   (cl-ledger-run-ledger buf "--uncleared" "emacs" account)))
-	      (when (= 0 exit-code)
-		(goto-char (point-min))
-		(unless (eobp)
-		  (unless (looking-at "(")
-		    (error (buffer-string)))
-		  (read (current-buffer))))))))
+  (let ((items (slime-eval
+		`(ledger:sexp-report ,(buffer-file-name cl-ledger-buf)
+				     :account ,cl-ledger-acct
+				     :display "!X"))))
     (dolist (item items)
       (let ((index 1))
-	(dolist (xact (nthcdr 5 item))
+	(dolist (xact (nth 4 item))
 	  (let ((beg (point))
 		(where
-		 (with-current-buffer buf
+		 (with-current-buffer cl-ledger-buf
 		   (cons
-		    (nth 0 item)
+		    (save-excursion
+		      (goto-line (nth 0 item))
+		      (point-marker))
 		    (if cl-ledger-clear-whole-entries
-			(copy-marker (nth 1 item))
-		      (copy-marker (nth 0 xact)))))))
-	    (insert (format "%s %-30s %-25s %15s\n"
-			    (format-time-string "%m/%d" (nth 2 item))
-			    (nth 4 item) (nth 1 xact) (nth 2 xact)))
-	    (if (nth 3 xact)
-		(set-text-properties beg (1- (point))
-				     (list 'face 'bold
-					   'where where))
-	      (set-text-properties beg (1- (point))
-				   (list 'where where))))
+			(save-excursion
+			  (goto-line (nth 0 item))
+			  (forward-line (length (nth 4 item)))
+			  (point-marker))
+		      (save-excursion
+			(goto-line (nth 0 xact))
+			(point-marker)))))))
+	    (insert (format "%s %-30s %-25s %12s %12s\n"
+			    (format-time-string "%m/%d" (nth 1 item))
+			    (nth 3 item) (nth 2 xact)
+			    (nth 3 xact) (nth 4 xact)))
+	    (set-text-properties beg (1- (point)) (list 'where where))
+	    (unless (eq (nth 1 xact) :uncleared)
+	      (add-text-properties beg (1- (point))
+				   (list 'face 'bold where))))
 	  (setq index (1+ index)))))
     (goto-char (point-min))
     (set-buffer-modified-p nil)
@@ -636,16 +630,26 @@ dropped."
 	(rbuf (get-buffer "*Reconcile*")))
     (if rbuf
 	(kill-buffer rbuf))
-    (add-hook 'after-save-hook 'cl-ledger-reconcile-refresh-after-save)
+    (add-hook 'after-save-hook 'cl-ledger-reconcile-refresh-after-save nil t)
     (with-current-buffer
 	(pop-to-buffer (get-buffer-create "*Reconcile*"))
       (cl-ledger-reconcile-mode)
       (set (make-local-variable 'cl-ledger-buf) buf)
       (set (make-local-variable 'cl-ledger-acct) account)
       (cl-ledger-do-reconcile)
-      (when arg
-	(sit-for 0 0)
-	(call-interactively #'cl-ledger-auto-reconcile)))))
+      (cl-ledger-reconcile-update-mode-string))))
+
+(defun cl-ledger-reconcile-update-mode-string ()
+  (let ((cleared-total
+	 (nth 4 (car (nth 4 (car (slime-eval
+				  `(ledger:sexp-report
+				    ,(buffer-file-name cl-ledger-buf)
+				    :account ,cl-ledger-acct
+				    :not-status :uncleared :tail 1))))))))
+    (setf mode-name
+	  (if cleared-total
+	      (concat "Reconcile:" cleared-total)
+	    "Reconcile"))))
 
 (defvar cl-ledger-reconcile-mode-abbrev-table)
 
@@ -655,15 +659,14 @@ dropped."
     (define-key map [(control ?m)] 'cl-ledger-reconcile-visit)
     (define-key map [return] 'cl-ledger-reconcile-visit)
     (define-key map [(control ?c) (control ?c)] 'cl-ledger-reconcile-finish)
-    (define-key map [(control ?c) (control ?r)] 'cl-ledger-auto-reconcile)
     (define-key map [(control ?x) (control ?s)] 'cl-ledger-reconcile-save)
     (define-key map [(control ?l)] 'cl-ledger-reconcile-refresh)
     (define-key map [? ] 'cl-ledger-reconcile-toggle)
+    (define-key map [space] 'cl-ledger-reconcile-toggle)
     (define-key map [?a] 'cl-ledger-reconcile-add)
     (define-key map [?d] 'cl-ledger-reconcile-delete)
     (define-key map [?n] 'next-line)
     (define-key map [?p] 'previous-line)
-    (define-key map [?r] 'cl-ledger-auto-reconcile)
     (define-key map [?s] 'cl-ledger-reconcile-save)
     (define-key map [?q] 'cl-ledger-reconcile-quit)
     (use-local-map map)))
@@ -858,40 +861,6 @@ text that should replace the format specifier."
 	       (buffer-substring 7 (point-max)))
 	   (concat (if insert-year entry-text
 		     (substring entry-text 6)) "\n"))) "\n"))))
-
-(defun cl-ledger-auto-reconcile (balance date)
-  (interactive "sReconcile to balance (negative for a liability): \nsStatement date (default: now): ")
-  (let ((buffer cl-ledger-buf)
-	(account cl-ledger-acct) cleared)
-    ;; attempt to auto-reconcile in the background
-    (with-temp-buffer
-      (let ((exit-code
-	     (cl-ledger-run-ledger buffer "--format" "%xB\\n"
-	      "--reconcile" balance "--reconcile-date" date
-	      "register" account)))
-	(if (/= 0 exit-code)
-	    (error "Failed to reconcile account '%s' to balance '%s'"
-		   account balance)
-	  (goto-char (point-min))
-	  (unless (looking-at "[0-9]")
-	    (error (buffer-string)))
-	  (while (not (eobp))
-	    (setq cleared
-		  (cons (1+ (read (current-buffer))) cleared))
-	    (forward-line)))))
-    (goto-char (point-min))
-    (with-current-buffer cl-ledger-buf
-      (setq cleared (mapcar 'copy-marker (nreverse cleared))))
-    (let ((inhibit-redisplay t))
-      (dolist (pos cleared)
-	(while (and (not (eobp))
-		    (/= pos (cdr (get-text-property (point) 'where))))
-	  (forward-line))
-	(unless (eobp)
-	  (cl-ledger-reconcile-toggle))))
-    (goto-char (point-min))))
-
-;; Reconcile mode
 
 ;; Context sensitivity
 

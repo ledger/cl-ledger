@@ -1,4 +1,4 @@
-; -*- ledger -*-
+; -*- cl-ledger -*-
 
 = /^Expenses:Books/
   (Liabilities:Taxes)             -0.10

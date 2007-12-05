@@ -126,7 +126,7 @@
 	 ;; Tail is expensive, because we don't know the length of the
 	 ;; series until every element has been seen (and hence computed).
 	 ;; Expect a large pause for giant data sets.
-	 (setf xacts (subseries 0 (- (collect-length xacts) arg)))))))
+	 (setf xacts (subseries xacts (- (collect-length xacts) arg)))))))
   xacts)
 
 (provide 'transform)

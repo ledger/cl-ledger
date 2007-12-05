@@ -108,6 +108,11 @@
      keyword
      ,#'status-matcher)
 
+    (:not-status
+     keyword
+     ,#'(lambda (value)
+	  (not-matcher (status-matcher value))))
+
     (:begin
      (or string fixed-time)
      ,#'(lambda (value)
@@ -177,7 +182,8 @@
 (declaim (inline choose-if-value-expr))
 (defun choose-if-value-expr (xact-series expr)
   (choose-if (if (functionp expr) expr
-		 (parse-value-expr expr)) xact-series))
+		 (value-expr-function (parse-value-expr expr)))
+	     xact-series))
 
 (provide 'filter)
 
