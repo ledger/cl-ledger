@@ -503,6 +503,7 @@ dropped."
 
 (defvar cl-ledger-buf nil)
 (defvar cl-ledger-acct nil)
+(defvar cl-ledger-goal nil)
 
 (defun cl-ledger-reconcile-refresh ()
   (interactive)
@@ -589,10 +590,11 @@ dropped."
   (cl-ledger-reconcile-save))
 
 (defun cl-ledger-do-reconcile ()
-  (let ((items (slime-eval
-		`(ledger:sexp-report ,(buffer-file-name cl-ledger-buf)
-				     :account ,cl-ledger-acct
-				     :display "!X"))))
+  (let ((items
+	 (slime-eval
+	  `(ledger:sexp-report ,(buffer-file-name cl-ledger-buf)
+			       :account ,cl-ledger-acct
+			       :display "!X"))))
     (dolist (item items)
       (let ((index 1))
 	(dolist (xact (nth 4 item))
@@ -624,8 +626,8 @@ dropped."
     (set-buffer-modified-p nil)
     (toggle-read-only t)))
 
-(defun cl-ledger-reconcile (account &optional arg)
-  (interactive "sAccount to reconcile: \nP")
+(defun cl-ledger-reconcile (account goal-balance &optional arg)
+  (interactive "sAccount to reconcile: \nsTarget balance: \nP")
   (let ((buf (current-buffer))
 	(rbuf (get-buffer "*Reconcile*")))
     (if rbuf
@@ -636,6 +638,7 @@ dropped."
       (cl-ledger-reconcile-mode)
       (set (make-local-variable 'cl-ledger-buf) buf)
       (set (make-local-variable 'cl-ledger-acct) account)
+      (set (make-local-variable 'cl-ledger-goal) goal-balance)
       (cl-ledger-do-reconcile)
       (cl-ledger-reconcile-update-mode-string))))
 
@@ -646,9 +649,15 @@ dropped."
 				    ,(buffer-file-name cl-ledger-buf)
 				    :account ,cl-ledger-acct
 				    :not-status :uncleared :tail 1))))))))
+    ;; jww (2007-12-05): What about when the cleared-total is a balance?
     (setf mode-name
 	  (if cleared-total
-	      (concat "Reconcile:" cleared-total)
+	      (let ((difference
+		     (slime-eval
+		      `(cambl:format-value
+			(cambl:subtract (cambl:amount ,cl-ledger-goal)
+					(cambl:amount ,cleared-total))))))
+		(format "Reconcile:%s/%s" cleared-total difference))
 	    "Reconcile"))))
 
 (defvar cl-ledger-reconcile-mode-abbrev-table)
