@@ -23,6 +23,7 @@
 	   print-report
 	   print-entry
 	   equity-report
+	   sexp-report
 	   derive-entry
 
 	   journal
@@ -84,16 +85,11 @@
 	   make-item-position
 	   copy-item-position
 	   item-position
-	   item-position-begin-char
-	   item-position-end-char
 	   item-position-begin-line
 	   item-position-end-line
 	   item-position-source
 
 	   item-status
-	   uncleared
-	   pending
-	   cleared
 
 	   add-transaction
 	   add-to-contents

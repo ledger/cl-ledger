@@ -75,6 +75,7 @@ for diagnostic output.")
    (:module "reports"
 	    :components ((:file "report")
 			 (:file "register")
+			 (:file "sexp")
 			 (:file "balance")
 			 (:file "print")
 			 (:file "entry"))

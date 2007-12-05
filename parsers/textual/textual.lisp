@@ -30,58 +30,78 @@
 
 (defvar *directive-handlers*
   `(((#\; #\* #\% #\#)
-     . ,#'(lambda (in journal)
-	    (declare (ignore journal))
+     . ,#'(lambda (in line journal)
+	    (declare (ignore line journal))
 	    ;; comma begins a comment; gobble up the rest of
 	    ;; the line
-	    (read-line in nil)))
+	    (read-line in nil)
+	    1))
 
-    ((#\Newline #\Return) . ,#'(lambda (in journal)
-				 (declare (ignore journal))
-				 (read-char in nil)))
+    (#\Return
+     . ,#'(lambda (in line journal)
+	    (declare (ignore line journal))
+	    ;; DOS uses CRLF; Mac uses CR
+	    (if (eq #\Newline (peek-char nil in nil))
+		(read-char in nil))
+	    1))
 
-    (#\Y . ,#'(lambda (in journal)
+    (#\Newline
+     . ,#'(lambda (in line journal)
+	    (declare (ignore line journal))
+	    (read-char in nil)
+	    (format t "Read NL~%")
+	    1))
+
+    (#\Y . ,#'(lambda (in line journal)
+		(declare (ignore line))
 		(read-char in)
 		(peek-char t in)
-		(setf (journal-default-year journal) (read in)
+		(setf (journal-default-year journal)
+		      (read-preserving-whitespace in)
 		      ;; jww (2007-11-15): This is a total hack
-		      (journal-date-format journal) "%m/%d")))
+		      (journal-date-format journal) "%m/%d")
+		0))
 
-    (#\A . ,#'(lambda (in journal)
+    (#\A . ,#'(lambda (in line journal)
+		(declare (ignore line))
 		(read-char in)
 		(peek-char t in)
 		(setf (journal-default-account journal)
 		      (find-account journal (read-line in)
-				    :create-if-not-exists-p t))))
+				    :create-if-not-exists-p t))
+		1))
 
-    (#\D . ,#'(lambda (in journal)
-		(declare (ignore journal))
+    (#\D . ,#'(lambda (in line journal)
+		(declare (ignore line journal))
 		(read-char in)
 		(peek-char t in)
-		(cambl:read-amount in)))
+		(cambl:read-amount in)
+		0))
 
-    (#\N . ,#'(lambda (in journal)
-		(declare (ignore journal))
+    (#\N . ,#'(lambda (in line journal)
+		(declare (ignore line journal))
 		(read-char in)
 		(peek-char t in)
 		(let ((commodity
 		       (cambl:find-commodity (read-line in)
 					     :create-if-not-exists-p t)))
 		  (setf (cambl::get-no-market-price-p
-			 (cambl::commodity-base commodity)) t))))
+			 (cambl::commodity-base commodity)) t)
+		  1)))
 
     (,#'digit-char-p
-     . ,#'(lambda (in journal)
-	    (let ((entry (read-plain-entry in journal)))
+     . ,#'(lambda (in line journal)
+	    (multiple-value-bind (entry lines)
+		(read-plain-entry in line journal)
 	      (if entry
 		  (add-to-contents journal entry)
-		  (error "Failed to read entry at position ~S~%"
-			 (file-position in))))))
+		  (error "Failed to read entry at line ~S~%" line))
+	      lines)))
 
     ((#\@ #\!)
-     . ,#'(lambda (in journal)
+     . ,#'(lambda (in line journal)
 	    (declare (ignore journal))
-	    (let ((symbol (read in))
+	    (let ((symbol (read-preserving-whitespace in))
 		  (argument (read-line in)))
 	      (if (symbolp symbol)
 		  (progn
@@ -94,19 +114,32 @@
 						     sb-ext:code-deletion-note))
 				     (fdefinition symbol))
 				 argument)
-			argument))
-		  argument))))
+			(error "Unrecognized directive \"~S~\" at line ~D"
+			       argument line)))
+		  (error "Unrecognized directive \"~S~\" at line ~D"
+			 argument line))
+	      1)))
 
-    (#\( . ,#'(lambda (in journal)
+    (#\( . ,#'(lambda (in line journal)
 		(declare (ignore journal))
 		(if *allow-embedded-lisp*
-		    (eval (read in))
-		    (error "Embedded Lisp not allowed, set `LEDGER:*ALLOW-EMBEDDED-LISP*'"))))))
+		    (let ((begin-pos (file-position in)) end-pos lines)
+		      (eval (read-preserving-whitespace in))
+		      (setf end-pos (file-position in))
+		      (file-position in begin-pos)
+		      (loop repeat (- end-pos begin-pos) do
+			   (let ((ch (read-char in)) found)
+			     (loop while (member ch '(#\Newline #\Return)) do
+				  (setf found t ch (read-char in)))
+			     (if found (incf lines))))
+		      lines)
+		    (error "Embedded Lisp not allowed at line ~D, ~
+                            set LEDGER:*ALLOW-EMBEDDED-LISP*" line))))))
 
-(defun read-transaction (in entry)
+(defun read-transaction (in line entry)
   (declare (type stream in))
-  (let* ((beg-pos (file-position in))
-	 (xact-line (string-right-trim '(#\Space #\Tab) (read-line in nil)))
+  (let* ((xact-line (string-right-trim '(#\Space #\Tab)
+				       (read-line in nil)))
 	 (groups (and xact-line
 		      (nth-value 1 (cl-ppcre:scan-to-strings
 				    *transaction-scanner* xact-line)))))
@@ -148,12 +181,9 @@
 	   :entry entry
 	   ;;:actual-date
 	   ;;:effective-date
-	   :status (cond ((string= status "*")
-			  'cleared)
-			 ((string= status "!")
-			  'pending)
-			 (t
-			  'uncleared))
+	   :status (cond ((string= status "*") :cleared)
+			 ((string= status "!") :pending)
+			 (t :uncleared))
 	   :account (find-account (entry-journal entry)
 				  (string-right-trim '(#\Space #\Tab)
 						     account-name)
@@ -165,14 +195,14 @@
 			 cost))
 	   :note note
 	   ;;:tags
-	   :position (make-item-position :begin-char beg-pos
-					 :end-char (file-position in))
+	   :position (make-item-position :begin-line line
+					 :end-line line)
 	   :virtualp virtualp
 	   :must-balance-p (if virtualp
 			       (string= open-bracket "[")
 			       t)))))))
 
-(defun read-plain-entry (in journal)
+(defun read-plain-entry (in line journal)
   "Read in the header line for the entry, which has the syntax:
   
     (DATE(=DATE)?)( (*|!))?( (\((.+?)\)))? (.+)(:spacer:;(.+))?
@@ -191,11 +221,11 @@
   9 - A comment giving further details about the entry."
   (declare (type stream in))
   (declare (type journal journal))
-  (let* ((beg-pos (file-position in))
-	 (heading-line (read-line in nil))
+  (let* ((heading-line (read-line in nil))
 	 (groups (and heading-line
 		      (nth-value 1 (cl-ppcre:scan-to-strings
-				    *entry-heading-scanner* heading-line)))))
+				    *entry-heading-scanner* heading-line))))
+	 (lines 1))
     (when groups
       (let ((actual-date (aref groups 0))
 	    (effective-date (aref groups 1))
@@ -203,36 +233,38 @@
 	    (code (aref groups 3))
 	    (payee (aref groups 4))
 	    (note (aref groups 5)))
-	(let ((entry (make-instance
-		      'entry
-		      :journal journal
-		      :actual-date (parse-journal-date journal actual-date)
-		      :effective-date
-		      (and effective-date
-			   (parse-journal-date journal effective-date))
-		      :status (cond ((string= status "*")
-				     'cleared)
-				    ((string= status "!")
-				     'pending)
-				    (t
-				     'uncleared))
-		      :code code
-		      :payee (string-right-trim '(#\Space #\Tab) payee)
-		      :note note
-		      :position
-		      (make-item-position :begin-char beg-pos
-					  :end-char (file-position in)))))
-	  (loop
-	     for transaction = (read-transaction in entry)
-	     while transaction do
-	     (add-transaction entry transaction))
+	(let ((entry
+	       (make-instance
+		'entry
+		:journal journal
+		:actual-date (parse-journal-date journal actual-date)
+		:effective-date
+		(and effective-date
+		     (parse-journal-date journal effective-date))
+		:status (cond ((string= status "*") :cleared)
+			      ((string= status "!") :pending)
+			      (t :uncleared))
+		:code code
+		:payee (string-right-trim '(#\Space #\Tab) payee)
+		:note note
+		:position (make-item-position :begin-line line))))
 
-	  (normalize-entry entry))))))
+	  (loop for transaction = (read-transaction in (+ line lines) entry)
+	     while transaction do (add-transaction entry transaction)
+	     (incf lines))
+	  (incf lines)
+
+	  (setf (item-position-end-line (entry-position entry))
+		(+ line lines))
+
+	  (normalize-entry entry)
+	  (values entry lines))))))
 
 (defun read-textual-journal (in binder)
   (declare (type stream in))
   (declare (type binder binder))
-  (let ((journal (make-instance 'journal :binder binder)))
+  (let ((journal (make-instance 'journal :binder binder))
+	(line-number 1))
     (loop
        for c = (peek-char nil in nil)
        while c do
@@ -252,11 +284,11 @@
 			      key))))
 		*directive-handlers*))))
 	 (if handler
-	     (funcall handler in journal)
+	     (incf line-number (funcall handler in line-number journal))
 	     (progn
-	       (format t "Unhandled directive (pos ~D): ~C~%"
-		       (file-position in) c)
-	       (read-line in nil)))))
+	       (format t "Unhandled directive (line ~D): ~C~%" line-number c)
+	       (read-line in nil)
+	       (incf line-number)))))
     journal))
 
 (defun ledger-text-directive/include (argument)

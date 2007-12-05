@@ -63,7 +63,7 @@
 		   (= 1 (length (entry-transactions entry))))
 	  (assert (not (value-zerop* balance)))
 	  (let ((new-xact (make-transaction :entry entry
-					    :status 'uncleared
+					    :status :uncleared
 					    :account default-account
 					    :generatedp t)))
 	    (add-transaction entry new-xact))
@@ -115,8 +115,8 @@
 			   (not (xact-must-balance-p x))))
 	    (unless empty-allowed
 	      (error "Only one transaction with null amount allowed per entry (beg ~S end ~S)"
-		     (item-position-begin-char (entry-position entry))
-		     (item-position-end-char (entry-position entry))))
+		     (item-position-begin-line (entry-position entry))
+		     (item-position-end-line (entry-position entry))))
 	    (setf empty-allowed nil)
 
 	    ;; If one transaction gives no value at all, its value will become
@@ -157,8 +157,8 @@
 	    entry
 	  (setf (entry-normalizedp entry) t))
 	(error "Entry does not balance (beg ~S end ~S); remaining balance is:~%~A"
-	       (item-position-begin-char (entry-position entry))
-	       (item-position-end-char (entry-position entry))
+	       (item-position-begin-line (entry-position entry))
+	       (item-position-end-line (entry-position entry))
 	       (format-value balance :width 20)))))
 
 (provide 'normalize)

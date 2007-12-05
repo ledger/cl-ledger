@@ -5,14 +5,12 @@
 (in-package :ledger)
 
 (defstruct (item-position)
-  begin-char
-  end-char
   begin-line
   end-line
   source)
 
 (deftype item-status ()
-  '(member uncleared pending cleared))
+  '(member :uncleared :pending :cleared))
 
 (defstruct (transaction
 	     (:conc-name get-xact-)
@@ -20,7 +18,7 @@
   entry
   (actual-date nil     :type (or fixed-time null))
   (effective-date nil  :type (or fixed-time null))
-  (status 'uncleared   :type item-status)
+  (status :uncleared   :type item-status)
   account
   (amount nil	       :type (or value value-expr null))
   (cost nil	       :type (or value value-expr null))
@@ -40,7 +38,7 @@
    (effective-date :accessor entry-effective-date  :initarg :effective-date
 		   :initform nil :type (or fixed-time null))
    (status         :accessor entry-status	   :initarg :status
-		   :initform 'uncleared :type item-status)
+		   :initform :uncleared :type item-status)
    (code	   :accessor entry-code		   :initarg :code
 		   :initform nil :type (or string null))
    (payee	   :accessor entry-payee	   :initarg :payee

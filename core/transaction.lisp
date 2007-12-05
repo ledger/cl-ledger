@@ -120,7 +120,7 @@
 	    (xact-generatedp transaction)
 	    (xact-calculatedp transaction)
 	    (let ((pos (xact-position transaction)))
-	      (and pos (item-position-begin-char pos))))))
+	      (and pos (item-position-begin-line pos))))))
 
 (declaim (inline xact-value))
 (defun xact-value (xact key)
@@ -182,17 +182,17 @@
 (declaim (inline xact-cleared-p))
 (defun xact-cleared-p (xact)
   (declare (type transaction xact))
-  (eq (xact-status xact) 'cleared))
+  (eq (xact-status xact) :cleared))
 
 (declaim (inline xact-pending-p))
 (defun xact-pending-p (xact)
   (declare (type transaction xact))
-  (eq (xact-status xact) 'pending))
+  (eq (xact-status xact) :pending))
 
 (declaim (inline xact-uncleared-p))
 (defun xact-uncleared-p (xact)
   (declare (type transaction xact))
-  (eq (xact-status xact) 'uncleared))
+  (eq (xact-status xact) :uncleared))
 
 (defun group-transactions-by-entry (xacts-list)
   "\"Clump\" the incoming stream of transactions into sublists, where adjacent

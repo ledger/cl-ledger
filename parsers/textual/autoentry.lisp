@@ -8,10 +8,11 @@
    (predicate :accessor auto-entry-predicate
 	      :initarg :predicate :type function)))
 
-(defun read-automated-entry (in journal)
-  (declare (type journal journal))
+(defun read-automated-entry (in line journal)
   (declare (type stream in))
+  (declare (type journal journal))
   (let* ((predicate-expr (read-line in))
+	 (lines 1)
          (value-expr (or (parse-value-expr predicate-expr)
 			 (error "Failed to parse predicate value expression: ~S"
 				predicate-expr)))
@@ -21,9 +22,11 @@
                          :predicate-expr (value-expr-string value-expr)
                          :predicate (value-expr-function value-expr))))
     (loop
-       for transaction = (read-transaction in entry)
+       for transaction = (read-transaction in (+ line lines) entry)
        while transaction do
-       (add-transaction entry transaction))
+       (add-transaction entry transaction)
+       (incf lines))
+    (incf lines)
 
     (let ((automated-entries (assoc :automated-entries
                                     (journal-data journal))))
@@ -32,15 +35,16 @@
           (push (cons :automated-entries (list entry))
                 (journal-data journal))))
 
-    entry))
+    (values entry lines)))
 
-(pushnew `(#\= . ,#'(lambda (in journal)
+(pushnew `(#\= . ,#'(lambda (in line journal)
                       (read-char in)
-		      (let ((entry (read-automated-entry in journal)))
+		      (multiple-value-bind (entry lines)
+			  (read-automated-entry in line journal)
 			(if entry
 			    (add-to-contents journal entry)
-			    (error "Failed to read entry at position ~S~%"
-				   (file-position in))))))
+			    (error "Failed to read entry at line ~D~%" line))
+			lines)))
          *directive-handlers*)
 
 (defun apply-automated-entries (entry &optional postp)

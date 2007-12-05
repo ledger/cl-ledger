@@ -71,7 +71,8 @@
 				    0) :width 12 :latter-width 80))))))
 
 (defun print-register (xact-series &key (reporter nil) (no-total nil)
-		       (output-stream *standard-output*) &allow-other-keys)
+		       (output-stream *standard-output*)
+		       &allow-other-keys)
   (let ((reporter (or reporter
 		      (register-reporter :no-total no-total
 					 :output-stream output-stream))))
