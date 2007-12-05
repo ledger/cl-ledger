@@ -134,6 +134,7 @@
     (define-key map [(control ?c) (control ?e)] 'cl-ledger-toggle-current-entry)
     (define-key map [(control ?c) (control ?r)] 'cl-ledger-reconcile)
     (define-key map [(control ?c) (control ?s)] 'cl-ledger-sort)
+    (define-key map [(control ?c) (control ?t)] 'cl-ledger-total-at-point)
 
     (define-key map [tab] 'pcomplete)
     (define-key map [(control ?i)] 'pcomplete)
@@ -208,6 +209,18 @@
 			     (push (nth 2 xact) result)))
 		       (cl-ledger-entries))
 	       (nreverse result))))))
+
+(defun cl-ledger-total-at-point ()
+  (interactive)
+  (let ((xact (get-text-property (point) 'cl-ledger-xact)))
+    (when xact
+      (let ((account (nth 2 xact)))
+	(message "Account total at this transaction is %s"
+	 (nth 4 (car (nth 4 (car (slime-eval
+				  `(ledger:sexp-report
+				    ,(buffer-file-name (current-buffer))
+				    :account ,(concat "^" account "$")
+				    :tail 1)))))))))))
 
 ;;;_* Context-sensitive completion
 
