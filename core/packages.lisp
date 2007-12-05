@@ -73,6 +73,7 @@
 	   xact-uncleared-p
 	   xact-account
 	   xact-amount
+	   xact-amount*
 	   xact-note
 	   xact-tags
 	   xact-virtualp

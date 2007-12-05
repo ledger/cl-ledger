@@ -82,10 +82,11 @@
 		(read-char in)
 		(peek-char t in)
 		(let ((commodity
-		       (cambl:find-commodity (read-line in)
-					     :create-if-not-exists-p t)))
-		  (setf (cambl::get-no-market-price-p
-			 (cambl::commodity-base commodity)) t)
+		       (find-commodity (read-line in)
+				       :create-if-not-exists-p t)))
+		  (assert (not (annotated-commodity-p commodity)))
+		  ;; jww (2007-12-05): export this
+		  (setf (commodity-no-market-price-p commodity) t)
 		  1)))
 
     (,#'digit-char-p

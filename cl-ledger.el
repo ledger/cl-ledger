@@ -172,8 +172,10 @@
   (or *cl-ledger-entries*
       (prog1
 	  (setf *cl-ledger-entries*
-		(slime-eval `(ledger:sexp-report ,(buffer-file-name
-						   (current-buffer)))))
+		(progn
+		  (slime-eval `(ledger:sexp-report ,(buffer-file-name
+						     (current-buffer))
+						   :no-total t))))
 	(save-excursion
 	  (dolist (entry *cl-ledger-entries*)
 	    (goto-line (nth 0 entry))
@@ -181,12 +183,13 @@
 				 (list 'cl-ledger-what 'entry))
 	    (let ((begin (point)))
 	      (dolist (xact (nth 4 entry))
-		(forward-line 1)
-		(assert (= (line-number-at-pos) (nth 0 xact)))
-		(add-text-properties (line-beginning-position)
-				     (1+ (line-end-position))
-				     (list 'cl-ledger-what 'transaction
-					   'cl-ledger-xact xact)))
+		(when (nth 0 xact)
+		  (forward-line 1)
+		  (assert (= (line-number-at-pos) (nth 0 xact)))
+		  (add-text-properties (line-beginning-position)
+				       (1+ (line-end-position))
+				       (list 'cl-ledger-what 'transaction
+					     'cl-ledger-xact xact))))
 	      (forward-line 1)
 	      (add-text-properties begin (point)
 				   (list 'cl-ledger-entry entry))))))))
@@ -215,24 +218,24 @@
   (cl-ledger-entries)
   (let ((xact (get-text-property (point) 'cl-ledger-xact)))
     (when xact
-      (let ((account (nth 2 xact))
-	    (entry (slime-eval `(ledger:sexp-report
-				 ,(buffer-file-name (current-buffer))
-				 :account ,(concat "^" account "$")
-				 :limit ,(format "line <= %d"
-						 (line-number-at-pos))
-				 :tail 1))))
+      (let* ((account (nth 2 xact))
+	     (entry (progn
+		      (slime-eval `(ledger:sexp-report
+				    ,(buffer-file-name (current-buffer))
+				    :account ,(concat "^" account "$")
+				    :limit ,(format "line <= %d"
+						    (line-number-at-pos))
+				    :tail 1)))))
 	(message "Account total at this transaction is %s"
 		 (nth 4 (car (nth 4 (car entry)))))))))
 
 ;;;_* Context-sensitive completion
 
 (defsubst cl-ledger-thing-at-point ()
-  (let ((type (get-text-property (point) 'cl-ledger-what)))
-    (or type
-	(progn
-	  (cl-ledger-entries)
-	  (cl-ledger-thing-at-point)))))
+  (or (get-text-property (point) 'cl-ledger-what)
+      (progn
+	(cl-ledger-entries)
+	(get-text-property (point) 'cl-ledger-what))))
 
 (defun cl-ledger-parse-arguments ()
   "Parse whitespace separated arguments in the current region."
@@ -500,10 +503,11 @@ dropped."
     clear))
 
 (defun cl-ledger-set-entity (line function value)
-  (slime-eval
-   `(cl:setf (,function (ledger:find-current-entity
-			 ,(buffer-file-name (current-buffer)) ,line))
-	     ,value)))
+  (progn
+    (slime-eval
+     `(cl:setf (,function (ledger:find-current-entity
+			   ,(buffer-file-name (current-buffer)) ,line))
+	       ,value))))
 
 (defun cl-ledger-toggle-current (&optional style)
   (interactive)
@@ -607,10 +611,11 @@ dropped."
 
 (defun cl-ledger-do-reconcile ()
   (let ((items
-	 (slime-eval
-	  `(ledger:sexp-report ,(buffer-file-name cl-ledger-buf)
-			       :account ,cl-ledger-acct
-			       :display "!X"))))
+	 (progn
+	   (slime-eval
+	    `(ledger:sexp-report ,(buffer-file-name cl-ledger-buf)
+				 :account ,cl-ledger-acct
+				 :display "!X")))))
     (dolist (item items)
       (let ((index 1))
 	(dolist (xact (nth 4 item))
@@ -666,22 +671,24 @@ dropped."
     (call-interactively 'isearch-backward)))
 
 (defun cl-ledger-reconcile-update-mode-string ()
-  (let ((cleared-total
-	 (nth 4 (car (nth 4 (car (slime-eval
-				  `(ledger:sexp-report
-				    ,(buffer-file-name cl-ledger-buf)
-				    :account ,cl-ledger-acct
-				    :not-status :uncleared :tail 1))))))))
+  (let* ((entries (progn
+		    (slime-eval
+		     `(ledger:sexp-report
+		       ,(buffer-file-name cl-ledger-buf)
+		       :account ,cl-ledger-acct
+		       :not-status :uncleared :tail 1))))
+	 (cleared-total (nth 4 (car (nth 4 (car entries))))))
     ;; jww (2007-12-05): What about when the cleared-total is a balance?
     (setf mode-name
 	  (if cleared-total
 	      (let ((difference
-		     (slime-eval
-		      `(cl:let ((diff (cambl:subtract
-				       (cambl:amount* ,cl-ledger-goal)
-				       (cambl:amount* ,cleared-total))))
-			       (cl:unless (cambl:value-zerop diff)
-					  (cambl:format-value diff))))))
+		     (progn
+		       (slime-eval
+			`(cl:let ((diff (cambl:subtract
+					 (cambl:amount* ,cl-ledger-goal)
+					 (cambl:amount* ,cleared-total))))
+				 (cl:unless (cambl:value-zerop diff)
+					    (cambl:format-value diff)))))))
 
 		(if difference
 		    (format "Reconcile:%s/%s" cleared-total difference)
@@ -715,12 +722,13 @@ dropped."
 ;;;_* A command-line interface to CL-Ledger, in the style of 2.6
 
 (defun cl-ledger-eval (command &rest args)
-  (slime-eval
-   `(cl:with-output-to-string
-     (str)
-     (,command ,(expand-file-name cl-ledger-file)
-	       ,@args
-	       :output-stream str))))
+  (progn
+    (slime-eval
+     `(cl:with-output-to-string
+       (str)
+       (,command ,(expand-file-name cl-ledger-file)
+		 ,@args
+		 :output-stream str)))))
 
 (defun eshell/ledger (&rest args)
   ;; Convert the argument list to canonical Lisp form
@@ -865,7 +873,7 @@ Return the difference in the format of a time value."
   (catch 'found
     (cl-ledger-iterate-entries
      #'(lambda (start date mark desc)
-	 (if (ledger-time-less-p moment date)
+	 (if (cl-ledger-time-less-p moment date)
 	     (throw 'found start))))))
 
 (defun cl-ledger-current-entry-bounds ()
@@ -885,9 +893,11 @@ Return the difference in the format of a time value."
 ;; These functions are specific to CL-Ledger
 
 (defun cl-ledger-iterate-entries (callback)
-  (dolist (entry (slime-eval
-		  `(ledger:register-sexp
-		    ,(buffer-file-name (current-buffer)))))
+  (dolist (entry
+	   (progn
+	     (slime-eval
+	      `(ledger:register-sexp
+		,(buffer-file-name (current-buffer))))))
     (apply callback (butlast entry (- (length entry) 4)))))
 
 ;;; Code relating to Ledger 2.x:

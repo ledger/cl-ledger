@@ -154,16 +154,14 @@
   (the value
     (or (xact-value xact :computed-amount)
 	(let ((amount (get-xact-amount xact)))
-	  (cond
-	    ((valuep amount) amount)
-	    ((null amount)
+	  (etypecase amount
+	    (value amount)
+	    (null
 	     (error "Resolving transaction amount for unnormalized data"))
-	    ((value-expr-p amount)
+	    (value-expr
 	     (setf amount (value-expr-call amount xact)
 		   (xact-value xact :computed-amount) amount)
-	     amount)
-	    (t
-	     (error "impossible")))))))
+	     amount))))))
 
 (defun xact-amount-expr (xact)
   (declare (type transaction xact))
@@ -181,6 +179,25 @@
   (setf (xact-value xact :computed-amount) nil)
   (setf (get-xact-amount xact) value))
 (defsetf xact-amount set-xact-amount)
+
+(defun xact-amount* (xact)
+  (declare (type transaction xact))
+  (the (or value null)
+    (or (xact-value xact :computed-amount)
+	(let ((amount (get-xact-amount xact)))
+	  (etypecase amount
+	    (value amount)
+	    (null nil)
+	    (value-expr
+	     (setf amount (value-expr-call amount xact)
+		   (xact-value xact :computed-amount) amount)
+	     amount))))))
+
+(declaim (inline set-xact-amount*))
+(defun set-xact-amount* (xact value)
+  (setf (xact-value xact :computed-amount) nil)
+  (setf (get-xact-amount xact) value))
+(defsetf xact-amount* set-xact-amount*)
 
 (declaim (inline xact-cleared-p))
 (defun xact-cleared-p (xact)

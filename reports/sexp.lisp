@@ -18,7 +18,8 @@
 	       (entry-payee entry)
 	       (mapcar
 		#'(lambda (xact)
-		    (list (item-position-begin-line (xact-position xact))
+		    (list (and (xact-position xact)
+			       (item-position-begin-line (xact-position xact)))
 			  (xact-status xact)
 			  (account-fullname (xact-account xact))
 			  (format-value (xact-amount xact))

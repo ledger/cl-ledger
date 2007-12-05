@@ -20,38 +20,28 @@
   ;; Scan through and compute the total balance for the entry.  This
   ;; is used for auto-calculating the value of entries with no cost,
   ;; and the per-unit price of unpriced commodities.
-  (let ((balance (make-instance 'balance))
+  (let ((balance (balance))
         (no-amounts t)
         saw-null)
     (do-transactions (x entry)
-      (let ((amt (get-xact-amount x)))
-	(if (value-expr-p amt)
-	    (setf (get-xact-amount x)
-		  (value-expr-call amt x))))
-
       (when (or (not (xact-virtualp x))
 		(xact-must-balance-p x))
-	(let ((p (or (xact-cost x)
-		     (get-xact-amount x))))
+	(let* ((amt (xact-amount* x))
+	       (cost (xact-cost x))
+	       (p (or cost amt)))
 	  (if p
 	      (progn
 		(add* balance p)
-		(if no-amounts
-		    (setf no-amounts nil))
-
-		(assert (get-xact-amount x))
-
-		(if (and (xact-cost x)
-			 (commodity-annotated-p
-			  (amount-commodity (get-xact-amount x))))
-		    (let* ((commodity (amount-commodity (get-xact-amount x)))
+		(if no-amounts (setf no-amounts nil))
+		(if (and cost
+			 (annotated-commodity-p (amount-commodity amt)))
+		    (let* ((commodity (amount-commodity amt))
 			   (price (annotation-price
 				   (commodity-annotation commodity))))
 		      (if price
 			  (add* balance
-				(subtract (multiply price
-						    (get-xact-amount x))
-					  (xact-cost x)))))))
+				(subtract (multiply price amt)
+					  cost))))))
 	      (setf saw-null t)))))
 
     ;; If it's a null entry, then let the user have their fun
@@ -78,7 +68,7 @@
 		 (not (value-zerop* balance))
 		 (= 2 (balance-commodity-count balance)))
 	(let* ((x (first (entry-transactions entry)))
-	       (commodity (amount-commodity (get-xact-amount x)))
+	       (commodity (amount-commodity (xact-amount* x)))
 	       (amount (copy-amount
 			(amount-in-balance balance commodity)))
 	       (balancing-amount
@@ -96,7 +86,7 @@
 			(not (eq (amount-commodity amount) commodity)))
 	     do
 	     (subtract* balance amount)
-	     (if (and commodity (not (commodity-annotated-p commodity)))
+	     (if (and commodity (not (annotated-commodity-p commodity)))
 		 (setf (amount-commodity amount)
 		       (annotate-commodity commodity
 					   (make-commodity-annotation
@@ -110,7 +100,7 @@
       ;; can, and performing any on-the-fly calculations.
       (let ((empty-allowed t))
 	(do-transactions (x entry)
-	  (unless (or (get-xact-amount x)
+	  (unless (or (xact-amount* x)
 		      (and (xact-virtualp x)
 			   (not (xact-must-balance-p x))))
 	    (unless empty-allowed
@@ -135,7 +125,7 @@
 		     do
 		     (let ((amt (negate (cdr pair))))
 		       (if first
-			   (setf (get-xact-amount x) amt first nil)
+			   (setf (xact-amount* x) amt first nil)
 			   (let ((new-xact
 				  (make-transaction :entry entry
 						    :account (xact-account x)
@@ -144,9 +134,11 @@
 			     (add-transaction entry new-xact)))
 		       (add* balance amt))))
 		(progn
-		  (setf (get-xact-amount x) (negate balance)
+		  (setf (xact-amount* x) (negate balance)
 			(xact-calculatedp x) t)
-		  (add* balance (get-xact-amount x)))))))
+		  (if (amount-p balance)
+		      (add* balance (xact-amount* x))
+		      (setf balance (add balance (xact-amount* x)))))))))
 
       (if *post-normalization-functions*
 	  (dolist (function *post-normalization-functions*)
