@@ -29,7 +29,10 @@
 
 (declaim (inline xact-status set-xact-status))
 (defun xact-status (xact)
-  (get-xact-status xact))
+  (let ((entry-status (entry-status (xact-entry xact))))
+   (if (equal :uncleared entry-status)
+       (get-xact-status xact)
+       entry-status)))
 (defun set-xact-status (xact value)
   (setf (get-xact-status xact) value))
 (defsetf xact-status set-xact-status)
@@ -212,7 +215,7 @@ be:
 	       (if entries
 		   (if (eq (xact-entry (caar entries))
 			   (xact-entry xact))
-		       (cons (cons xact (first entries))
+		       (cons (nconc (first entries) (list xact))
 			     (rest entries))
 		       (cons (list xact) entries))
 		   (list (list xact))))

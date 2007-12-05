@@ -124,7 +124,7 @@
        'cl-ledger-complete-at-point)
   (set (make-local-variable 'pcomplete-termination-string) "")
 
-  (add-hook 'after-save-hook #'cl-ledger-reset-cache-variables)
+  (add-hook 'after-save-hook #'cl-ledger-clear-cache-variables)
 
   (let ((map (current-local-map)))
     (define-key map [(control ?c) (control ?a)] 'cl-ledger-add-entry)
@@ -162,7 +162,7 @@
 (defvar *cl-ledger-account-tree* nil)
 (make-variable-buffer-local '*cl-ledger-account-tree*)
 
-(defun cl-ledger-reset-cache-variables ()
+(defun cl-ledger-clear-cache-variables ()
   (setf *cl-ledger-entries* nil
 	*cl-ledger-unique-payees* nil
 	*cl-ledger-unique-accounts* nil
@@ -170,9 +170,26 @@
 
 (defun cl-ledger-entries ()
   (or *cl-ledger-entries*
-      (setf *cl-ledger-entries*
-	    (slime-eval `(ledger:sexp-report ,(buffer-file-name
-					       (current-buffer)))))))
+      (prog1
+	  (setf *cl-ledger-entries*
+		(slime-eval `(ledger:sexp-report ,(buffer-file-name
+						   (current-buffer)))))
+	(save-excursion
+	  (dolist (entry *cl-ledger-entries*)
+	    (goto-line (nth 0 entry))
+	    (add-text-properties (point) (line-end-position)
+				 (list 'cl-ledger-what 'entry))
+	    (let ((begin (point)))
+	      (dolist (xact (nth 4 entry))
+		(forward-line 1)
+		(assert (= (line-number-at-pos) (nth 0 xact)))
+		(add-text-properties (line-beginning-position)
+				     (1+ (line-end-position))
+				     (list 'cl-ledger-what 'transaction
+					   'cl-ledger-xact xact)))
+	      (forward-line 1)
+	      (add-text-properties begin (point)
+				   (list 'cl-ledger-entry entry))))))))
 
 (defun cl-ledger-unique-payees ()
   (or *cl-ledger-unique-payees*
@@ -195,22 +212,16 @@
 
 ;;;_ * Context-sensitive completion
 
-(defun cl-ledger-thing-at-point ()
-  (let ((here (point)))
-    (goto-char (line-beginning-position))
-    (cond ((looking-at +cl-ledger-entry-regexp+)
-	   (goto-char (match-beginning 3))
-	   'entry)
-	  ((looking-at "^\\s-+\\([*!]\\s-+\\)?[[(]?\\(.\\)")
-	   (goto-char (match-beginning 2))
-	   'transaction)
-	  (t
-	   (ignore (goto-char here))))))
+(defsubst cl-ledger-thing-at-point ()
+  (let ((type (get-text-property (point) 'cl-ledger-what)))
+    (or type
+	(progn
+	  (cl-ledger-entries)
+	  (cl-ledger-thing-at-point)))))
 
 (defun cl-ledger-parse-arguments ()
   "Parse whitespace separated arguments in the current region."
-  (let* ((info (save-excursion
-		 (cons (cl-ledger-thing-at-point) (point))))
+  (let* ((info (cons (cl-ledger-thing-at-point) (point)))
 	 (begin (cdr info))
 	 (end (point))
 	 begins args)
@@ -270,8 +281,7 @@
   "Do appropriate completion for the thing at point"
   (interactive)
   (while (pcomplete-here
-	  (if (eq (save-excursion
-		    (cl-ledger-thing-at-point)) 'entry)
+	  (if (eq (cl-ledger-thing-at-point) 'entry)
 	      (cl-ledger-unique-payees)
 	    (cl-ledger-accounts)))))
 
@@ -317,9 +327,9 @@
 	(if (member (char-after) '(?\* ?\!))
 	    (progn
 	      (delete-char 1)
-	      (if (and style (eq style 'cleared))
+	      (if (and style (eq style :cleared))
 		  (insert " *")))
-	  (if (and style (eq style 'pending))
+	  (if (and style (eq style :pending))
 	      (insert " ! ")
 	    (insert " * "))
 	  (setq clear t))))
@@ -330,11 +340,11 @@
 
 (defun cl-ledger-toggle-state (state &optional style)
   (if (not (null state))
-      (if (and style (eq style 'cleared))
-	  'cleared)
-    (if (and style (eq style 'pending))
-	'pending
-      'cleared)))
+      (if (and style (eq style :cleared))
+	  :cleared)
+    (if (and style (eq style :pending))
+	:pending
+      :cleared)))
 
 (defun cl-ledger-entry-state ()
   (save-excursion
@@ -342,16 +352,16 @@
 	      (re-search-backward "^[0-9]" nil t))
       (skip-chars-forward "0-9./=")
       (skip-syntax-forward " ")
-      (cond ((looking-at "!\\s-*") 'pending)
-	    ((looking-at "\\*\\s-*") 'cleared)
-	    (t nil)))))
+      (cond ((looking-at "!\\s-*") :pending)
+	    ((looking-at "\\*\\s-*") :cleared)
+	    (t :uncleared)))))
 
 (defun cl-ledger-transaction-state ()
   (save-excursion
     (goto-char (line-beginning-position))
     (skip-syntax-forward " ")
-    (cond ((looking-at "!\\s-*") 'pending)
-	  ((looking-at "\\*\\s-*") 'cleared)
+    (cond ((looking-at "!\\s-*") :pending)
+	  ((looking-at "\\*\\s-*") :cleared)
 	  (t (cl-ledger-entry-state)))))
 
 (defun cl-ledger-toggle-current-transaction (&optional style)
@@ -407,11 +417,11 @@ dropped."
 		    (insert (make-string width ? ))))))
 	  (let (inserted)
 	    (if cleared
-		(if (and style (eq style 'cleared))
+		(if (and style (eq style :cleared))
 		    (progn
 		      (insert "* ")
 		      (setq inserted t)))
-	      (if (and style (eq style 'pending))
+	      (if (and style (eq style :pending))
 		  (progn
 		    (insert "! ")
 		    (setq inserted t))
@@ -460,16 +470,35 @@ dropped."
 	  (when (cl-ledger-move-to-next-field)
 	    (goto-char (match-beginning 0))
 	    (delete-char 2)))))
+
+    (goto-char (car bounds))
+    (cl-ledger-set-entity
+     (nth 0 (get-text-property (point) 'cl-ledger-entry))
+     'ledger:entry-status (cl-ledger-entry-state))
+    (forward-line 1)
+    (while (< (point) (cdr bounds))
+      (cl-ledger-set-entity
+       (nth 0 (get-text-property (point) 'cl-ledger-xact))
+       'ledger:xact-status (cl-ledger-transaction-state))
+      (forward-line 1))
+
     clear))
+
+(defun cl-ledger-set-entity (line function value)
+  (slime-eval
+   `(cl:setf (,function (ledger:find-current-entity
+			 ,(buffer-file-name (current-buffer)) ,line))
+	     ,value)))
 
 (defun cl-ledger-toggle-current (&optional style)
   (interactive)
+  (cl-ledger-entries)
   (if (or cl-ledger-clear-whole-entries
 	  (eq 'entry (cl-ledger-thing-at-point)))
       (cl-ledger-toggle-current-entry
-       (or style (if current-prefix-arg 'pending)))
+       (or style (if current-prefix-arg :pending)))
     (cl-ledger-toggle-current-transaction
-     (or style (if current-prefix-arg 'pending)))))
+     (or style (if current-prefix-arg :pending)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -708,7 +737,7 @@ text that should replace the format specifier."
     (when (equal (car where) "<stdin>")
       (with-current-buffer cl-ledger-buf
 	  (goto-char (cdr where))
-	(setq cleared (cl-ledger-toggle-current 'pending)))
+	(setq cleared (cl-ledger-toggle-current :pending)))
       (if cleared
 	  (add-text-properties (line-beginning-position)
 			       (line-end-position)
@@ -782,7 +811,7 @@ text that should replace the format specifier."
 		 (equal (car where) "<stdin>"))
 	    (with-current-buffer cl-ledger-buf
 	      (goto-char (cdr where))
-	      (cl-ledger-toggle-current 'cleared))))
+	      (cl-ledger-toggle-current :cleared))))
       (forward-line 1)))
   (cl-ledger-reconcile-save))
 

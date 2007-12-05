@@ -127,6 +127,8 @@
 	   apply-filter
 	   choose-if-value-expr
 
+	   find-current-entity
+
 	   register))
 
 (in-package :ledger)

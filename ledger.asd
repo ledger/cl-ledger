@@ -57,7 +57,8 @@ for diagnostic output.")
 			 (:file "ledger")
 			 (:file "transaction")
 			 (:file "normalize")
-			 (:file "valexpr"))
+			 (:file "valexpr")
+			 (:file "emacs"))
 	    :serial t)
 
    (:module "transforms"

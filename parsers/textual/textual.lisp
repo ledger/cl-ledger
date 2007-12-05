@@ -49,7 +49,6 @@
      . ,#'(lambda (in line journal)
 	    (declare (ignore line journal))
 	    (read-char in nil)
-	    (format t "Read NL~%")
 	    1))
 
     (#\Y . ,#'(lambda (in line journal)
