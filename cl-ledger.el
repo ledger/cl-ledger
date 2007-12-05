@@ -736,19 +736,60 @@ dropped."
 		  (setcar cell (string-to-number arg))))))
       (setq cell (cdr cell))))
 
+  ;; Strip all text properties from the arguments
+  (setf args (mapcar #'(lambda (arg)
+			 (if (stringp arg)
+			     (set-text-properties 0 (length arg) nil arg))
+			 arg) args))
+
   (let (keywords)
     ;; Handle all of the option-like arguments
-    (while args
-      (when (and (plusp (length (car args)))
-		 (char-equal ?- (aref (car args) 0)))
-	(case (car args)
-	  (?b (push (list :begin (cadr args)) keywords)
-	      (setq args (cdr args)))))
-      (setq args (cdr args)))
+    (while (and args
+		(plusp (length (first args)))
+		(char-equal ?- (aref (first args) 0)))
+      (cond
+       ((or (string= "-l" (first args))
+	    (string= "--limit" (first args)))
+	(setf keywords
+	      (append (list :limit (first (rest args))) keywords))
+	(setf args (rest args)))
+
+       ((or (string= "-d" (first args))
+	    (string= "--display" (first args)))
+	(setf keywords
+	      (append (list :display (first (rest args))) keywords))
+	(setf args (rest args)))
+
+       ((string= "-b" (first args))
+	(setf keywords
+	      (append (list :begin (first (rest args))) keywords))
+	(setf args (rest args)))
+
+       ((string= "-e" (first args))
+	(setf keywords
+	      (append (list :end (first (rest args))) keywords))
+	(setf args (rest args)))
+
+       ((string= "-r" (first args))
+	(setf keywords (append (list :related t) keywords)))
+
+       ((string= "-n" (first args))
+	(setf keywords (append (list :collapse t) keywords)))
+
+       ((string= "-s" (first args))
+	(setf keywords (append (list :subtotal t) keywords)))
+
+       ((string= "-S" (first args))
+	(setf keywords
+	      (append (list :sort (first (rest args))) keywords))
+	(setf args (rest args))))
+      (setf args (rest args)))
 
     (let ((command (car args))
 	  account-regexps
+	  not-account-regexps
 	  payee-regexps
+	  not-payee-regexps
 	  in-payee-regexps)
       (setq args (cdr args))
 
@@ -757,32 +798,41 @@ dropped."
 	(if (string= arg "--")
 	    (setq in-payee-regexps t)
 	  (if in-payee-regexps
-	      (push arg payee-regexps)
-	    (push arg account-regexps))))
-      (setq account-regexps (regexp-opt account-regexps)
-	    payee-regexps (regexp-opt payee-regexps))
+	      (if (char-equal ?- (aref arg 0))
+		  (push (substring arg 1) not-payee-regexps)
+		(push arg payee-regexps))
+	    (if (char-equal ?- (aref arg 0))
+		(push (substring arg 1) not-account-regexps)
+	      (push arg account-regexps)))))
+
+      (setf account-regexps (regexp-opt account-regexps)
+	    not-account-regexps (regexp-opt not-account-regexps)
+	    payee-regexps (regexp-opt payee-regexps)
+	    not-payee-regexps (regexp-opt not-payee-regexps))
+
+      (setf keywords
+	    (append (and (not (string-emptyp account-regexps))
+			 (list :account account-regexps))
+		    (and (not (string-emptyp not-account-regexps))
+			 (list :not-account not-account-regexps))
+		    (and (not (string-emptyp payee-regexps))
+			 (list :payee payee-regexps))
+		    (and (not (string-emptyp not-payee-regexps))
+			 (list :not-payee not-payee-regexps))
+		    keywords))
 
       ;; Execute the command
       (cond ((or (string= "reg" command)
 		 (string= "register" command))
-	     (apply #'cl-ledger-eval
-		    'ledger:register-report keywords
-		    :account account-regexps
-		    :payee payee-regexps))
+	     (apply #'cl-ledger-eval 'ledger:register-report keywords))
 
 	    ((or (string= "pr" command)
 		 (string= "print" command))
-	     (apply #'cl-ledger-eval
-		    'ledger:print-report keywords
-		    :account account-regexps
-		    :payee payee-regexps))
+	     (apply #'cl-ledger-eval 'ledger:print-report keywords))
 
 	    ((or (string= "bal" command)
 		 (string= "balance" command))
-	     (apply #'cl-ledger-eval
-		    'ledger:balance-report keywords
-		    :account account-regexps
-		    :payee payee-regexps))))))
+	     (apply #'cl-ledger-eval 'ledger:balance-report keywords))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1138,7 +1188,7 @@ used to generate the buffer, navigating the buffer, etc."
       (cl-ledger-do-report (cl-ledger-report-cmd report-name edit))
       (shrink-window-if-larger-than-buffer))))
 
-(defun string-empty-p (s)
+(defun string-emptyp (s)
   "Check for the empty string."
   (string-equal "" s))
 
@@ -1146,7 +1196,7 @@ used to generate the buffer, navigating the buffer, etc."
   "Check to see if the given report name exists.
 
 If name exists, returns the object naming the report, otherwise returns nil."
-  (unless (string-empty-p name)
+  (unless (string-emptyp name)
     (car (assoc name cl-ledger-reports))))
 
 (defun cl-ledger-reports-add (name cmd)
@@ -1229,7 +1279,7 @@ the default."
       (setq report-cmd (cl-ledger-report-read-command report-cmd)))
     (setq report-cmd (cl-ledger-report-expand-format-specifiers report-cmd))
     (set (make-local-variable 'cl-ledger-report-cmd) report-cmd)
-    (or (string-empty-p report-name)
+    (or (string-emptyp report-name)
 	(cl-ledger-report-name-exists report-name)
 	(cl-ledger-reports-add report-name report-cmd)
 	(cl-ledger-reports-custom-save))
@@ -1279,7 +1329,7 @@ the default."
 (defun cl-ledger-report-read-new-name ()
   "Read the name for a new report from the minibuffer."
   (let ((name ""))
-    (while (string-empty-p name)
+    (while (string-emptyp name)
       (setq name (read-from-minibuffer "Report name: " nil nil nil
 				       'cl-ledger-report-name-prompt-history)))
     name))
@@ -1289,7 +1339,7 @@ the default."
   (interactive)
   (cl-ledger-report-goto)
   (let (existing-name)
-    (when (string-empty-p cl-ledger-report-name)
+    (when (string-emptyp cl-ledger-report-name)
       (setq cl-ledger-report-name (cl-ledger-report-read-new-name)))
 
     (while (setq existing-name (cl-ledger-report-name-exists cl-ledger-report-name))
