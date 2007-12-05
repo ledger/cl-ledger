@@ -32,6 +32,30 @@
 (defun sexp-report (&rest args)
   (basic-reporter #'transactions-to-sexp args))
 
+(defun find-unique-payees (&rest args)
+  (remove-duplicates
+   (collect (map-fn 'string #'entry-payee
+		    (scan-entries (get-related-binder args))))
+   :test #'string=))
+
+(defun find-account-tree (&rest args)
+  (let* ((binder (get-related-binder args))
+	 (root-account (binder-root-account binder)))
+    (labels
+	((find-accounts (account)
+	   (cons
+	    (account-name account)
+	    (let ((children (account-children account))
+		  child-accounts)
+	      (when children
+		(maphash #'(lambda (name account)
+			     (declare (ignore name))
+			     (push (find-accounts account)
+				   child-accounts))
+			 children))
+	      child-accounts))))
+      (cdr (find-accounts root-account)))))
+
 (provide 'sexp)
 
 ;; sexp.lisp ends here

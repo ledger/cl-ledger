@@ -25,6 +25,8 @@
 	   equity-report
 	   sexp-report
 	   derive-entry
+	   find-account-tree
+	   find-unique-payees
 
 	   journal
 	   journal-binder

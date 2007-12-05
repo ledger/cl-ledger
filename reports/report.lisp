@@ -13,7 +13,7 @@
 	(return-from compare-path-lists nil))))
   t)
 
-(defun find-all-transactions (args)
+(defun get-related-binder (args)
   (let (binder objects)
     (loop while args do
 	 (etypecase (first args)
@@ -56,8 +56,13 @@
 				  (car journal-cell)) binder))
 	     (assert (car journal-cell))))
 
-      (values (apply-key-transforms (scan-transactions binder) args)
-	      args))))
+      (values binder args))))
+
+(defun find-all-transactions (args)
+  (multiple-value-bind (binder remaining-args)
+      (get-related-binder args)
+    (values (apply-key-transforms (scan-transactions binder) remaining-args)
+	    remaining-args)))
 
 (defun basic-reporter (printer args)
   (multiple-value-bind (xact-series plist)

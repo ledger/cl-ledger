@@ -156,16 +156,12 @@
 (defvar *cl-ledger-unique-payees* nil)
 (make-variable-buffer-local '*cl-ledger-unique-payees*)
 
-(defvar *cl-ledger-unique-accounts* nil)
-(make-variable-buffer-local '*cl-ledger-unique-accounts*)
-
 (defvar *cl-ledger-account-tree* nil)
 (make-variable-buffer-local '*cl-ledger-account-tree*)
 
 (defun cl-ledger-clear-cache-variables ()
   (setf *cl-ledger-entries* nil
 	*cl-ledger-unique-payees* nil
-	*cl-ledger-unique-accounts* nil
 	*cl-ledger-account-tree* nil))
 
 (defun cl-ledger-entries ()
@@ -197,21 +193,8 @@
 (defun cl-ledger-unique-payees ()
   (or *cl-ledger-unique-payees*
       (setf *cl-ledger-unique-payees*
-	    (pcomplete-uniqify-list
-	     (mapcar #'(lambda (entry)
-			 (nth 3 entry))
-		     (cl-ledger-entries))))))
-
-(defun cl-ledger-unique-accounts ()
-  (or *cl-ledger-unique-accounts*
-      (setf *cl-ledger-unique-accounts*
-	    (pcomplete-uniqify-list
-	     (let (result)
-	       (mapcar #'(lambda (entry)
-			   (dolist (xact (nth 4 entry))
-			     (push (nth 2 xact) result)))
-		       (cl-ledger-entries))
-	       (nreverse result))))))
+	    (slime-eval `(ledger:find-unique-payees
+			  ,(buffer-file-name (current-buffer)))))))
 
 (defun cl-ledger-total-at-point ()
   (interactive)
@@ -231,41 +214,38 @@
 
 ;;;_* Context-sensitive completion
 
-(defsubst cl-ledger-thing-at-point ()
-  (or (get-text-property (point) 'cl-ledger-what)
-      (progn
-	(cl-ledger-entries)
-	(get-text-property (point) 'cl-ledger-what))))
+(defun cl-ledger-thing-at-point ()
+  (let ((here (point)))
+    (goto-char (line-beginning-position))
+    (cond ((looking-at +cl-ledger-entry-regexp+)
+	   (goto-char (match-beginning 3))
+	   'entry)
+	  ((looking-at "^\\s-+\\([*!]\\s-+\\)?[[(]?\\(.\\)")
+	   (goto-char (match-beginning 2))
+	   'transaction)
+	  (t
+	   (ignore (goto-char here))))))
 
 (defun cl-ledger-parse-arguments ()
   "Parse whitespace separated arguments in the current region."
-  (let* ((info (cons (cl-ledger-thing-at-point) (point)))
-	 (begin (cdr info))
-	 (end (point))
-	 begins args)
-    (save-excursion
-      (goto-char begin)
-      (when (< (point) end)
-	(skip-chars-forward " \t\n")
-	(setq begins (cons (point) begins))
-	(setq args (cons (buffer-substring-no-properties
-			  (car begins) end)
-			 args)))
-      (cons (reverse args) (reverse begins)))))
+  (save-excursion
+   (let* ((end (point))
+	  (info (cons (cl-ledger-thing-at-point) (point)))
+	  (begin (cdr info))
+	  begins args)
+     (when (< (point) end)
+       (skip-chars-forward " \t\n")
+       (setq begins (cons (point) begins))
+       (setq args (cons (buffer-substring-no-properties
+			 (car begins) end)
+			args)))
+     (cons (reverse args) (reverse begins)))))
 
 (defun cl-ledger-account-tree ()
-  (unless *cl-ledger-account-tree*
-    (setf *cl-ledger-account-tree* (list t))
-    (dolist (account-path (cl-ledger-unique-accounts))
-      (let ((root *cl-ledger-account-tree*))
-	(dolist (element (split-string account-path ":"))
-	  (let ((entry (assoc element root)))
-	    (if entry
-		(setq root (cdr entry))
-	      (setq entry (cons element (list t)))
-	      (nconc root (list entry))
-	      (setq root (cdr entry))))))))
-  *cl-ledger-account-tree*)
+  (or *cl-ledger-account-tree*
+      (setf *cl-ledger-account-tree*
+	    (slime-eval `(ledger:find-account-tree
+			  ,(buffer-file-name (current-buffer)))))))
 
 (defun cl-ledger-accounts ()
   (let* ((current (caar (cl-ledger-parse-arguments)))
@@ -299,7 +279,8 @@
   "Do appropriate completion for the thing at point"
   (interactive)
   (while (pcomplete-here
-	  (if (eq (cl-ledger-thing-at-point) 'entry)
+	  (if (save-excursion
+		(eq (cl-ledger-thing-at-point) 'entry))
 	      (cl-ledger-unique-payees)
 	    (cl-ledger-accounts)))))
 
@@ -513,7 +494,8 @@ dropped."
   (interactive)
   (cl-ledger-entries)
   (if (or cl-ledger-clear-whole-entries
-	  (eq 'entry (cl-ledger-thing-at-point)))
+	  (save-excursion
+	    (eq 'entry (cl-ledger-thing-at-point))))
       (cl-ledger-toggle-current-entry
        (or style (if current-prefix-arg :pending)))
     (cl-ledger-toggle-current-transaction
