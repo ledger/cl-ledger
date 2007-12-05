@@ -655,8 +655,8 @@ dropped."
 	      (let ((difference
 		     (slime-eval
 		      `(cambl:format-value
-			(cambl:subtract (cambl:amount ,cl-ledger-goal)
-					(cambl:amount ,cleared-total))))))
+			(cambl:subtract (cambl:amount* ,cl-ledger-goal)
+					(cambl:amount* ,cleared-total))))))
 		(format "Reconcile:%s/%s" cleared-total difference))
 	    "Reconcile"))))
 
