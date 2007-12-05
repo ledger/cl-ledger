@@ -49,6 +49,11 @@
 	  (funcall closure xact)))
       expr-or-function))
 
+(defun status-matcher (state)
+  (declare (type keyword state))
+  (lambda (xact)
+    (eq (xact-status xact) state)))
+
 (defun not-matcher (matcher)
   (declare (type function matcher))
   (lambda (xact)
@@ -98,6 +103,10 @@
      (or string function)
      ,#'(lambda (value)
 	  (not-matcher (note-matcher value))))
+
+    (:status
+     keyword
+     ,#'status-matcher)
 
     (:begin
      (or string fixed-time)

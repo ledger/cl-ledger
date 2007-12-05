@@ -92,6 +92,9 @@ extra options allowed for `derive-entry', for which please see below.
     :only "VALUE-EXPR"           ; the same as 2.x's --only
     :display "VALUE-EXPR"        ; the same as 2.x's -d or --display
 
+    :status KEYWORD              ; only report transactions whose status
+                                 ; is :CLEARED, :PENDING or :UNCLEARED
+
     :sort "VALUE-EXPR"           ; sort based on VALUE-EXPR calculation
   
     :no-total BOOL               ; don't show totals
