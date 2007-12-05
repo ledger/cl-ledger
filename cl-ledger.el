@@ -654,10 +654,18 @@ dropped."
 	  (if cleared-total
 	      (let ((difference
 		     (slime-eval
-		      `(cambl:format-value
-			(cambl:subtract (cambl:amount* ,cl-ledger-goal)
-					(cambl:amount* ,cleared-total))))))
-		(format "Reconcile:%s/%s" cleared-total difference))
+		      `(cl:let ((diff (cambl:subtract
+				       (cambl:amount* ,cl-ledger-goal)
+				       (cambl:amount* ,cleared-total))))
+			       (cl:unless (cambl:value-zerop diff)
+					  (cambl:format-value diff))))))
+
+		(if difference
+		    (format "Reconcile:%s/%s" cleared-total difference)
+		  (let ((str (concat "Reconcile:" cleared-total)))
+		    (add-text-properties 0 (length str)
+					 (list 'face bold) str)
+		    str)))
 	    "Reconcile"))))
 
 (defvar cl-ledger-reconcile-mode-abbrev-table)
