@@ -521,7 +521,7 @@ Return the difference in the format of a time value."
 
 ;; These functions are specific to CL-Ledger
 
-(defun cl-cl-ledger-iterate-entries (callback)
+(defun cl-ledger-iterate-entries (callback)
   (dolist (entry (slime-eval
 		  `(ledger:register-sexp
 		    ,(buffer-file-name (current-buffer)))))
@@ -529,7 +529,7 @@ Return the difference in the format of a time value."
 
 ;; A command-line interface to CL-Ledger, in the style of 2.6
 
-(defun cl-cl-ledger-eval (command args)
+(defun cl-ledger-eval (command &rest args)
   (slime-eval
    `(cl:with-output-to-string
      (str)
@@ -570,19 +570,19 @@ Return the difference in the format of a time value."
     ;; Execute the command
     (cond ((or (string= "reg" command)
 	       (string= "register" command))
-	   (cl-cl-ledger-eval 'ledger:register-report
+	   (cl-ledger-eval 'ledger:register-report
 			   :account account-regexps
 			   :payee payee-regexps))
 
 	  ((or (string= "pr" command)
 	       (string= "print" command))
-	   (cl-cl-ledger-eval 'ledger:print-report
+	   (cl-ledger-eval 'ledger:print-report
 			   :account account-regexps
 			   :payee payee-regexps))
 
 	  ((or (string= "bal" command)
 	       (string= "balance" command))
-	   (cl-cl-ledger-eval 'ledger:balance-report
+	   (cl-ledger-eval 'ledger:balance-report
 			   :account account-regexps
 			   :payee payee-regexps)))))
 
@@ -628,33 +628,6 @@ text that should replace the format specifier."
   "Default indentation for account transactions in an entry."
   :type 'string
   :group 'ledger)
-
-(defun cl-ledger-iterate-entries (callback)
-  (goto-char (point-min))
-  (let* ((now (current-time))
-	 (current-year (nth 5 (decode-time now))))
-    (while (not (eobp))
-      (when (looking-at
-	     (concat "\\(Y\\s-+\\([0-9]+\\)\\|"
-		     "\\([0-9]\\{4\\}+\\)?[./]?"
-		     "\\([0-9]+\\)[./]\\([0-9]+\\)\\s-+"
-		     "\\(\\*\\s-+\\)?\\(.+\\)\\)"))
-	(let ((found (match-string 2)))
-	  (if found
-	      (setq current-year (string-to-number found))
-	    (let ((start (match-beginning 0))
-		  (year (match-string 3))
-		  (month (string-to-number (match-string 4)))
-		  (day (string-to-number (match-string 5)))
-		  (mark (match-string 6))
-		  (desc (match-string 7)))
-	      (if (and year (> (length year) 0))
-		  (setq year (string-to-number year)))
-	      (funcall callback start
-		       (encode-time 0 0 0 day month
-				    (or year current-year))
-		       mark desc)))))
-      (forward-line))))
 
 (defun cl-ledger-add-entry (entry-text)
   (interactive
