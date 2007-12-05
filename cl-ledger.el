@@ -124,12 +124,7 @@
        'cl-ledger-complete-at-point)
   (set (make-local-variable 'pcomplete-termination-string) "")
 
-  (add-hook 'after-save-hook
-	    #'(lambda ()
-		(setf *cl-ledger-entries* nil
-		      *cl-ledger-unique-payees* nil
-		      *cl-ledger-unique-accounts* nil
-		      *cl-ledger-account-tree* nil)))
+  (add-hook 'after-save-hook #'cl-ledger-reset-cache-variables)
 
   (let ((map (current-local-map)))
     (define-key map [(control ?c) (control ?a)] 'cl-ledger-add-entry)
@@ -163,6 +158,15 @@
 
 (defvar *cl-ledger-unique-accounts* nil)
 (make-variable-buffer-local '*cl-ledger-unique-accounts*)
+
+(defvar *cl-ledger-account-tree* nil)
+(make-variable-buffer-local '*cl-ledger-account-tree*)
+
+(defun cl-ledger-reset-cache-variables ()
+  (setf *cl-ledger-entries* nil
+	*cl-ledger-unique-payees* nil
+	*cl-ledger-unique-accounts* nil
+	*cl-ledger-account-tree* nil))
 
 (defun cl-ledger-entries ()
   (or *cl-ledger-entries*
@@ -219,9 +223,6 @@
 			  (car begins) end)
 			 args)))
       (cons (reverse args) (reverse begins)))))
-
-(defvar *cl-ledger-account-tree* nil)
-(make-variable-buffer-local '*cl-ledger-account-tree*)
 
 (defun cl-ledger-account-tree ()
   (unless *cl-ledger-account-tree*
@@ -303,53 +304,7 @@
       (if (re-search-backward "\\(\t\\| [ \t]\\)" nil t)
 	  (goto-char (match-end 0))))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defsubst cl-ledger-current-year ()
-  (format-time-string "%Y"))
-(defsubst cl-ledger-current-month ()
-  (format-time-string "%m"))
-
-(defvar cl-ledger-year (cl-ledger-current-year)
-  "Start a ledger session with the current year, but make it
-customizable to ease retro-entry.")
-(defvar cl-ledger-month (cl-ledger-current-month)
-  "Start a ledger session with the current month, but make it
-customizable to ease retro-entry.")
-
-(defun cl-ledger-time-less-p (t1 t2)
-  "Say whether time value T1 is less than time value T2."
-  (or (< (car t1) (car t2))
-      (and (= (car t1) (car t2))
-	   (< (nth 1 t1) (nth 1 t2)))))
-
-(defun cl-ledger-time-subtract (t1 t2)
-  "Subtract two time values.
-Return the difference in the format of a time value."
-  (let ((borrow (< (cadr t1) (cadr t2))))
-    (list (- (car t1) (car t2) (if borrow 1 0))
-	  (- (+ (if borrow 65536 0) (cadr t1)) (cadr t2)))))
-
-(defun cl-ledger-find-slot (moment)
-  (catch 'found
-    (cl-ledger-iterate-entries
-     #'(lambda (start date mark desc)
-	 (if (ledger-time-less-p moment date)
-	     (throw 'found start))))))
-
-(defun cl-ledger-current-entry-bounds ()
-  (save-excursion
-    (when (or (looking-at "^[0-9]")
-	      (re-search-backward "^[0-9]" nil t))
-      (let ((beg (point)))
-	(while (not (eolp))
-	  (forward-line))
-	(cons (copy-marker beg) (point-marker))))))
-
-(defun cl-ledger-delete-current-entry ()
-  (interactive)
-  (let ((bounds (cl-ledger-current-entry-bounds)))
-    (delete-region (car bounds) (cdr bounds))))
+;;;_ * Toggling entry and transaction state
 
 (defun cl-ledger-toggle-current-entry (&optional style)
   (interactive)
@@ -509,9 +464,60 @@ dropped."
 
 (defun cl-ledger-toggle-current (&optional style)
   (interactive)
-  (if cl-ledger-clear-whole-entries
-      (cl-ledger-toggle-current-entry style)
-    (cl-ledger-toggle-current-transaction style)))
+  (if (or cl-ledger-clear-whole-entries
+	  (eq 'entry (cl-ledger-thing-at-point)))
+      (cl-ledger-toggle-current-entry
+       (or style (if current-prefix-arg 'pending)))
+    (cl-ledger-toggle-current-transaction
+     (or style (if current-prefix-arg 'pending)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(defsubst cl-ledger-current-year ()
+  (format-time-string "%Y"))
+(defsubst cl-ledger-current-month ()
+  (format-time-string "%m"))
+
+(defvar cl-ledger-year (cl-ledger-current-year)
+  "Start a ledger session with the current year, but make it
+customizable to ease retro-entry.")
+(defvar cl-ledger-month (cl-ledger-current-month)
+  "Start a ledger session with the current month, but make it
+customizable to ease retro-entry.")
+
+(defun cl-ledger-time-less-p (t1 t2)
+  "Say whether time value T1 is less than time value T2."
+  (or (< (car t1) (car t2))
+      (and (= (car t1) (car t2))
+	   (< (nth 1 t1) (nth 1 t2)))))
+
+(defun cl-ledger-time-subtract (t1 t2)
+  "Subtract two time values.
+Return the difference in the format of a time value."
+  (let ((borrow (< (cadr t1) (cadr t2))))
+    (list (- (car t1) (car t2) (if borrow 1 0))
+	  (- (+ (if borrow 65536 0) (cadr t1)) (cadr t2)))))
+
+(defun cl-ledger-find-slot (moment)
+  (catch 'found
+    (cl-ledger-iterate-entries
+     #'(lambda (start date mark desc)
+	 (if (ledger-time-less-p moment date)
+	     (throw 'found start))))))
+
+(defun cl-ledger-current-entry-bounds ()
+  (save-excursion
+    (when (or (looking-at "^[0-9]")
+	      (re-search-backward "^[0-9]" nil t))
+      (let ((beg (point)))
+	(while (not (eolp))
+	  (forward-line))
+	(cons (copy-marker beg) (point-marker))))))
+
+(defun cl-ledger-delete-current-entry ()
+  (interactive)
+  (let ((bounds (cl-ledger-current-entry-bounds)))
+    (delete-region (car bounds) (cdr bounds))))
 
 ;; These functions are specific to CL-Ledger
 
