@@ -21,32 +21,37 @@
      #'(lambda (xact)
 	 (incf *value-expr-series-offset*)
 
-	 (let* ((amt (typecase amount
-		       (function (funcall amount xact))
-		       (value-expr (value-expr-call amount xact))
-		       (otherwise (xact-amount xact))))
-		(commodity (etypecase amt
-			     (amount (amount-commodity amt))
-			     (null nil)))
-		(current (assoc commodity
-				(get-amounts-map running-total))))
+	 (let ((amt (typecase amount
+		      (function (funcall amount xact))
+		      (value-expr (value-expr-call amount xact))
+		      (otherwise (xact-amount xact)))))
 
-	   ;; This custom version of add* cuts down on cons'ing by a factor of
-	   ;; 10.  We can do this because we it's OK for all of the running
-	   ;; totals to share the same balance structure.
-	   (if current
-	       (setf (cdr current) (add (cdr current) amt))
-	       (progn
-		 (push (cons commodity amt)
-		       (get-amounts-map running-total))
+	   (if (balance-p amt)
+	       (setf running-total (add running-total amt))
+	       (let* ((commodity (etypecase amt
+				   (amount (amount-commodity amt))
+				   (integer nil)))
+		      (current (assoc commodity
+				      (get-amounts-map running-total))))
 
-		 (when (> (length (get-amounts-map running-total)) 1)
-		   (setf (get-amounts-map running-total)
-			 (sort (get-amounts-map running-total)
-			       #'commodity-lessp :key #'car)))))
+		 ;; This custom version of add* cuts down on cons'ing by a
+		 ;; factor of 10.  We can do this because we it's OK for all
+		 ;; of the running totals to share the same balance structure.
+		 (if current
+		     (setf (cdr current) (add (cdr current) amt))
+		     (progn
+		       (setf running-total
+			     (shallow-copy-balance running-total))
 
-	   (setf (xact-value xact :running-total)
-		 (shallow-copy-from-balance running-total))
+		       (push (cons commodity amt)
+			     (get-amounts-map running-total))
+
+		       (when (> (length (get-amounts-map running-total)) 1)
+			 (setf (get-amounts-map running-total)
+			       (sort (get-amounts-map running-total)
+				     #'commodity-lessp :key #'car)))))))
+
+	   (setf (xact-value xact :running-total) running-total)
 
 	   (if total
 	       (setf (xact-value xact :running-total)
