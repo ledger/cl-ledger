@@ -7,7 +7,8 @@
 (defun apply-key-transforms (xacts args)
   ;; Reset the computed values of all transactions
   (setf xacts (map-fn 'transaction
-		      #'(lambda (xact) (setf (xact-data xact) nil) xact)
+		      #'(lambda (xact)
+			  (setf (xact-data xact) nil) xact)
 		      xacts))
 
   ;; (if comm_as_payee

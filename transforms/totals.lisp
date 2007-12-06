@@ -28,26 +28,25 @@
 
 	   (if (balance-p amt)
 	       (setf running-total (add running-total amt))
-	       (let* ((commodity (etypecase amt
+	       (let* ((amt-integer-p)
+		      (commodity (etypecase amt
 				   (amount (amount-commodity amt))
-				   (integer nil)))
+				   (integer (setf amt-integer-p t) nil)))
 		      (current (assoc commodity
 				      (get-amounts-map running-total)
 				      :test #'commodity-equal)))
-
-		 ;; This custom version of add* cuts down on cons'ing by a
-		 ;; factor of 10.  We can do this because we it's OK for all
+		 ;; This custom version of cambl:add cuts down on cons'ing by
+		 ;; a factor of 10.  We can do this because we it's OK for all
 		 ;; of the running totals to share the same balance structure.
 		 (if current
-		     (setf (cdr current) (add (cdr current) amt))
-		     (progn
-		       (setf running-total
-			     (shallow-copy-balance running-total))
-
-		       (push (cons commodity amt)
+		     (add* (cdr current) amt)
+		     (let ((new-amounts-map-p
+			    (null (get-amounts-map running-total))))
+		       (push (cons commodity (if amt-integer-p
+						 (integer-to-amount amt)
+						 (copy-amount amt)))
 			     (get-amounts-map running-total))
-
-		       (when (> (length (get-amounts-map running-total)) 1)
+		       (unless new-amounts-map-p
 			 (setf (get-amounts-map running-total)
 			       (sort (get-amounts-map running-total)
 				     #'commodity-lessp :key #'car)))))))
