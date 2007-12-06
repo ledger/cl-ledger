@@ -239,31 +239,25 @@ The result is of type JOURNAL."
   (let ((journals-iterator (list-iterator (binder-journals binder)))
 	(xacts-iterator (constantly nil)))
     (lambda ()
-      (labels
-	  ((next-xact ()
-	     (or (funcall xacts-iterator)
-		 (let ((next-journal (funcall journals-iterator)))
-		   (when next-journal
-		     (setf xacts-iterator
-			   (transactions-iterator next-journal
-						  entry-transform))
-		     (next-xact))))))
-	(next-xact)))))
+      (do-recurse next-xact ()
+	(or (funcall xacts-iterator)
+	    (if-let ((next-journal (funcall journals-iterator)))
+	      (setf xacts-iterator
+		    (transactions-iterator next-journal
+					   entry-transform))
+	      (next-xact)))))))
 
 (defmethod transactions-iterator ((journal journal) &optional entry-transform)
   (let ((entries-iterator (entries-iterator journal))
 	(xacts-iterator (constantly nil)))
     (lambda ()
-      (labels
-	  ((next-xact ()
-	     (or (funcall xacts-iterator)
-		 (let ((next-entry (funcall entries-iterator)))
-		   (when next-entry
-		     (setf xacts-iterator
-			   (transactions-iterator next-entry
-						  entry-transform))
-		     (next-xact))))))
-	(next-xact)))))
+      (do-recurse next-xact ()
+	(or (funcall xacts-iterator)
+	    (if-let ((next-entry (funcall entries-iterator)))
+	      (setf xacts-iterator
+		    (transactions-iterator next-entry
+					   entry-transform))
+	      (next-xact)))))))
 
 (defmethod transactions-iterator ((entry entry) &optional entry-transform)
   (declare (type (or function null) entry-transform))
@@ -277,10 +271,8 @@ The result is of type JOURNAL."
   (list-iterator (list transaction)))
 
 (defun transactions-list (object &key (entry-transform nil))
-  (loop
-     with iterator = (transactions-iterator object entry-transform)
-     for xact = (funcall iterator)
-     while xact collect xact))
+  (loop with iterator = (transactions-iterator object entry-transform)
+     for xact = (funcall iterator) while xact collect xact))
 
 (defmacro map-transactions (callable object &key (entry-transform nil))
   `(map-iterator ,callable (transactions-iterator ,object ,entry-transform)))
@@ -288,10 +280,9 @@ The result is of type JOURNAL."
 ;; jww (2007-11-19): deprecated?
 (defmacro do-transactions ((var object &optional (result nil)) &body body)
   (let ((iterator (gensym)))
-    `(loop
-	with ,iterator = (transactions-iterator ,object)
-	for ,var = (funcall ,iterator)
-	while ,var do (progn ,@body ,result))))
+    `(loop with ,iterator = (transactions-iterator ,object)
+	for ,var = (funcall ,iterator) while ,var do
+	  (progn ,@body ,result))))
 
 (declaim (inline scan-transactions))
 (defun scan-transactions (object &optional entry-transform)

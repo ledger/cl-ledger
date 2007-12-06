@@ -11,6 +11,17 @@
      (if ,var
 	 (progn ,@body))))
 
+(defmacro do-recurse (name (&rest params) &body body)
+  "A simple macro for writing inline recursive code.
+
+  (do-recurse this ((x 10))
+    (if (= x 0)
+        0
+        (+ x (this (1- x))))) => 55"
+  `(labels ((,name (,@(mapcar #'first params))
+	      ,@body))
+     (,name ,@(mapcar #'second params))))
+
 (defun split-string-at-char (string char)
   "Returns a list of substrings of string
 divided by ONE char each.

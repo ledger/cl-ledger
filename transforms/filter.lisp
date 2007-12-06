@@ -158,15 +158,14 @@
       (if (keywordp (first arg))
 	  (progn
 	    (if (first (rest arg))
-		(let ((entry (assoc (first arg) *predicate-keywords*)))
-		  (when entry
-		    (unless (typep (first (rest arg)) (cadr entry))
-		      (error "Argument of invalid type ~S passed to ~
+		(if-let ((entry (assoc (first arg) *predicate-keywords*)))
+		  (unless (typep (first (rest arg)) (cadr entry))
+		    (error "Argument of invalid type ~S passed to ~
                             predicate keyword ~S (expected ~S)"
-			     (type-of (first (rest arg))) (first arg)
-			     (cadr entry)))
-		    (push (funcall (caddr entry)
-				   (first (rest arg))) functions))))
+			   (type-of (first (rest arg))) (first arg)
+			   (cadr entry)))
+		  (push (funcall (caddr entry)
+				 (first (rest arg))) functions)))
 	    (setf arg (cddr arg)))
 	  (setf arg (cdr arg))))
 

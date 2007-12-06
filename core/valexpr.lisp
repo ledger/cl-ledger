@@ -12,8 +12,7 @@
 (defun value-expr-call (valexpr xact)
   (declare (type value-expr valexpr))
   (declare (type transaction xact))
-  (assert (functionp (value-expr-function valexpr)))
-  (funcall (value-expr-function valexpr) xact))
+  (funcall (the function (value-expr-function valexpr)) xact))
 
 (defvar *value-expr-observe-properties-p* nil)
 (defvar *value-expr-reduce-to-smallest-units-p* nil)

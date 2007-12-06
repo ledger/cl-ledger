@@ -32,7 +32,8 @@
 				   (amount (amount-commodity amt))
 				   (integer nil)))
 		      (current (assoc commodity
-				      (get-amounts-map running-total))))
+				      (get-amounts-map running-total)
+				      :test #'commodity-equal)))
 
 		 ;; This custom version of add* cuts down on cons'ing by a
 		 ;; factor of 10.  We can do this because we it's OK for all

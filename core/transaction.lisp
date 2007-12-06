@@ -1,6 +1,6 @@
 ;; transaction.lisp
 
-(declaim (optimize (safety 3) (debug 3) (speed 1) (space 0)))
+(declaim (optimize (speed 3) (safety 1)))
 
 (in-package :ledger)
 
@@ -127,8 +127,9 @@
 
 (declaim (inline xact-value))
 (defun xact-value (xact key)
-  (let ((value-cell (assoc key (xact-data xact))))
-    (values (cdr value-cell) value-cell)))
+  (if-let ((data (xact-data xact)))
+    (let ((value-cell (assoc key (xact-data xact))))
+      (values (cdr value-cell) value-cell))))
 
 (defsetf xact-value (xact key) (value)
   (let ((xact-sym (gensym))
@@ -151,17 +152,17 @@
 
 (defun xact-amount (xact)
   (declare (type transaction xact))
-  (the value
-    (or (xact-value xact :computed-amount)
-	(let ((amount (get-xact-amount xact)))
-	  (etypecase amount
-	    (value amount)
-	    (null
-	     (error "Resolving transaction amount for unnormalized data"))
-	    (value-expr
-	     (setf amount (value-expr-call amount xact)
-		   (xact-value xact :computed-amount) amount)
-	     amount))))))
+  (declare (optimize (speed 3) (safety 0)))
+  (or (xact-value xact :computed-amount)
+      (let ((amount (get-xact-amount xact)))
+	(etypecase amount
+	  (value amount)
+	  (null
+	   (error "Resolving transaction amount for unnormalized data"))
+	  (value-expr
+	   (setf amount (value-expr-call amount xact)
+		 (xact-value xact :computed-amount) amount)
+	   amount)))))
 
 (defun xact-amount-expr (xact)
   (declare (type transaction xact))
