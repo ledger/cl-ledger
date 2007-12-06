@@ -125,21 +125,20 @@ The result is of type JOURNAL."
 
 (defmethod find-account ((binder binder) (account-path string)
 			 &key (create-if-not-exists-p nil))
-  (the (or account null)
-    (labels ((traverse-accounts (account path-elements fullname)
-	       (let ((child-account
-		      (find-child-account account (car path-elements)
-					  :create-if-not-exists-p
-					  create-if-not-exists-p
-					  :fullname fullname)))
-		 (if child-account
-		     (if (cdr path-elements)
-			 (traverse-accounts child-account (cdr path-elements)
-					    fullname)
-			 child-account)))))
-      (traverse-accounts (binder-root-account binder)
-			 (split-string-at-char account-path #\:)
-			 account-path))))
+  (labels ((traverse-accounts (account path-elements fullname)
+	     (let ((child-account
+		    (find-child-account account (car path-elements)
+					:create-if-not-exists-p
+					create-if-not-exists-p
+					:fullname fullname)))
+	       (if child-account
+		   (if (cdr path-elements)
+		       (traverse-accounts child-account (cdr path-elements)
+					  fullname)
+		       child-account)))))
+    (traverse-accounts (binder-root-account binder)
+		       (split-string-at-char account-path #\:)
+		       account-path)))
 
 (defmethod find-account ((journal journal) (account-path string)
 			 &key (create-if-not-exists-p nil))

@@ -188,7 +188,9 @@
 		     ((eq symbol '|line|)
 		      (lambda (xact &rest args)
 			(declare (ignore args))
-			(item-position-begin-line (xact-position xact))))
+			(if (xact-position xact)
+			    (item-position-begin-line (xact-position xact))
+			    -1)))
 
 		     ((member symbol '(|S| |quant| |quantity|) :test #'eq)
 		      (lambda (xact &rest args)

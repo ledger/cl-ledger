@@ -26,6 +26,7 @@
 	   sexp-report
 	   derive-entry
 	   find-account-tree
+	   find-sibling-accounts
 	   find-unique-payees
 
 	   journal
@@ -76,6 +77,7 @@
 	   xact-account
 	   xact-amount
 	   xact-amount*
+	   xact-cost
 	   xact-note
 	   xact-tags
 	   xact-virtualp
