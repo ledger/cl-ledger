@@ -25,35 +25,11 @@
 		      (function (funcall amount xact))
 		      (value-expr (value-expr-call amount xact))
 		      (otherwise (xact-amount xact)))))
-
-	   (if (balance-p amt)
-	       (setf running-total (add running-total amt))
-	       (let* ((amt-integer-p)
-		      (commodity (etypecase amt
-				   (amount (amount-commodity amt))
-				   (integer (setf amt-integer-p t) nil)))
-		      (current (assoc commodity
-				      (get-amounts-map running-total)
-				      :test #'commodity-equal)))
-		 ;; This custom version of cambl:add cuts down on cons'ing by
-		 ;; a factor of 10.  We can do this because we it's OK for all
-		 ;; of the running totals to share the same balance structure.
-		 (if current
-		     (add* (cdr current) amt)
-		     (let ((new-amounts-map-p
-			    (null (get-amounts-map running-total))))
-		       (push (cons commodity (if amt-integer-p
-						 (integer-to-amount amt)
-						 (copy-amount amt)))
-			     (get-amounts-map running-total))
-		       (unless new-amounts-map-p
-			 (setf (get-amounts-map running-total)
-			       (sort (get-amounts-map running-total)
-				     #'commodity-lessp :key #'car)))))))
-
-	   (setf (xact-value xact :running-total) running-total)
-
+	   (setf (xact-value xact :running-total)
+		 (setf running-total (add running-total amt)))
 	   (if total
+	       ;; This function might well refer to the :running-total we just
+	       ;; set.
 	       (setf (xact-value xact :running-total)
 		     (etypecase total
 		       (function (funcall total xact))
