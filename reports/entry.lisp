@@ -51,10 +51,8 @@
 					(xact-entry matching-xact))))
 		  (find-account journal (or account "Expenses:Unknown")
 				:create-if-not-exists-p t))))
-
-      (typecase amount
-	(string (setf amount (cambl:amount amount)))
-	(integer (setf amount (integer-to-amount amount))))
+      (if (stringp amount)
+	  (setf amount (parse-amount amount)))
 
       (if (null matching-xact)
 	  (progn
@@ -71,17 +69,8 @@
 	    (setf (entry-payee entry)
 		  (entry-payee (xact-entry matching-xact)))
 	    (if matching-account
-		(if amount
-		    (progn
-		      (unless (amount-commodity amount)
-			(setf (amount-commodity amount)
-			      (amount-commodity (xact-amount matching-xact))
-			      (amount-keep-precision-p amount)
-			      (amount-keep-precision-p
-			       (xact-amount matching-xact))))
-		      (setf (xact-amount new-xact) amount))
-		    (setf (xact-amount new-xact)
-			  (xact-amount matching-xact)))
+		(setf (xact-amount new-xact)
+		      (xact-amount matching-xact))
 		(setf entry (xact-entry matching-xact)))))
 
       (unless matching-balance-account

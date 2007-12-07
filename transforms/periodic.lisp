@@ -31,7 +31,8 @@
 		    (gethash acct account-hash)
 		    acct-xact)
 	      (add-transaction entry acct-xact))
-	    (add* (xact-amount acct-xact) (xact-amount xact))))))
+	    (setf (xact-amount acct-xact)
+		  (add (xact-amount acct-xact) (xact-amount xact)))))))
 
     (scan-transactions journal)))
 

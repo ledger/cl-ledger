@@ -11,7 +11,7 @@
 	(let* ((account (find-account journal
 				      (account-fullname (xact-account xact))
 				      :create-if-not-exists-p t))
-	       (balance (account-value account :subtotal)))
+	       (balance (or (account-value account :subtotal) (balance))))
 
 	  ;; Remember the earliest and latest transactions in the set, so that
 	  ;; we can create a meaningful display name for the grouped entry.
@@ -22,10 +22,9 @@
 		  (local-time> (xact-date xact) latest-date))
 	      (setf latest-date (xact-date xact)))
 
-	  (if balance
-	      (add* balance (xact-amount xact))
-	      (account-set-value account
-				 :subtotal (balance (xact-amount xact))))))
+	  (account-set-value account
+			     :subtotal (add balance (xact-amount xact)))))
+
       (let ((totals-entry
 	     (make-instance 'entry
 			    :journal journal

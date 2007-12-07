@@ -31,6 +31,10 @@
   position
   data)
 
+(defstruct (value-expr)
+  (string nil :type string)
+  (function nil :type function))
+
 (defclass entry ()
   ((journal        :accessor entry-journal	   :initarg :journal)
    (actual-date	   :accessor entry-actual-date	   :initarg :actual-date

@@ -14,28 +14,32 @@
 
 (defun calculate-totals (xact-series &key (amount nil) (total nil))
   (declare (type series xact-series))
-  (let ((running-total (cambl:balance))
+  (let ((running-total 0)
 	(*value-expr-series-offset* 0))
-    (map-fn
-     'transaction
-     #'(lambda (xact)
-	 (incf *value-expr-series-offset*)
+    (flet ((strip-value (value)
+	     (strip-annotations value)))
+      (map-fn
+       'transaction
+       #'(lambda (xact)
+	   (incf *value-expr-series-offset*)
 
-	 (let ((amt (typecase amount
-		      (function (funcall amount xact))
-		      (value-expr (value-expr-call amount xact))
-		      (otherwise (xact-amount xact)))))
-	   (setf (xact-value xact :running-total)
-		 (setf running-total (add running-total amt)))
-	   (if total
-	       ;; This function might well refer to the :running-total we just
-	       ;; set.
-	       (setf (xact-value xact :running-total)
-		     (etypecase total
-		       (function (funcall total xact))
-		       (value-expr (value-expr-call total xact))))))
-	 xact)
-     xact-series)))
+	   (let ((amt (strip-value
+		       (etypecase amount
+			 (function (funcall amount xact))
+			 (value-expr (value-expr-call amount xact))
+			 (null (xact-amount xact))))))
+	     (setf (xact-value xact :computed-amount) amt
+		   (xact-value xact :running-total)
+		   (setf running-total (add running-total amt)))
+	     (if total
+		 ;; This function might well refer to the :running-total we just
+		 ;; set.
+		 (setf (xact-value xact :running-total)
+		       (etypecase total
+			 (function (funcall total xact))
+			 (value-expr (value-expr-call total xact))))))
+	   xact)
+       xact-series))))
 
 (defun calculate-account-totals (xact-series)
   (let (root-account)
@@ -48,18 +52,13 @@
 	  (setf root-account (binder-root-account binder))))
 
       (let* ((account (xact-account xact))
-	     (balance (account-value account :subtotal)))
-	(if balance
-	    (add* balance (xact-amount xact))
-	    (account-set-value account
-			       :subtotal (balance (xact-amount xact))))))
-
+	     (balance (or (account-value account :subtotal) (balance))))
+	(account-set-value account
+			   :subtotal (add balance (xact-amount xact)))))
     (labels
 	((calc-accounts (account)
 	   (let* ((subtotal (account-value account :subtotal))
-		  (total (if subtotal
-			     (copy-balance subtotal)
-			     (balance))))
+		  (total (or subtotal (balance))))
 
 	     (account-set-value account :total total)
 
@@ -69,14 +68,12 @@
 		 (maphash #'(lambda (name account)
 			      (declare (ignore name))
 			      (let ((child-total (calc-accounts account)))
-				(add* total child-total)
+				(setf total (add total child-total))
 				(unless (value-zerop child-total)
 				  (incf children-with-totals))))
 			  children))
-
 	       (account-set-value account
 				  :children-with-totals children-with-totals))
-	     
 	     total)))
 
       (if root-account

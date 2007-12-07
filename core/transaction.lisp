@@ -109,9 +109,9 @@
 
 (defun print-transaction (transaction stream depth)
   (declare (ignore depth))
+  (declare (type stream stream))
   (print-unreadable-object (transaction stream :type t)
-    (format stream
-	    ":DATE ~S :ACCT ~S :AMT ~S :V ~S :M ~S :G ~S :C ~S :POS ~S"
+    (format stream ":DATE ~S :ACCT ~S :AMT ~S :V ~S :M ~S :G ~S :C ~S :POS ~S"
 	    (let ((date (xact-date transaction)))
 	      (and date (strftime date)))
 	    (account-fullname (xact-account transaction))

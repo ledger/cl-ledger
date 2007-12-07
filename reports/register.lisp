@@ -77,7 +77,12 @@
 		      (register-reporter :no-total no-total
 					 :output-stream output-stream))))
     (iterate ((xact xact-series))
-      (funcall reporter xact))))
+      (funcall reporter xact)
+      ;; Clear out the extended attribute data so it can be garbage collected
+      ;; right away.  For certain reports where a strict SERIES computation is
+      ;; possible (i.e., not sorting, reversing, tail, grouping, etc), this
+      ;; can reduce committed memory by a significant amount.
+      (setf (xact-data xact) nil))))
 
 (defun register-report (&rest args)
   "This is a function for easily print register reports.

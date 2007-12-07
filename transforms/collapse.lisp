@@ -20,8 +20,9 @@
 	      (if (= 1 (length entry-xacts))
 		  (first entry-xacts)
 		  (reduce #'(lambda (total-xact xact)
-			      (add* (get-xact-amount total-xact)
-				    (xact-amount xact))
+			      (setf (get-xact-amount total-xact)
+				    (add (get-xact-amount total-xact)
+					 (xact-amount xact)))
 			      total-xact)
 			  entry-xacts
 			  :initial-value

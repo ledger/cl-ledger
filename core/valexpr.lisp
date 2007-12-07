@@ -4,10 +4,6 @@
 
 (in-package :ledger)
 
-(defstruct (value-expr)
-  (string nil :type string)
-  (function nil))
-
 (declaim (inline value-expr-call))
 (defun value-expr-call (valexpr xact)
   (declare (type value-expr valexpr))
@@ -56,8 +52,7 @@
       (if found-amount
 	  (constantly found-amount)
 	  (cond
-	    ((digit-char-p c)
-	     (constantly (cambl:integer-to-amount (read in))))
+	    ((digit-char-p c) (constantly (read in)))
 
 	    ((char= c #\/)
 	     (let ((scanner-type :account))
@@ -72,11 +67,12 @@
 			in #\/ "Regular expression lacks closing slash")
 		       :case-insensitive-mode t)))
 		 (lambda (xact)
-		   ;; If just `match' were used here, the result might be 0 if the
-		   ;; match occurred at the beginning of the string -- which
-		   ;; `value-truth' (applied to the result in filter.lisp) would
-		   ;; interpret as FALSE.  By returning T or NIL here, `value-truth'
-		   ;; will always do the right thing.
+		   ;; If just `match' were used here, the result might be 0 if
+		   ;; the match occurred at the beginning of the string --
+		   ;; which `value-truth' (applied to the result in
+		   ;; filter.lisp) would interpret as FALSE.  By returning T
+		   ;; or NIL here, `value-truth' will always do the right
+		   ;; thing.
 		   (not (null (cl-ppcre:scan
 			       scanner
 			       (ecase scanner-type
