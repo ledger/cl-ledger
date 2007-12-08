@@ -12,34 +12,37 @@
 
 (in-package :ledger)
 
-(defun calculate-totals (xact-series &key (amount nil) (total nil))
+(defun calculate-totals (xact-series &key (amount nil) (total nil) (lots nil)
+			 (lot-prices nil) (lot-dates nil) (lot-tags nil)
+			 &allow-other-keys)
   (declare (type series xact-series))
   (let ((running-total 0)
 	(*value-expr-series-offset* 0))
-    (flet ((strip-value (value)
-	     (strip-annotations value)))
-      (map-fn
-       'transaction
-       #'(lambda (xact)
-	   (incf *value-expr-series-offset*)
+    (map-fn
+     'transaction
+     #'(lambda (xact)
+	 (incf *value-expr-series-offset*)
 
-	   (let ((amt (strip-value
-		       (etypecase amount
-			 (function (funcall amount xact))
-			 (value-expr (value-expr-call amount xact))
-			 (null (xact-amount xact))))))
-	     (setf (xact-value xact :computed-amount) amt
-		   (xact-value xact :running-total)
-		   (setf running-total (add running-total amt)))
-	     (if total
-		 ;; This function might well refer to the :running-total we just
-		 ;; set.
-		 (setf (xact-value xact :running-total)
-		       (etypecase total
-			 (function (funcall total xact))
-			 (value-expr (value-expr-call total xact))))))
-	   xact)
-       xact-series))))
+	 (let ((amt (strip-annotations
+		     (etypecase amount
+		       (function (funcall amount xact))
+		       (value-expr (value-expr-call amount xact))
+		       (null (xact-amount xact)))
+		     :keep-price (or lots lot-prices)
+		     :keep-date  (or lots lot-dates)
+		     :keep-tag   (or lots lot-tags))))
+	   (setf (xact-value xact :computed-amount) amt
+		 (xact-value xact :running-total)
+		 (setf running-total (add running-total amt)))
+	   (if total
+	       ;; This function might well refer to the :running-total we just
+	       ;; set.
+	       (setf (xact-value xact :running-total)
+		     (etypecase total
+		       (function (funcall total xact))
+		       (value-expr (value-expr-call total xact))))))
+	 xact)
+     xact-series)))
 
 (defun calculate-account-totals (xact-series)
   (let (root-account)

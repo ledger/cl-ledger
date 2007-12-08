@@ -108,9 +108,7 @@
     ;; determine, for example, whether filtered transactions are included or
     ;; excluded from the running total.
     (unless (getf args :no-total)
-      (setf xacts (calculate-totals xacts
-				    :amount (getf args :amount)
-				    :total  (getf args :total))))
+      (setf xacts (apply #'calculate-totals xacts args)))
 
     ;; Only pass through transactions matching the :display predicate.
     (if-let ((display-expr (getf args :display)))

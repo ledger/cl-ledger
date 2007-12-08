@@ -104,6 +104,11 @@ extra options allowed for `derive-entry', for which please see below.
                                  ; (same as saying :amount "-a")
     :related BOOL                ; show "other" transactions of each entry
 
+    :lots BOOL                   ; show all commodity lot information
+    :lot-prices BOOL             ; show commodity lot prices
+    :lot-dates BOOL              ; show commodity lot dates
+    :lot-tags BOOL               ; show commodity lot tags
+
     :amount "VALUE-EXPR"         ; use EXPR as the transaction amount
                                  ;   when computing the running total
     :total "VALUE-EXPR"          ; use EXPR to compute the running total
