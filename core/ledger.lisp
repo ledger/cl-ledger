@@ -37,8 +37,8 @@
 	    (push (first args) objects)))
 	 (setf args (cdr args)))
 
-    (if (eq (car objects) (car args))
-	(return-from binder *last-binder*))
+    (if (null objects)
+	(return-from binder (values *last-binder* args)))
 
     (if binder
 	(setf *last-binder* nil)
