@@ -28,7 +28,7 @@
 			  :initial-value
 			  (make-transaction :entry entry
 					    :account total-account
-					    :amount (balance)))))))
+					    :amount 0))))))
        (scan (group-transactions-by-entry (collect xact-series)))))))
 
 (provide 'collapse)

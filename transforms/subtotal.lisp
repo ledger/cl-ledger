@@ -11,7 +11,7 @@
 	(let* ((account (find-account journal
 				      (account-fullname (xact-account xact))
 				      :create-if-not-exists-p t))
-	       (balance (or (account-value account :subtotal) (balance))))
+	       (balance (or (account-value account :subtotal) 0)))
 
 	  ;; Remember the earliest and latest transactions in the set, so that
 	  ;; we can create a meaningful display name for the grouped entry.
@@ -25,27 +25,29 @@
 	  (account-set-value account
 			     :subtotal (add balance (xact-amount xact)))))
 
-      (let ((totals-entry
-	     (make-instance 'entry
-			    :journal journal
-			    :actual-date earliest-date
-			    :payee (format nil "- ~A"
-					   (strftime latest-date))
-			    :normalizedp t)))
-	(labels
-	    ((walk-account (account)
-	       (if-let ((subtotal (account-value account :subtotal)))
-		 (add-transaction totals-entry
-				  (make-transaction :entry   totals-entry
-						    :account account
-						    :amount  subtotal)))
-	       (if-let ((children (account-children account)))
-		 (maphash #'(lambda (name child)
-			      (declare (ignore name))
-			      (walk-account child))
-			  children))))
-	  (walk-account (binder-root-account (journal-binder journal))))
-	(scan-transactions totals-entry)))))
+      (if latest-date
+	  (let ((totals-entry
+		 (make-instance 'entry
+				:journal journal
+				:actual-date earliest-date
+				:payee (format nil "- ~A"
+					       (strftime latest-date))
+				:normalizedp t)))
+	    (labels
+		((walk-account (account)
+		   (if-let ((subtotal (account-value account :subtotal)))
+		     (add-transaction totals-entry
+				      (make-transaction :entry   totals-entry
+							:account account
+							:amount  subtotal)))
+		   (if-let ((children (account-children account)))
+		     (maphash #'(lambda (name child)
+				  (declare (ignore name))
+				  (walk-account child))
+			      children))))
+	      (walk-account (binder-root-account (journal-binder journal))))
+	    (scan-transactions totals-entry))
+	  (scan '())))))
 
 (provide 'subtotal)
 

@@ -15,9 +15,8 @@
 	  ((eq elision-style 'leading)
 	   (concatenate 'string ".." (subseq name (- len (- width 2)))))
 
-	  ((eq elision-style 'middle)
-	   (concatenate 'string (subseq name 0 (1- (/ width 2))) ".."
-			(subseq name (1+ (/ width 2)))))
+	  ((eq elision-style 'trailing)
+	   (concatenate 'string (subseq name 0 (- width 2)) ".."))
 
 	  ((and (eq elision-style 'abbreviate)
 		account-p)
@@ -42,10 +41,11 @@
 						 right-abbrev)))))
 		    parts)))
 	     (if (> (length abbrev) width)
-		 (abbreviate-string abbrev width :elision-style 'leading)
+		 (abbreviate-string abbrev width :elision-style 'middle)
 		 abbrev)))
 	  (t
-	   (concatenate 'string (subseq name 0 (- width 2)) ".."))))))
+	   (concatenate 'string (subseq name 0 (1- (/ width 2))) ".."
+			(subseq name (1+ (- len (/ width 2))))))))))
 
 (defun register-reporter (&key (output-stream *standard-output*)
 			  (no-total nil))

@@ -12,7 +12,65 @@
 (defvar *registered-parsers* nil)
 (defvar *allow-embedded-lisp* nil)
 
+;;;_ * Binders
+
 (defvar *last-binder* nil)
+
+(defun compare-path-lists (left right)
+  (when (= (length left) (length right))
+    (dolist (l left)
+      (dolist (r right)
+	(unless (equal l r)
+	  (return-from compare-path-lists nil))))
+    t))
+
+(defun binder (&rest args)
+  (let (binder objects)
+    (loop while args do
+	 (etypecase (first args)
+	   (keyword (loop-finish))
+	   (binder
+	    (setf binder (first args))
+	    (dolist (journal (binder-journals binder))
+	      (push journal objects)))
+	   ((or string pathname journal)
+	    (push (first args) objects)))
+	 (setf args (cdr args)))
+
+    (if (eq (car objects) (car args))
+	(return-from binder *last-binder*))
+
+    (if binder
+	(setf *last-binder* nil)
+	(setf binder *last-binder*))
+
+    (unless (and *last-binder*
+		 (compare-path-lists
+		  (mapcar #'(lambda (obj)
+			      (etypecase obj
+				(journal (journal-source obj))
+				(pathname obj)
+				(string (pathname obj))))
+			  objects)
+		  (mapcar #'journal-source
+			  (binder-journals *last-binder*))))
+      (setf binder (make-instance 'binder))
+      (dolist (object objects)
+	(add-journal binder object)))
+
+    (when (and binder (binderp binder))
+      (setf *last-binder* binder)
+
+      (loop for journal-cell on (binder-journals binder) do
+	   (when (or (null (journal-read-date (car journal-cell)))
+		     (> (file-write-date (journal-source (car journal-cell)))
+			(journal-read-date (car journal-cell))))
+	     (setf (car journal-cell)
+		   (read-journal (journal-source
+				  (car journal-cell)) binder))
+	     (assert (car journal-cell))))
+
+      (values binder args))))
 
 ;;;_ * Journals
 
@@ -94,8 +152,12 @@ The result is of type JOURNAL."
 (defun account-set-value (account key value)
   (let ((value-cell (assoc key (account-data account))))
     (if value-cell
-	(rplacd value-cell value)
-	(push (cons key value) (account-data account)))))
+	(progn
+	  (rplacd value-cell value)
+	  (values (cdr value-cell) value-cell))
+	(progn
+	  (push (cons key value) (account-data account))
+	  (values value (first (account-data account)))))))
 
 (defun reset-accounts (binder)
   (labels ((undo-filter-in-account (name account)

@@ -128,9 +128,9 @@ corresponding CL-Ledger keywords:
      -n           --collapse           :collapse t
      -r           --related            :related t
      -s           --subtotal           :subtotal t
-     -S ARG       --sort ARG           :sort ARG
+     -S EXPR      --sort ARG           :sort ARG
                   --sort-entries ARG   :sort-entries ARG
-
+     -t EXPR
 
 * Options to `derive-entry'
 
@@ -258,6 +258,23 @@ pulled and type "make".  If this works, you can quit, then type "make core" to
 build a core file just for the Ledger web server.  After it's built, type
 "make" to run the server using the core.  Once a core is built, Ledger should
 start up in a split second.
+
+
+* Implementations status
+
+Here is how Ledger stands up against current Lisp implementations, in order of
+how frequently I use them:
+
+  SBCL         1.0.12.17       WORKS
+  LispWorks    5.02 Personal   WORKS
+  Allegro CL   8.1 Express     WORKS
+  CLISP        2.43            Fails to compile RED-BLACK
+  Clozure CL   2007-12-07      Fails to compile LOCAL-TIME
+  OpenMCL      2007-07-22      Fails to compile LOCAL-TIME
+  CMUCL        19d (2007-11)   Fails to compile PERIODS
+  ECL          2007-12-07      Fails to compile SERIES
+  ABCL         0.0.10          Fails to compile SERIES
+  GCL          2.6.7           <unable to build so far>
 
 
 * In closing

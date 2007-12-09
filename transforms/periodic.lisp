@@ -27,7 +27,7 @@
 		     :entry entry
 		     :account (find-account journal (account-fullname acct)
 					    :create-if-not-exists-p t)
-		     :amount (balance))
+		     :amount 0)
 		    (gethash acct account-hash)
 		    acct-xact)
 	      (add-transaction entry acct-xact))

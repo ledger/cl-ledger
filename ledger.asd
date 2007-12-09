@@ -88,4 +88,6 @@ for diagnostic output.")
 	      :components ((:file "textual")
 			   (:file "autoentry" :depends-on ("textual"))
 			   (:file "perentry" :depends-on ("textual")))
-	      :serial t)))))
+	      :serial t)))
+
+   (:file "driver")))

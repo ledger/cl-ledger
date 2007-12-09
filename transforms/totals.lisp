@@ -47,23 +47,18 @@
 (defun calculate-account-totals (xact-series)
   (let (root-account)
     (iterate ((xact xact-series))
-      ;; After the first transaction, reset the binder since we're going to
-      ;; store temporary data that might exist from a previous calculation.
       (unless root-account
-	(let ((binder (journal-binder (entry-journal (xact-entry xact)))))
-	  (reset-accounts binder)
-	  (setf root-account (binder-root-account binder))))
-
-      (let* ((account (xact-account xact))
-	     (balance (or (account-value account :subtotal) (balance))))
-	(account-set-value account
-			   :subtotal (add balance (xact-amount xact)))))
+	(setf root-account
+	      (binder-root-account (journal-binder (entry-journal
+						    (xact-entry xact))))))
+      (let ((account (xact-account xact)))
+	(account-set-value account :subtotal
+			   (add (or (account-value account :subtotal) 0)
+				(xact-amount xact)))))
     (labels
 	((calc-accounts (account)
 	   (let* ((subtotal (account-value account :subtotal))
-		  (total (or subtotal (balance))))
-
-	     (account-set-value account :total total)
+		  (total (or subtotal 0)))
 
 	     (let ((children (account-children account))
 		   (children-with-totals 0))
@@ -75,9 +70,10 @@
 				(unless (value-zerop child-total)
 				  (incf children-with-totals))))
 			  children))
-	       (account-set-value account
-				  :children-with-totals children-with-totals))
-	     total)))
+	       (account-set-value account :children-with-totals
+				  children-with-totals))
+
+	     (account-set-value account :total total))))
 
       (if root-account
 	  (calc-accounts root-account)))

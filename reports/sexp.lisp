@@ -51,8 +51,7 @@
   (basic-reporter #'transactions-to-sexp args))
 
 (defun find-unique-payees (&rest args)
-  (multiple-value-bind (binder remaining-args)
-      (get-related-binder args)
+  (multiple-value-bind (binder remaining-args) (apply #'binder args)
     (let* ((starts-with (getf remaining-args :starts-with))
 	   (starts-with-len (and starts-with (length starts-with))))
       (if starts-with
@@ -70,7 +69,7 @@
 	:test #'string=)))))
 
 (defun find-account-tree (&rest args)
-  (let* ((binder (get-related-binder args))
+  (let* ((binder (apply #'binder args))
 	 (root-account (binder-root-account binder)))
     (labels
 	((find-accounts (account)
@@ -88,8 +87,7 @@
       (cdr (find-accounts root-account)))))
 
 (defun find-sibling-accounts (&rest args)
-  (multiple-value-bind (binder remaining-args)
-      (get-related-binder args)
+  (multiple-value-bind (binder remaining-args) (apply #'binder args)
     (labels
 	((traverse-accounts (account path-elements)
 	   (if account
