@@ -49,12 +49,14 @@
     (iterate ((xact xact-series))
       (unless root-account
 	(setf root-account
-	      (binder-root-account (journal-binder (entry-journal
-						    (xact-entry xact))))))
-      (let ((account (xact-account xact)))
+	      (binder-root-account (journal-binder
+				    (entry-journal (xact-entry xact))))))
+      (let* ((account (xact-account xact))
+	     (subtotal (account-value account :subtotal)))
 	(account-set-value account :subtotal
-			   (add (or (account-value account :subtotal) 0)
-				(xact-amount xact)))))
+			   (if subtotal
+			       (add subtotal (xact-amount xact))
+			       (xact-amount xact)))))
     (labels
 	((calc-accounts (account)
 	   (let* ((subtotal (account-value account :subtotal))
@@ -66,8 +68,8 @@
 		 (maphash #'(lambda (name account)
 			      (declare (ignore name))
 			      (let ((child-total (calc-accounts account)))
-				(setf total (add total child-total))
 				(unless (value-zerop child-total)
+				  (setf total (add total child-total))
 				  (incf children-with-totals))))
 			  children))
 	       (account-set-value account :children-with-totals
