@@ -6,6 +6,7 @@
   (:use :common-lisp :local-time :cambl :periods :series)
   (:nicknames :ledger)
   (:export binder
+	   binder-statistics
 	   binder-commodity-pool
 	   binder-root-account
 	   binder-journals

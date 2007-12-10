@@ -72,6 +72,52 @@
 
       (values binder args))))
 
+(defun binder-statistics (&optional binder)
+  (let ((binder (or binder *last-binder*)))
+    (format t "~&Binder statistics:~%")
+    (let (earliest latest)
+      (iterate ((xact (scan-transactions binder)))
+	(if (or (null earliest)
+		(local-time< (xact-date xact) earliest))
+	    (setf earliest (xact-date xact)))
+	(if (or (null latest)
+		(local-time> (xact-date xact) latest))
+	    (setf latest (xact-date xact))))
+      (format t "~12@A earliest date~%" (strftime earliest))
+      (format t "~12@A latest date~%" (strftime latest))
+      (format t "~12D days covered (approx.)~%"
+	      (round (duration-seconds (time-difference earliest latest))
+		     86400)))
+    (format t "~12D transactions~%"
+	    (collect-length (scan-transactions binder)))
+    (format t "~12D entries~%" (collect-length (scan-entries binder)))
+    (format t "~12D unique payees~%"
+	    (length
+	     (remove-duplicates
+	      (collect (map-fn 'string #'entry-payee (scan-entries binder)))
+	      :test #'string=)))
+    (format t "~12D accounts~%"
+	    (length
+	     (remove-duplicates
+	      (collect (map-fn 'account #'xact-account
+			       (scan-transactions binder)))
+	      :test #'eq)))
+    (format t "~12D commodities (including annotated)~%"
+	    (hash-table-count
+	     (cambl::commodity-pool-by-name-map *default-commodity-pool*)))
+    (format t "~12D base commodities~%"
+	    (length
+	     (remove-duplicates
+	      (mapcar #'(lambda (commodity)
+			  (if (annotated-commodity-p commodity)
+			      (cambl::get-referent commodity)
+			      commodity))
+		      (let (lst)
+			(maphash #'(lambda (k v) (declare (ignore k)) (push v lst))
+				 (cambl::commodity-pool-by-name-map
+				  *default-commodity-pool*))
+			lst)))))))
+
 ;;;_ * Journals
 
 (defmacro with-temporary-journal ((var) &body body)
