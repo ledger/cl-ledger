@@ -29,3 +29,7 @@ Y 2004
   Liabilities:MasterCard         $20.00
   Assets:Bank:Checking
 
+05/29 Book Store
+  Expenses:Books                 $20.00
+  Liabilities:MasterCard
+

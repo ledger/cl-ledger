@@ -8,8 +8,7 @@
   ;; Reset the computed values of all transactions
   (setf xacts (map-fn 'transaction
 		      #'(lambda (xact)
-			  (setf (xact-data xact) nil
-				(account-data (xact-account xact)) nil)
+			  (setf (xact-data xact) nil)
 			  xact)
 		      xacts))
 

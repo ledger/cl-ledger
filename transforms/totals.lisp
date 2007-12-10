@@ -48,9 +48,10 @@
   (let (root-account)
     (iterate ((xact xact-series))
       (unless root-account
-	(setf root-account
-	      (binder-root-account (journal-binder
-				    (entry-journal (xact-entry xact))))))
+	(let ((binder (journal-binder (entry-journal (xact-entry xact)))))
+	  (reset-accounts binder)
+	  (setf root-account (binder-root-account binder))))
+
       (let* ((account (xact-account xact))
 	     (subtotal (account-value account :subtotal)))
 	(account-set-value account :subtotal
