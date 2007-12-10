@@ -31,23 +31,23 @@
 
 (in-package :cl-user)
 
-(defpackage :ledger-asd
+(defpackage :cl-ledger-asd
   (:use :cl :asdf))
 
-(in-package :ledger-asd)
+(in-package :cl-ledger-asd)
 
-(defvar *ledger-version* "4.0.0-pre-0"
-  "A string denoting the current version of LEDGER.  Used
+(defvar *cl-ledger-version* "4.0.0-pre-0"
+  "A string denoting the current version of CL-LEDGER.  Used
 for diagnostic output.")
 
-(export '*ledger-version*)
+(export '*cl-ledger-version*)
 
 (pushnew :periods-use-series *features*)
 (pushnew :periods-use-parser *features*)
 
-(asdf:defsystem :ledger
+(asdf:defsystem :cl-ledger
   :serial t
-  :version #.*ledger-version*
+  :version #.*cl-ledger-version*
   :depends-on (:local-time :periods :cambl :series :cl-ppcre)
   :components
   ((:module "core"

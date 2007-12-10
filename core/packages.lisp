@@ -1,9 +1,10 @@
 ;; packages.lisp
 
-(in-package :common-lisp)
+(in-package :common-lisp-user)
 
-(defpackage :ledger
+(defpackage :cl-ledger
   (:use :common-lisp :local-time :cambl :periods :series)
+  (:nicknames :ledger)
   (:export binder
 	   binder-commodity-pool
 	   binder-root-account

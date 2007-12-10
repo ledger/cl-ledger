@@ -14,6 +14,7 @@
 	       (get-partial-name (concatenate 'string (account-name account)
 					      ":" string)
 				 account (1- count))))))
+
     ;; This printer function returns t if it decided to display the account,
     ;; or nil otherwise.  If an account is not printed, its child will see a
     ;; value for "elided" representing how many generations elected not to
@@ -51,17 +52,18 @@
 		 (incf elided)))
 
 	   (if (account-children account)
-	       (locally #+sbcl(declare (sb-ext:muffle-conditions
-					sb-ext:code-deletion-note))
-			(mapc #'(lambda (cell)
-				  (print-accounts (cdr cell) elided
-						  (1+ real-depth)))
-			      (sort (let (lst)
-				      (maphash #'(lambda (key value)
-						   (push (cons key value) lst))
-					       (account-children account))
-				      lst)
-				    #'string< :key #'car))))))
+	       (locally
+		   #+sbcl (declare (sb-ext:muffle-conditions
+				    sb-ext:code-deletion-note))
+		   (mapc #'(lambda (cell)
+			     (print-accounts (cdr cell) elided
+					     (1+ real-depth)))
+			 (sort (let (lst)
+				 (maphash #'(lambda (key value)
+					      (push (cons key value) lst))
+					  (account-children account))
+				 lst)
+			       #'string< :key #'car))))))
       (when root-account
 	(print-accounts root-account 0 0)
 	(funcall reporter root-account 0 0 t)))))

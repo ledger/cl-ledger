@@ -43,7 +43,7 @@ Now you can run Ledger at the REPL like this:
 
     $ sbcl
     * (require 'asdf)
-    * (asdf:oos 'asdf:load-op :ledger)
+    * (asdf:oos 'asdf:load-op :cl-ledger)
 
 This compiles and loads the Ledger core, and also the textual parser package,
 for parsing standard Ledger text files (other parser packages soon to come).
@@ -267,13 +267,13 @@ how frequently I use them:
 
   SBCL         1.0.12.17       WORKS
   LispWorks    5.02 Personal   WORKS
-  Allegro CL   8.1 Express     WORKS
-  CLISP        2.43            Fails to compile RED-BLACK
+  Allegro CL   8.1 Express     Fails to compile CL-FAD (where is :OSI?)
   Clozure CL   2007-12-07      Fails to compile LOCAL-TIME
   OpenMCL      2007-07-22      Fails to compile LOCAL-TIME
-  CMUCL        19d (2007-11)   Fails to compile PERIODS
   ECL          2007-12-07      Fails to compile SERIES
   ABCL         0.0.10          Fails to compile SERIES
+  CLISP        2.43            Fails to compile RED-BLACK
+  CMUCL        19d (2007-11)   Fails to compile PERIODS
   GCL          2.6.7           <unable to build so far>
 
 
