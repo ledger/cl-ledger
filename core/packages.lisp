@@ -80,7 +80,6 @@
 	   xact-amount*
 	   xact-cost
 	   xact-note
-	   xact-tags
 	   xact-virtualp
 	   xact-must-balance-p
 	   xact-position

@@ -23,7 +23,6 @@
   (amount nil	       :type (or value value-expr null))
   (cost nil	       :type (or value value-expr null))
   (note nil	       :type (or string null))
-  (tags nil)
   (virtualp nil        :type boolean)
   (generatedp nil      :type boolean)
   (calculatedp nil     :type boolean)

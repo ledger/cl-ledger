@@ -12,6 +12,21 @@
 
 (in-package :ledger)
 
+(defun get-computed-amount (xact amount lots lot-prices lot-dates lot-tags)
+  (strip-annotations
+   (etypecase amount
+     (function (funcall amount xact))
+     (value-expr (value-expr-call amount xact))
+     (null (xact-amount xact)))
+   :keep-price (or lots lot-prices)
+   :keep-date  (or lots lot-dates)
+   :keep-tag   (or lots lot-tags)))
+
+(defun get-computed-total (item total)
+  (etypecase total
+    (function (funcall total item))
+    (value-expr (value-expr-call total item))))
+
 (defun calculate-totals (xact-series &key (amount nil) (total nil) (lots nil)
 			 (lot-prices nil) (lot-dates nil) (lot-tags nil)
 			 &allow-other-keys)
@@ -23,14 +38,8 @@
      #'(lambda (xact)
 	 (incf *value-expr-series-offset*)
 
-	 (let ((amt (strip-annotations
-		     (etypecase amount
-		       (function (funcall amount xact))
-		       (value-expr (value-expr-call amount xact))
-		       (null (xact-amount xact)))
-		     :keep-price (or lots lot-prices)
-		     :keep-date  (or lots lot-dates)
-		     :keep-tag   (or lots lot-tags))))
+	 (let ((amt (get-computed-amount xact amount lots
+					 lot-prices lot-dates lot-tags)))
 	   (setf (xact-value xact :computed-amount) amt
 		 (xact-value xact :running-total)
 		 (setf running-total (add running-total amt)))
@@ -38,13 +47,14 @@
 	       ;; This function might well refer to the :running-total we just
 	       ;; set.
 	       (setf (xact-value xact :running-total)
-		     (etypecase total
-		       (function (funcall total xact))
-		       (value-expr (value-expr-call total xact))))))
+		     (get-computed-total xact total))))
 	 xact)
      xact-series)))
 
-(defun calculate-account-totals (xact-series)
+;; jww (2007-12-09): How do I get :lot-prices into this function?
+(defun calculate-account-totals (xact-series &key (amount nil) (total nil)
+				 (lots nil) (lot-prices nil) (lot-dates nil)
+				 (lot-tags nil))
   (let (root-account)
     (iterate ((xact xact-series))
       (unless root-account
@@ -53,15 +63,15 @@
 	  (setf root-account (binder-root-account binder))))
 
       (let* ((account (xact-account xact))
-	     (subtotal (account-value account :subtotal)))
-	(account-set-value account :subtotal
-			   (if subtotal
-			       (add subtotal (xact-amount xact))
-			       (xact-amount xact)))))
+	     (subtotal (account-value account :subtotal))
+	     (amt (get-computed-amount xact amount lots
+				       lot-prices lot-dates lot-tags)))
+	(setf (account-value account :subtotal)
+	      (if subtotal (add subtotal amt) amt))))
     (labels
 	((calc-accounts (account)
 	   (let* ((subtotal (account-value account :subtotal))
-		  (total (or subtotal 0)))
+		  (account-total (or subtotal 0)))
 
 	     (let ((children (account-children account))
 		   (children-with-totals 0))
@@ -70,13 +80,19 @@
 			      (declare (ignore name))
 			      (let ((child-total (calc-accounts account)))
 				(unless (value-zerop child-total)
-				  (setf total (add total child-total))
+				  (setf account-total
+					(add account-total child-total))
 				  (incf children-with-totals))))
 			  children))
-	       (account-set-value account :children-with-totals
-				  children-with-totals))
+	       (setf (account-value account :children-with-totals)
+		     children-with-totals))
 
-	     (account-set-value account :total total))))
+	     (setf (account-value account :total) account-total)
+	     (if total
+		 ;; This function might well refer to the :total we just set.
+		 (setf (account-value account :total)
+		       (get-computed-total account total)))
+	     (account-value account :total))))
 
       (if root-account
 	  (calc-accounts root-account)))

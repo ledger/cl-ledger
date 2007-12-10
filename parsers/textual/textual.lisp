@@ -173,12 +173,23 @@
 	    (unless cost
 	      (error "Failed to read cost expression: ~S" cost-expr))))
 
+	(if (and cost (not (annotated-commodity-p (amount-commodity amount))))
+	    (setf (amount-commodity amount)
+		  (annotate-commodity (amount-commodity amount)
+				      (make-commodity-annotation
+				       :price (if (string= "@" cost-specifier)
+						  cost
+						  (divide cost amount))
+				       :date  (entry-date entry)
+				       :tag   (entry-code entry)))))
+
 	(let ((virtualp (and open-bracket
 			     (if (string= "(" open-bracket)
 				 (string= ")" close-bracket)
 				 (string= "]" close-bracket)))))
 	  (make-transaction
 	   :entry entry
+	   ;; jww (2007-12-09): NYI
 	   ;;:actual-date
 	   ;;:effective-date
 	   :status (cond ((string= status "*") :cleared)
@@ -194,7 +205,6 @@
 			 (multiply cost amount)
 			 cost))
 	   :note note
-	   ;;:tags
 	   :position (make-item-position :begin-line line
 					 :end-line line)
 	   :virtualp virtualp

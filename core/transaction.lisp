@@ -58,13 +58,6 @@
   (setf (get-xact-note xact) value))
 (defsetf xact-note set-xact-note)
 
-(declaim (inline xact-tags set-xact-tags))
-(defun xact-tags (xact)
-  (get-xact-tags xact))
-(defun set-xact-tags (xact value)
-  (setf (get-xact-tags xact) value))
-(defsetf xact-tags set-xact-tags)
-
 (declaim (inline xact-virtualp set-xact-virtualp))
 (defun xact-virtualp (xact)
   (get-xact-virtualp xact))

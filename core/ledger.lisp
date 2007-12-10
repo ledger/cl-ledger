@@ -159,6 +159,17 @@ The result is of type JOURNAL."
 	  (push (cons key value) (account-data account))
 	  (values value (first (account-data account)))))))
 
+(defsetf account-value (xact key) (value)
+  (let ((xact-sym (gensym))
+	(key-sym (gensym)))
+    `(let* ((,xact-sym ,xact)
+	    (,key-sym ,key)
+	    (value-cell (assoc ,key-sym (account-data ,xact-sym))))
+       (if value-cell
+	   (rplacd value-cell ,value)
+	   (push (cons ,key-sym ,value)
+		 (account-data ,xact-sym))))))
+
 (defun reset-accounts (binder)
   (labels ((undo-filter-in-account (name account)
 	     (declare (ignore name))

@@ -40,8 +40,16 @@
 	    t))))))
 
 (defun print-balance (xact-series &key (reporter nil) (no-total nil)
-		      (output-stream *standard-output*) &allow-other-keys)
-  (let ((root-account (calculate-account-totals xact-series))
+		      (output-stream *standard-output*)
+		      (amount nil) (total nil) (lots nil)
+		      (lot-prices nil) (lot-dates nil) (lot-tags nil)
+		      &allow-other-keys)
+  (let ((root-account
+	 (calculate-account-totals xact-series
+				   :amount amount :total total :lots lots
+				   :lot-prices lot-prices
+				   :lot-dates lot-dates
+				   :lot-tags lot-tags))
 	(reporter (or reporter
 		      (balance-reporter :no-total no-total
 					:output-stream output-stream))))
