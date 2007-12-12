@@ -208,16 +208,17 @@
 
 		     ((member symbol '(|P| |value|) :test #'eq)
 		      (lambda (xact value &optional moment)
-			(declare (ignore xact))
-			(market-value value moment)))
+			(market-value value (or moment (xact-date xact)))))
 
 		     ((member symbol '(|v| |market|) :test #'eq)
 		      (lambda (xact &optional moment)
-			(market-value (xact-amount xact) moment)))
+			(market-value (xact-amount xact)
+				      (or moment (xact-date xact)))))
 
 		     ((member symbol '(|V| |total_market|) :test #'eq)
 		      (lambda (xact &optional moment)
-			(market-value (xact-value xact :running-total) moment)))
+			(market-value (xact-value xact :running-total)
+				      (or moment (xact-date xact)))))
 
 		     ((member symbol '(|g| |gain|) :test #'eq)
 		      )

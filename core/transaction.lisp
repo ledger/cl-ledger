@@ -208,6 +208,20 @@
   (declare (type transaction xact))
   (eq (xact-status xact) :uncleared))
 
+(declaim (inline xact-display-amount))
+(defun xact-display-amount (xact)
+  (or (xact-value xact :display-amount)
+      (xact-amount xact)))
+
+(declaim (inline xact-total))
+(defun xact-total (xact)
+  (or (xact-value xact :running-total) 0))
+
+(declaim (inline xact-display-total))
+(defun xact-display-total (xact)
+  (or (xact-value xact :display-total)
+      (xact-total xact)))
+
 (defun group-transactions-by-entry (xacts-list)
   "\"Clump\" the incoming stream of transactions into sublists, where adjacent
 transactions with the same parent entry become part of the same sublist.

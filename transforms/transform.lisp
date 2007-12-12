@@ -108,8 +108,30 @@
     ;; `calculate-totals' computes the running total.  When this appears will
     ;; determine, for example, whether filtered transactions are included or
     ;; excluded from the running total.
-    (unless (getf args :no-total)
-      (setf xacts (apply #'calculate-totals xacts args)))
+    (when (getf args :market)
+      (if (getf args :amount)
+	  (setf (getf args :amount) "v")
+	  (progn
+	    (push "v" args)
+	    (push :amount args)))
+      (if (getf args :total)
+	  (setf (getf args :total) "V")
+	  (progn
+	    (push "V" args)
+	    (push :total args)))
+      (if (getf args :bridge-totals)
+	  (setf (getf args :bridge-totals) t)
+	  (progn
+	    (push t args)
+	    (push :bridge-totals args))))
+
+    (let ((amount-setter (apply #'displayed-amount-setter args)))
+      (unless (getf args :no-total)
+	(setf xacts (apply #'calculate-totals xacts
+			   :displayed-amount-setter amount-setter args)))
+      (if (getf args :bridge-totals)
+	  (setf xacts (apply #'bridge-running-totals xacts
+			     :displayed-amount-setter amount-setter args))))
 
     ;; Only pass through transactions matching the :display predicate.
     (if-let ((display-expr (getf args :display)))

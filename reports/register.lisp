@@ -62,11 +62,15 @@
 
       ;; Then display the transaction details
       (format output-stream "~22A ~A ~A~%"
-	      (abbreviate-string (account-fullname (xact-account xact)) 22
-				 :account-p t)
-	      (format-value (xact-amount xact) :width 12 :latter-width 67)
+	      (let ((account (xact-account xact)))
+		(if account
+		    (abbreviate-string (account-fullname account) 22
+				       :account-p t)
+		    ""))
+	      (format-value (xact-display-amount xact)
+			    :width 12 :latter-width 67)
 	      (if no-total ""
-		  (format-value (or (xact-value xact :running-total) 0)
+		  (format-value (xact-display-total xact)
 				:width 12 :latter-width 80))))))
 
 (defun print-register (xact-series &key (reporter nil) (no-total nil)
