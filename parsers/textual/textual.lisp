@@ -173,16 +173,6 @@
 	    (unless cost
 	      (error "Failed to read cost expression: ~S" cost-expr))))
 
-	(if (and cost (not (annotated-commodity-p (amount-commodity amount))))
-	    (setf (amount-commodity amount)
-		  (annotate-commodity (amount-commodity amount)
-				      (make-commodity-annotation
-				       :price (if (string= "@" cost-specifier)
-						  cost
-						  (divide cost amount))
-				       :date  (entry-date entry)
-				       :tag   (entry-code entry)))))
-
 	(let ((virtualp (and open-bracket
 			     (if (string= "(" open-bracket)
 				 (string= ")" close-bracket)

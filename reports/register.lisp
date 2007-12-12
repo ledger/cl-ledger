@@ -66,8 +66,8 @@
 				 :account-p t)
 	      (format-value (xact-amount xact) :width 12 :latter-width 67)
 	      (if no-total ""
-		  (format-value (or (xact-value xact :running-total)
-				    0) :width 12 :latter-width 80))))))
+		  (format-value (or (xact-value xact :running-total) 0)
+				:width 12 :latter-width 80))))))
 
 (defun print-register (xact-series &key (reporter nil) (no-total nil)
 		       (output-stream *standard-output*)

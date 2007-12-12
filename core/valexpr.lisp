@@ -206,14 +206,18 @@
 		     ((member symbol '(|A| |avg| |mean| |average|) :test #'eq)
 		      )
 
-		     ((eq symbol '|P|)
-		      )
+		     ((member symbol '(|P| |value|) :test #'eq)
+		      (lambda (xact value &optional moment)
+			(declare (ignore xact))
+			(market-value value moment)))
 
 		     ((member symbol '(|v| |market|) :test #'eq)
-		      )
+		      (lambda (xact &optional moment)
+			(market-value (xact-amount xact) moment)))
 
 		     ((member symbol '(|V| |total_market|) :test #'eq)
-		      )
+		      (lambda (xact &optional moment)
+			(market-value (xact-value xact :running-total) moment)))
 
 		     ((member symbol '(|g| |gain|) :test #'eq)
 		      )
@@ -237,7 +241,10 @@
 		       (let ((next-function (read-comma-expr in :as-arguments t)))
 			 (if next-function
 			     (lambda (xact)
-			       (apply function xact (funcall next-function)))
+			       (let ((value (funcall next-function xact)))
+				 (if (listp value)
+				     (apply function xact value)
+				     (funcall function xact value))))
 			     function)))
 		     function)))))))))
 
@@ -441,7 +448,6 @@
 		    (read-char in)
 		    (error (format nil "Unexpected character '~S'" c)))
 		(lambda (xact)
-		  (declare (ignorable xact))
 		  (funcall function xact)))
 	      function))))))
 

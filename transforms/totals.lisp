@@ -13,24 +13,47 @@
 (in-package :ledger)
 
 (defun get-computed-amount (xact amount lots lot-prices lot-dates lot-tags)
-  (strip-annotations
-   (etypecase amount
-     (function (funcall amount xact))
-     (value-expr (value-expr-call amount xact))
-     (null (xact-amount xact)))
-   :keep-price (or lots lot-prices)
-   :keep-date  (or lots lot-dates)
-   :keep-tag   (or lots lot-tags)))
+  (strip-annotations (etypecase amount
+		       (function (funcall amount xact))
+		       (value-expr (value-expr-call amount xact))
+		       (null (xact-amount xact)))
+		     :keep-price (or lots lot-prices)
+		     :keep-date  (or lots lot-dates)
+		     :keep-tag   (or lots lot-tags)))
 
 (defun get-computed-total (item total)
   (etypecase total
     (function (funcall total item))
     (value-expr (value-expr-call total item))))
 
-(defun calculate-totals (xact-series &key (amount nil) (total nil) (lots nil)
+(defun calculate-totals (xact-series &key
+			 (amount nil) (display-amount nil)
+			 (total nil) (display-total nil)
+			 (lots nil)
 			 (lot-prices nil) (lot-dates nil) (lot-tags nil)
 			 &allow-other-keys)
   (declare (type series xact-series))
+
+  (declare (type (or null value value-expr string function) amount))
+  (declare (type (or null value value-expr string function) total))
+  (declare (type (or null value value-expr string function) display-amount))
+  (declare (type (or null value value-expr string function) display-total))
+
+  (declare (type boolean lots))
+  (declare (type boolean lot-prices))
+  (declare (type boolean lot-dates))
+  (declare (type boolean lot-tags))
+
+  (if (and amount (stringp amount))
+      (setf amount (parse-value-expr amount)))
+  (if (and total (stringp total))
+      (setf total (parse-value-expr total)))
+
+  (if (and display-amount (stringp display-amount))
+      (setf display-amount (parse-value-expr display-amount)))
+  (if (and display-total (stringp display-total))
+      (setf display-total (parse-value-expr display-total)))
+
   (let ((running-total 0)
 	(*value-expr-series-offset* 0))
     (map-fn
@@ -42,12 +65,21 @@
 					 lot-prices lot-dates lot-tags)))
 	   (setf (xact-value xact :computed-amount) amt
 		 (xact-value xact :running-total)
-		 (setf running-total (add running-total amt)))
-	   (if total
-	       ;; This function might well refer to the :running-total we just
-	       ;; set.
-	       (setf (xact-value xact :running-total)
-		     (get-computed-total xact total))))
+		 (setf running-total (add running-total amt))))
+
+	 (if total
+	     ;; This function might well refer to the :running-total we just
+	     ;; set.
+	     (setf (xact-value xact :running-total)
+		   (get-computed-total xact total)))
+
+	 (if display-amount
+	     (setf (xact-value xact :computed-amount)
+		   (get-computed-amount xact display-amount lots
+					lot-prices lot-dates lot-tags)))
+	 (if display-total
+	     (setf (xact-value xact :running-total)
+		   (get-computed-total xact display-total)))
 	 xact)
      xact-series)))
 

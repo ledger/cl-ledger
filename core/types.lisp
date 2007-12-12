@@ -22,6 +22,7 @@
   account
   (amount nil	       :type (or value value-expr null))
   (cost nil	       :type (or value value-expr null))
+;;(basis-cost nil      :type (or value value-expr null))
   (note nil	       :type (or string null))
   (virtualp nil        :type boolean)
   (generatedp nil      :type boolean)
