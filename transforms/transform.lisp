@@ -124,7 +124,10 @@
 	   (add-to-plist args :bridge-totals t))
 	  (:basis
 	   (add-to-plist args :amount "b")
-	   (add-to-plist args :total "B")))
+	   (add-to-plist args :total "B"))
+	  (:distance
+	   (add-to-plist args :amount
+			 "(last&((date(this)-date(last))/86400))|0")))
 
 	(let ((amount-setter (apply #'displayed-amount-setter args)))
 	  (unless (getf args :no-total)
