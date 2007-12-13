@@ -109,9 +109,20 @@ extra options allowed for `derive-entry', for which please see below.
     :lot-dates BOOL              ; show commodity lot dates
     :lot-tags BOOL               ; show commodity lot tags
 
-    :amount "VALUE-EXPR"         ; use EXPR as the transaction amount
-                                 ;   when computing the running total
-    :total "VALUE-EXPR"          ; use EXPR to compute the running total
+    :amount "VALUE-EXPR"         ; use EXPR to display transaction amounts
+    :total "VALUE-EXPR"          ; use EXPR to display the running total
+
+    :set-amount "VALUE-EXPR"     ; instead of :amount, actually represent
+                                 ; the amount using EXPR (this is rarely
+                                 ; something you want to do)
+    :set-total "VALUE-EXPR"      ; same for the running total
+
+    :bridge-totals BOOL          ; if the running totals are not contiguous
+                                 ; create revaluation entries to fill gaps
+
+    :market BOOL                 ; show all amounts in terms of market value
+                                 ; (= :amount "v" :total "V" :bridge-totals t)
+
 
 Here's a quick table for translating Ledger 2.6.1 options into their
 corresponding CL-Ledger keywords:

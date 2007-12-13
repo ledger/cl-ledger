@@ -50,18 +50,14 @@ if there were an empty string between them."
 
 (declaim (inline list-iterator))
 (defun list-iterator (list)
-  (lambda ()
-    (prog1
-	(first list)
-      (setf list (rest list)))))
+  (lambda () (pop list)))
 
 (declaim (inline map-iterator))
 (defun map-iterator (callable iterator)
-  ;; This makes the assumption that iterator returns NIL when it reaches end
-  ;; of series.
-  (loop
-     for value = (funcall iterator)
-     while value do (funcall callable value)))
+  ;; This makes the assumption that iterator returns NIL when it reaches the
+  ;; end.
+  (loop for value = (funcall iterator) while value do
+       (funcall callable value)))
 
 (defmacro do-iterator ((var iterator &optional (result nil)) &body body)
   `(block nil
@@ -80,19 +76,25 @@ if there were an empty string between them."
 
     (bar (foo arg :foo 10 :foo2 20) :bar 30)"
   (if args
-      (apply
-       #'chain-functions
-       (apply (first args)
-	      (cons first-arg
-		    (when (rest args)
-		      (setf args (rest args))
-		      (loop
-			 while (keywordp (first args))
-			 collect (first args)
-			 collect (first (rest args))
-			 do (setf args (rest (rest args)))))))
-       args)
+      (apply #'chain-functions
+	     (apply (first args)
+		    (cons first-arg
+			  (when (rest args)
+			    (setf args (rest args))
+			    (loop
+			       while (keywordp (first args))
+			       collect (first args)
+			       collect (first (rest args))
+			       do (setf args (rest (rest args)))))))
+	     args)
       first-arg))
+
+(defmacro add-to-plist (plist key value)
+  `(if (getf ,plist ,key)
+       (setf (getf ,plist ,key) ,value)
+       (progn
+	 (push ,value ,plist)
+	 (push ,key ,plist))))
 
 (provide 'general)
 

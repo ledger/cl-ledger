@@ -24,6 +24,7 @@
 
 (defun get-computed-total (item &optional total)
   (etypecase total
+    (value total)
     (function (funcall total item))
     (value-expr (value-expr-call total item))
     (null
@@ -67,7 +68,8 @@
       (setf set-total (parse-value-expr set-total)))
 
   (let ((running-total 0)
-	(*value-expr-series-offset* 0))
+	(*value-expr-series-offset* 0)
+	*value-expr-last-xact*)
     (map-fn
      'transaction
      #'(lambda (xact)
@@ -86,7 +88,8 @@
 
 	 (if displayed-amount-setter
 	     (funcall displayed-amount-setter xact))
-	 xact)
+
+	 (setf *value-expr-last-xact* xact))
      xact-series)))
 
 (defun bridge-running-totals (xact-series &key (displayed-amount-setter nil)
@@ -104,7 +107,7 @@
        (let ((revaluation-account
 	      (find-account journal revaluation-account
 			    :create-if-not-exists-p t))
-	     last-xact)
+	     last-xact *value-expr-last-xact*)
 	 (iterate ((xact xact-series))
 	   (if last-xact
 	       (let* ((basis
@@ -135,7 +138,7 @@
 			     (funcall displayed-amount-setter new-xact))
 			 (next-out xacts-out new-xact)))))))
 	   (next-out xacts-out xact)
-	   (setf last-xact xact))
+	   (setf last-xact xact *value-expr-last-xact* last-xact))
 
 	 (when (and last-xact todays-total)
 	   ;; jww (2007-12-12): This requires a value expression that does not

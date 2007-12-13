@@ -14,6 +14,7 @@
 (defvar *value-expr-reduce-to-smallest-units-p* nil)
 (defvar *value-expr-commodity-pool* nil)
 (defvar *value-expr-series-offset* 0)
+(defvar *value-expr-last-xact* nil)
 
 (defparameter *value-expr-readtable* (copy-readtable nil))
 
@@ -32,6 +33,17 @@
 		#\" #\@ #\;))
   (set-macro-character char #'ignore-character nil *value-expr-readtable*))
 
+(declaim (inline apply-this-or-last))
+(defun apply-this-or-last (function)
+  (lambda (xact &optional apply-to-xact &rest args)
+    (apply function (or apply-to-xact xact) args)))
+
+(declaim (inline ignore-xact))
+(defun ignore-xact (function)
+  (lambda (xact &rest args)
+    (declare (ignore xact))
+    (apply function args)))
+
 (defun read-value-term (in)
   (let ((c (peek-char t in nil))
 	found-amount)
@@ -40,12 +52,9 @@
 		   (cambl::symbol-char-invalid-p c))
 	(let ((position (file-position in)))
 	  (ignore-errors
-	    (setf
-	     found-amount
-	     (read-amount
-	      in
-	      :observe-properties-p       *value-expr-observe-properties-p*
-	      :pool                       *value-expr-commodity-pool*)))
+	    (setf found-amount (read-amount in :observe-properties-p
+					    *value-expr-observe-properties-p*
+					    :pool *value-expr-commodity-pool*)))
 	  (unless found-amount
 	    (file-position in position))))
 
@@ -68,11 +77,7 @@
 		       :case-insensitive-mode t)))
 		 (lambda (xact)
 		   ;; If just `match' were used here, the result might be 0 if
-		   ;; the match occurred at the beginning of the string --
-		   ;; which `value-truth' (applied to the result in
-		   ;; filter.lisp) would interpret as FALSE.  By returning T
-		   ;; or NIL here, `value-truth' will always do the right
-		   ;; thing.
+		   ;; the match occurred at the beginning of the string.
 		   (not (null (cl-ppcre:scan
 			       scanner
 			       (ecase scanner-type
@@ -85,7 +90,7 @@
 
 	    ((char= c #\()
 	     (read-char in)
-	     (read-value-expr in :nested-p t))
+	     (read-value-expr in))
 
 	    ((char= c #\[)
 	     (read-char in)
@@ -97,11 +102,11 @@
 	     (read-char in)
 	     (prog1
 		 (constantly
-		  (read-amount
-		   in
-		   :observe-properties-p       *value-expr-observe-properties-p*
-		   :reduce-to-smallest-units-p *value-expr-reduce-to-smallest-units-p*
-		   :pool                       *value-expr-commodity-pool*))
+		  (read-amount in :observe-properties-p
+			       *value-expr-observe-properties-p*
+			       :reduce-to-smallest-units-p
+			       *value-expr-reduce-to-smallest-units-p*
+			       :pool *value-expr-commodity-pool*))
 	       (let ((c (peek-char t in nil)))
 		 (if c
 		     (if (char= c #\})
@@ -116,34 +121,42 @@
 		     (read in)))
 		  (function
 		   (cond
-		     ((member symbol '(|m| |now| |today|) :test #'eq)
-		      (constantly (local-time:now)))
-
-		     ((member symbol '(|t| |a| |amount|) :test #'eq)
-		      (ignore-rest #'xact-amount))
-
-		     ((member symbol '(|i| |price|) :test #'eq)
+		     ((member symbol '(|x| |this| |current|) :test #'eq)
 		      (lambda (xact &rest args)
 			(declare (ignore args))
-			(divide (xact-cost xact) (xact-amount xact))))
+			xact))
+
+		     ((member symbol '(|p| |last| |previous|) :test #'eq)
+		      (lambda (&rest args)
+			(declare (ignore args))
+			*value-expr-last-xact*))
+
+		     ((member symbol '(|a| |t| |amount|) :test #'eq)
+		      (apply-this-or-last #'xact-amount))
+
+		     ((member symbol '(|i| |price|) :test #'eq)
+		      (apply-this-or-last
+		       (lambda (xact &rest args)
+			 (declare (ignore args))
+			 (divide (xact-cost xact) (xact-amount xact)))))
 
 		     ((member symbol '(|b| |cost|) :test #'eq)
-		      (ignore-rest #'xact-cost))
+		      (apply-this-or-last #'xact-cost))
 
 		     ((member symbol '(|d| |date|) :test #'eq)
-		      (ignore-rest #'xact-date))
+		      (apply-this-or-last #'xact-date))
 
 		     ((member symbol '(|act_date| |actual_date|) :test #'eq)
-		      (ignore-rest #'xact-actual-date))
+		      (apply-this-or-last #'xact-actual-date))
 
 		     ((member symbol '(|eff_date| |effective_date|) :test #'eq)
-		      (ignore-rest #'xact-effective-date))
+		      (apply-this-or-last #'xact-effective-date))
 
 		     ((member symbol '(|X| |cleared|) :test #'eq)
-		      (ignore-rest #'xact-cleared-p))
+		      (apply-this-or-last #'xact-cleared-p))
 
 		     ((member symbol '(|Y| |pending|) :test #'eq)
-		      (ignore-rest #'xact-pending-p))
+		      (apply-this-or-last #'xact-pending-p))
 
 		     ((member symbol '(|R| |real|) :test #'eq)
 		      )
@@ -160,25 +173,18 @@
 		      )
 
 		     ((member symbol '(|T| |O| |total|) :test #'eq)
-		      (lambda (xact &rest args)
-			(declare (ignore args))
-			(xact-value xact :running-total)))
+		      (apply-this-or-last
+		       (lambda (xact &rest args)
+			 (declare (ignore args))
+			 (xact-value xact :running-total))))
 
 		     ((member symbol '(|I| |total_price|) :test #'eq)
+		      ;; jww (2007-12-12): Ah, this is why I need the concept
+		      ;; of a "cost balance"; but this can be maintained
 		      )
 
 		     ((member symbol '(|B| |total_cost|) :test #'eq)
 		      )
-
-		     ((member symbol '(|U| |abs|) :test #'eq)
-		      (lambda (xact value)
-			(declare (ignore xact))
-			(value-abs value)))
-
-		     ((eq symbol '|round|)
-		      (lambda (xact value)
-			(declare (ignore xact))
-			(value-round value)))
 
 		     ((eq symbol '|line|)
 		      (lambda (xact &rest args)
@@ -193,18 +199,23 @@
 			(cambl:amount-quantity (xact-amount xact))))
 
 		     ((member symbol '(|comm| |commodity|) :test #'eq)
-		      (lambda (xact &rest args)
-			(declare (ignore args))
+		      (lambda (xact &optional value)
 			(let ((one (amount 1)))
 			  (setf (amount-commodity one)
-				(amount-commodity (xact-amount xact)))
+				(amount-commodity (or value (xact-amount xact))))
 			  one)))
 
 		     ((member symbol '(|setcomm| |set_commodity|) :test #'eq)
 		      )
 
-		     ((member symbol '(|A| |avg| |mean| |average|) :test #'eq)
-		      )
+		     ((member symbol '(|m| |now| |today|) :test #'eq)
+		      (constantly (local-time:now)))
+
+		     ((member symbol '(|U| |abs|) :test #'eq)
+		      (ignore-xact #'value-abs))
+
+		     ((eq symbol '|round|)
+		      (ignore-xact #'value-round))
 
 		     ((member symbol '(|P| |value|) :test #'eq)
 		      (lambda (xact value &optional moment)
@@ -239,7 +250,8 @@
 		     ;; This is a function call
 		     (progn
 		       (read-char in)
-		       (let ((next-function (read-comma-expr in :as-arguments t)))
+		       (let ((next-function
+			      (read-comma-expr in :as-arguments t)))
 			 (if next-function
 			     (lambda (xact)
 			       (let ((value (funcall next-function xact)))
@@ -249,81 +261,108 @@
 			     function)))
 		     function)))))))))
 
-(defun read-unary-expr (in)
-  (let ((c (peek-char t in nil)))
-    (when c
-      (cond
-	((char= c #\!)
-	 (read-char in)
-	 (let ((function (read-value-term in)))
-	   (if function
-	       (lambda (xact)
-		 (not (value-truth (funcall function xact))))
-	       (error "'!' operator not followed by argument"))))
+(defun as-boolean (value)
+  (typecase value
+    (boolean value)
+    (value (not (value-zerop value)))
+    (fixed-time t)
+    (duration (plusp (duration-seconds value)))
+    (otherwise (not (null value)))))
 
-	((char= c #\-)
-	 (read-char in)
-	 (let ((function (read-value-term in)))
-	   (if function
-	       (lambda (xact)
-		 (cambl:negate (funcall function xact)))
-	       (error "'-' operator not followed by argument"))))
-	(t
-	 (read-value-term in))))))
+(defun read-unary-expr (in)
+  (if-let ((c (peek-char t in nil)))
+    (cond
+      ((char= c #\!)
+       (read-char in)
+       (let ((function (read-value-term in)))
+	 (if function
+	     (lambda (xact)
+	       (not (as-boolean (funcall function xact))))
+	     (error "'!' operator not followed by argument"))))
+
+      ((char= c #\-)
+       (read-char in)
+       (let ((function (read-value-term in)))
+	 (if function
+	     (lambda (xact)
+	       (negate (funcall function xact)))
+	     (error "'-' operator not followed by argument"))))
+      (t
+       (read-value-term in)))))
 
 (defun read-mul-expr (in)
-  (let ((function (read-unary-expr in)))
-    (when function
-      (let ((c (peek-char t in nil)))
-	(if c
-	    (cond
-	      ((char= c #\*)
-	       (read-char in)
-	       (let ((next-function (read-mul-expr in)))
-		 (if next-function
-		     (lambda (xact)
-		       (multiply (funcall function xact)
-				 (funcall next-function xact)))
-		     (error "'*' operator not followed by argument"))))
-
-	      ((char= c #\/)
-	       (read-char in)
-	       (let ((next-function (read-mul-expr in)))
-		 (if next-function
-		     (lambda (xact)
-		       (divide (funcall function xact)
+  (if-let ((function (read-unary-expr in)))
+    (let ((c (peek-char t in nil)))
+      (if c
+	  (cond
+	    ((char= c #\*)
+	     (read-char in)
+	     (let ((next-function (read-mul-expr in)))
+	       (if next-function
+		   (lambda (xact)
+		     (multiply (funcall function xact)
 			       (funcall next-function xact)))
-		     (error "'/' operator not followed by argument"))))
-	      (t
-	       function))
-	    function)))))
+		   (error "'*' operator not followed by argument"))))
+
+	    ((char= c #\/)
+	     (read-char in)
+	     (let ((next-function (read-mul-expr in)))
+	       (if next-function
+		   (lambda (xact)
+		     (divide (funcall function xact)
+			     (funcall next-function xact)))
+		   (error "'/' operator not followed by argument"))))
+	    (t
+	     function))
+	  function))))
 
 (defun read-add-expr (in)
-  (let ((function (read-mul-expr in)))
-    (when function
-      (let ((c (peek-char t in nil)))
-	(if c
-	    (cond
-	      ((char= c #\+)
-	       (read-char in)
-	       (let ((next-function (read-add-expr in)))
-		 (if next-function
-		     (lambda (xact)
-		       (add (funcall function xact)
-			    (funcall next-function xact)))
-		     (error "'+' operator not followed by argument"))))
+  (if-let ((function (read-mul-expr in)))
+    (let ((c (peek-char t in nil)))
+      (if c
+	  (cond
+	    ((char= c #\+)
+	     (read-char in)
+	     (let ((next-function (read-add-expr in)))
+	       (if next-function
+		   (lambda (xact)
+		     (let ((left (funcall function xact))
+			   (right (funcall next-function xact)))
+		       (etypecase left
+			 (value
+			  (etypecase right
+			    (value (add left right))))
+			 (fixed-time
+			  (etypecase right
+			    (duration (add-time left right))))
+			 (duration
+			  (etypecase right
+			    (duration (add-duration left right)))))))
+		   (error "'+' operator not followed by argument"))))
 
-	      ((char= c #\-)
-	       (read-char in)
-	       (let ((next-function (read-add-expr in)))
-		 (if next-function
-		     (lambda (xact)
-		       (subtract (funcall function xact)
-				 (funcall next-function xact)))
-		     (error "'-' operator not followed by argument"))))
-	      (t
-	       function))
-	    function)))))
+	    ((char= c #\-)
+	     (read-char in)
+	     (let ((next-function (read-add-expr in)))
+	       (if next-function
+		   (lambda (xact)
+		     (let ((left (funcall function xact))
+			   (right (funcall next-function xact)))
+		       (etypecase left
+			 (value
+			  (etypecase right
+			    (value (subtract left right))))
+			 (fixed-time
+			  (etypecase right
+			    (fixed-time (duration-seconds
+					 (time-difference left right)))
+			    (duration (subtract-time left right))))
+			 (duration
+			  (etypecase right
+			    (duration (subtract-duration left right)))))))
+		   (error "'-' operator not followed by argument"))))
+	    (t
+	     function))
+	  function))))
 
 (defmacro make-comparator (function time-operator value-operator error-string)
   `(let ((next-function (read-logic-expr in)))
@@ -339,99 +378,95 @@
 	 (error ,error-string))))
 
 (defun read-logic-expr (in)
-  (let ((function (read-add-expr in)))
-    (when function
-      (let ((c (peek-char t in nil)))
-	(if c
-	    (cond
-	      ((char= c #\=)
-	       (read-char in)
-	       (make-comparator function local-time= value=
-				"'=' operator not followed by argument"))
+  (if-let ((function (read-add-expr in)))
+    (let ((c (peek-char t in nil)))
+      (if c
+	  (cond
+	    ((char= c #\=)
+	     (read-char in)
+	     (make-comparator function local-time= value=
+			      "'=' operator not followed by argument"))
 
-	      ((char= c #\!)
-	       (read-char in)
-	       (if (char= #\= (peek-char nil in))
-		   (progn
-		     (read-char in)
-		     (make-comparator function local-time/= value/=
-				      "'!=' operator not followed by argument"))
-		   (error "Syntax error")))
+	    ((char= c #\!)
+	     (read-char in)
+	     (if (char= #\= (peek-char nil in))
+		 (progn
+		   (read-char in)
+		   (make-comparator function local-time/= value/=
+				    "'!=' operator not followed by argument"))
+		 (error "Syntax error")))
 
-	      ((char= c #\<)
-	       (read-char in)
-	       (if (char= #\= (peek-char nil in))
-		   (progn
-		     (read-char in)
-		     (make-comparator function local-time<= value<=
-				      "'<=' operator not followed by argument"))
-		   (make-comparator function local-time< value<
-				    "'<' operator not followed by argument")))
+	    ((char= c #\<)
+	     (read-char in)
+	     (if (char= #\= (peek-char nil in))
+		 (progn
+		   (read-char in)
+		   (make-comparator function local-time<= value<=
+				    "'<=' operator not followed by argument"))
+		 (make-comparator function local-time< value<
+				  "'<' operator not followed by argument")))
 
-	      ((char= c #\>)
-	       (read-char in)
-	       (if (char= #\= (peek-char nil in))
-		   (progn
-		     (read-char in)
-		     (make-comparator function local-time>= value>=
-				      "'>=' operator not followed by argument"))
-		   (make-comparator function local-time> value>
-				    "'>' operator not followed by argument")))
-	      (t
-	       function))
-	    function)))))
+	    ((char= c #\>)
+	     (read-char in)
+	     (if (char= #\= (peek-char nil in))
+		 (progn
+		   (read-char in)
+		   (make-comparator function local-time>= value>=
+				    "'>=' operator not followed by argument"))
+		 (make-comparator function local-time> value>
+				  "'>' operator not followed by argument")))
+	    (t
+	     function))
+	  function))))
 
 (defun read-and-expr (in)
-  (let ((function (read-logic-expr in)))
-    (when function
-      (let ((c (peek-char t in nil)))
-	(if (and c (char= c #\&))
-	    (progn
-	      (read-char in)
-	      (let ((next-function (read-and-expr in)))
-		(if next-function
-		    (lambda (xact)
-		      (and (funcall function xact)
-			   (funcall next-function xact)))
-		    (error "'&' operator not followed by argument"))))
-	    function)))))
+  (if-let ((function (read-logic-expr in)))
+    (let ((c (peek-char t in nil)))
+      (if (and c (char= c #\&))
+	  (progn
+	    (read-char in)
+	    (let ((next-function (read-and-expr in)))
+	      (if next-function
+		  (lambda (xact)
+		    (and (funcall function xact)
+			 (funcall next-function xact)))
+		  (error "'&' operator not followed by argument"))))
+	  function))))
 
 (defun read-or-expr (in)
-  (let ((function (read-and-expr in)))
-    (when function
-      (let ((c (peek-char t in nil)))
-	(if (and c (char= c #\|))
-	    (progn
-	      (read-char in)
-	      (let ((next-function (read-or-expr in)))
-		(if next-function
-		    (lambda (xact)
-		      (or (funcall function xact)
-			  (funcall next-function xact)))
-		    (error "'|' operator not followed by argument"))))
-	    function)))))
+  (if-let ((function (read-and-expr in)))
+    (let ((c (peek-char t in nil)))
+      (if (and c (char= c #\|))
+	  (progn
+	    (read-char in)
+	    (let ((next-function (read-or-expr in)))
+	      (if next-function
+		  (lambda (xact)
+		    (or (funcall function xact)
+			(funcall next-function xact)))
+		  (error "'|' operator not followed by argument"))))
+	  function))))
 
 (defun read-comma-expr (in &key (as-arguments nil))
-  (let ((function (read-or-expr in)))
-    (when function
-      (let ((c (peek-char t in nil)))
-	(if (and c (char= c #\,))
-	    (progn
-  	      (read-char in)
-	      (let ((next-function (read-comma-expr in)))
-		(if next-function
-		    (if as-arguments
-			(lambda (xact)
-			  (let ((next-value (funcall next-function xact)))
-			    (cons (funcall function xact)
-				  (if (consp next-value)
-				      next-value
-				      (cons next-value nil)))))
-			(lambda (xact)
-			  (funcall function xact)
-			  (funcall next-function xact)))
-		    (error "',' operator not followed by argument"))))
-	    function)))))
+  (if-let ((function (read-or-expr in)))
+    (let ((c (peek-char t in nil)))
+      (if (and c (char= c #\,))
+	  (progn
+	    (read-char in)
+	    (let ((next-function (read-comma-expr in)))
+	      (if next-function
+		  (if as-arguments
+		      (lambda (xact)
+			(let ((next-value (funcall next-function xact)))
+			  (cons (funcall function xact)
+				(if (consp next-value)
+				    next-value
+				    (cons next-value nil)))))
+		      (lambda (xact)
+			(funcall function xact)
+			(funcall next-function xact)))
+		  (error "',' operator not followed by argument"))))
+	  function))))
 
 (defun read-value-expr (in &key
 			(observe-properties-p nil)
@@ -440,17 +475,16 @@
   (let ((*value-expr-observe-properties-p*       observe-properties-p)
 	(*value-expr-reduce-to-smallest-units-p* reduce-to-smallest-units-p)
 	(*value-expr-commodity-pool*             pool))
-    (let ((function (read-comma-expr in)))
-      (when function
-	(let ((c (peek-char t in nil)))
-	  (if c
-	      (progn
-		(if (char= c #\))
-		    (read-char in)
-		    (error (format nil "Unexpected character '~S'" c)))
-		(lambda (xact)
-		  (funcall function xact)))
-	      function))))))
+    (if-let ((function (read-comma-expr in)))
+      (let ((c (peek-char t in nil)))
+	(if c
+	    (progn
+	      (if (char= c #\))
+		  (read-char in)
+		  (error (format nil "Unexpected character '~S'" c)))
+	      (lambda (xact)
+		(funcall function xact)))
+	    function)))))
 
 (defun parse-value-expr (string &key
 			 (observe-properties-p nil)

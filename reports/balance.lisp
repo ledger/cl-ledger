@@ -1,10 +1,9 @@
 ;; balance.lisp
 
-(declaim (optimize (safety 3) (debug 3) (speed 1) (space 0)))
-
 (in-package :ledger)
 
-(defun balance-reporter (&key (output-stream *standard-output*) (no-total nil))
+(defun balance-print-reporter (&optional (no-total nil)
+			       (output-stream *standard-output*))
   (labels
       ((get-partial-name (string account count)
 	 (if (zerop count)
@@ -39,45 +38,43 @@
 					:width amounts-width))))
 	    t))))))
 
-(defun print-balance (xact-series &key (reporter nil) (no-total nil)
-		      (output-stream *standard-output*)
-		      (amount nil) (total nil) (lots nil)
-		      (lot-prices nil) (lot-dates nil) (lot-tags nil)
-		      &allow-other-keys)
-  (let ((root-account
-	 (calculate-account-totals xact-series
-				   :amount amount :total total :lots lots
-				   :lot-prices lot-prices
-				   :lot-dates lot-dates
-				   :lot-tags lot-tags))
-	(reporter (or reporter
-		      (balance-reporter :no-total no-total
-					:output-stream output-stream))))
-    (labels
-	((print-accounts (account elided real-depth)
-	   (if (plusp real-depth)
-	       (unless (funcall reporter account real-depth elided)
-		 (incf elided)))
+(defun report-accounts (account reporter &optional (elided 0) (real-depth 0))
+  (if (plusp real-depth)
+      (unless (funcall reporter account real-depth elided)
+	(incf elided)))
 
-	   (if (account-children account)
-	       (locally
-		   #+sbcl (declare (sb-ext:muffle-conditions
-				    sb-ext:code-deletion-note))
-		   (mapc #'(lambda (cell)
-			     (print-accounts (cdr cell) elided
-					     (1+ real-depth)))
-			 (sort (let (lst)
-				 (maphash #'(lambda (key value)
-					      (push (cons key value) lst))
-					  (account-children account))
-				 lst)
-			       #'string< :key #'car))))))
-      (when root-account
-	(print-accounts root-account 0 0)
-	(funcall reporter root-account 0 0 t)))))
+  (if (account-children account)
+      (locally
+	  #+sbcl (declare (sb-ext:muffle-conditions
+			   sb-ext:code-deletion-note))
+	  (mapc #'(lambda (cell)
+		    (report-accounts (cdr cell) reporter elided
+				     (1+ real-depth)))
+		(sort (let (lst)
+			(maphash #'(lambda (key value)
+				     (push (cons key value) lst))
+				 (account-children account))
+			lst)
+		      #'string< :key #'car)))))
+
+(defun balance-reporter (actual-reporter)
+  (lambda (account)
+    (report-accounts account actual-reporter)
+    (funcall actual-reporter account 0 0 t)
+    nil))
 
 (defun balance-report (&rest args)
-  (basic-reporter #'print-balance (append args (list :accounts-report t))))
+  (let ((output-stream (member :output-stream args))
+	(no-total (member :no-total args)))
+    (accounts-report
+     (append args (list :reporter
+			(balance-reporter
+			 (balance-print-reporter
+			  (and no-total
+			       (cadr no-total))
+			  (if output-stream
+			      (cadr output-stream)
+			      *standard-output*))))))))
 
 (provide 'balance)
 

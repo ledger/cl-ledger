@@ -1,13 +1,9 @@
 ;; register.lisp
 
-(declaim (optimize (safety 3) (debug 3) (speed 1) (space 0)))
-
 (in-package :ledger)
 
-(defun abbreviate-string (name width &key
-			  (elision-style 'abbreviate)
-			  (account-p nil)
-			  (abbrev-length 3))
+(defun abbreviate-string (name width &key (elision-style 'abbreviate)
+			  (account-p nil) (abbrev-length 3))
   (let ((len (length name)))
     (if (<= len width)
 	name
@@ -47,8 +43,7 @@
 	   (concatenate 'string (subseq name 0 (1- (/ width 2))) ".."
 			(subseq name (1+ (- len (/ width 2))))))))))
 
-(defun register-reporter (&key (output-stream *standard-output*)
-			  (no-total nil))
+(defun register-reporter (&optional (output-stream *standard-output*))
   (let (last-entry)
     (lambda (xact)
       ;; First display the entry details, if it would not be repeated
@@ -67,25 +62,14 @@
 		    (abbreviate-string (account-fullname account) 22
 				       :account-p t)
 		    ""))
-	      (format-value (xact-display-amount xact)
-			    :width 12 :latter-width 67)
-	      (if no-total ""
-		  (format-value (xact-display-total xact)
-				:width 12 :latter-width 80))))))
-
-(defun print-register (xact-series &key (reporter nil) (no-total nil)
-		       (output-stream *standard-output*)
-		       &allow-other-keys)
-  (let ((reporter (or reporter
-		      (register-reporter :no-total no-total
-					 :output-stream output-stream))))
-    (iterate ((xact xact-series))
-      (funcall reporter xact)
-      ;; Clear out the extended attribute data so it can be garbage collected
-      ;; right away.  For certain reports where a strict SERIES computation is
-      ;; possible (i.e., not sorting, reversing, tail, grouping, etc), this
-      ;; can reduce committed memory by a significant amount.
-      (setf (xact-data xact) nil))))
+	      (let ((amount (xact-display-amount xact)))
+		(if amount
+		    (format-value amount :width 12 :latter-width 67)
+		    ""))
+	      (let ((total (xact-display-total xact)))
+		(if total
+		    (format-value total :width 12 :latter-width 80)
+		    ""))))))
 
 (defun register-report (&rest args)
   "This is a function for easily print register reports.
@@ -94,7 +78,12 @@
 
     (ledger:register-report \"/path/to/ledger.dat\"
                             :begin \"2007/08/26\" :account \"food\")"
-  (basic-reporter #'print-register args))
+  (let ((output-stream (member :output-stream args)))
+    (transactions-report
+     (append args (list :reporter
+			(register-reporter (if output-stream
+					       (cadr output-stream)
+					       *standard-output*)))))))
 
 (provide 'register)
 
