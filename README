@@ -120,9 +120,9 @@ extra options allowed for `derive-entry', for which please see below.
     :bridge-totals BOOL          ; if the running totals are not contiguous
                                  ; create revaluation entries to fill gaps
 
-    :market BOOL                 ; show all amounts in terms of market value
-                                 ; (= :amount "v" :total "V" :bridge-totals t)
-
+    :show OUTPUT-MODE            ; show amounts and totals using the given mode
+    :show :market                ; .. in terms of their market value
+    :show :basis                 ; .. in terms of their basis cost
 
 Here's a quick table for translating Ledger 2.6.1 options into their
 corresponding CL-Ledger keywords:

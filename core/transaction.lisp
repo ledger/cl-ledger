@@ -46,7 +46,8 @@
 
 (declaim (inline xact-cost set-xact-cost))
 (defun xact-cost (xact)
-  (get-xact-cost xact))
+  (or (get-xact-cost xact)
+      (xact-amount xact)))
 (defun set-xact-cost (xact value)
   (setf (get-xact-cost xact) value))
 (defsetf xact-cost set-xact-cost)
@@ -216,6 +217,11 @@
 (declaim (inline xact-total))
 (defun xact-total (xact)
   (or (xact-value xact :running-total) 0))
+
+(declaim (inline xact-total))
+(defun xact-cost-total (xact)
+  (or (xact-value xact :running-cost-total)
+      (xact-total xact)))
 
 (declaim (inline xact-display-total))
 (defun xact-display-total (xact)

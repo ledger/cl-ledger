@@ -35,8 +35,8 @@
 
 (declaim (inline apply-this-or-last))
 (defun apply-this-or-last (function)
-  (lambda (xact &optional apply-to-xact &rest args)
-    (apply function (or apply-to-xact xact) args)))
+  (lambda (xact &optional apply-to-xact)
+    (funcall function (or apply-to-xact xact))))
 
 (declaim (inline ignore-xact))
 (defun ignore-xact (function)
@@ -136,8 +136,7 @@
 
 		     ((member symbol '(|i| |price|) :test #'eq)
 		      (apply-this-or-last
-		       (lambda (xact &rest args)
-			 (declare (ignore args))
+		       (lambda (xact)
 			 (divide (xact-cost xact) (xact-amount xact)))))
 
 		     ((member symbol '(|b| |cost|) :test #'eq)
@@ -173,18 +172,17 @@
 		      )
 
 		     ((member symbol '(|T| |O| |total|) :test #'eq)
-		      (apply-this-or-last
-		       (lambda (xact &rest args)
-			 (declare (ignore args))
-			 (xact-value xact :running-total))))
+		      (apply-this-or-last #'xact-total))
 
 		     ((member symbol '(|I| |total_price|) :test #'eq)
 		      ;; jww (2007-12-12): Ah, this is why I need the concept
 		      ;; of a "cost balance"; but this can be maintained
-		      )
+		      (apply-this-or-last
+		       (lambda (xact)
+			 (divide (xact-cost-total xact) (xact-total xact)))))
 
 		     ((member symbol '(|B| |total_cost|) :test #'eq)
-		      )
+		      (apply-this-or-last #'xact-cost-total))
 
 		     ((eq symbol '|line|)
 		      (lambda (xact &rest args)

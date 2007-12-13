@@ -68,6 +68,7 @@
       (setf set-total (parse-value-expr set-total)))
 
   (let ((running-total 0)
+	(running-cost-total 0)
 	(*value-expr-series-offset* 0)
 	*value-expr-last-xact*)
     (map-fn
@@ -78,7 +79,10 @@
 	 (let ((amt (get-computed-amount xact set-amount)))
 	   (setf (xact-value xact :computed-amount) amt
 		 (xact-value xact :running-total)
-		 (setf running-total (add running-total amt))))
+		 (setf running-total (add running-total amt))
+		 (xact-value xact :running-cost-total)
+		 (setf running-cost-total
+		       (add running-cost-total (or (xact-cost xact) amt)))))
 
 	 (if set-total
 	     ;; This function might well refer to the :running-total we just

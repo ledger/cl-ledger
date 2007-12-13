@@ -47,16 +47,16 @@
   ;; entry is to be printed, all the transaction for that entry will be
   ;; printed.
   (if-let ((invert (getf args :related)))
-	  (setf xacts (related-transactions xacts)))
+    (setf xacts (related-transactions xacts)))
 
   ;; invert_transactions inverts the value of the transactions it receives.
   (if-let ((invert (getf args :invert)))
-	  (setf xacts (invert-transactions xacts)))
+    (setf xacts (invert-transactions xacts)))
 
   (if-let ((period (getf args :period)))
-	  ;; jww (2007-12-01): This should call group-by-period directly, once
-	  ;; things are working
-	  (setf xacts (periodic-transform xacts period)))
+    ;; jww (2007-12-01): This should call group-by-period directly, once
+    ;; things are working
+    (setf xacts (periodic-transform xacts period)))
   
   (if (getf args :accounts-report)
       (calculate-account-totals xacts
@@ -76,13 +76,13 @@
 	;; into one subtotal entry, which has one transaction for each
 	;; commodity in each account.
 	(if-let ((subtotal (getf args :subtotal)))
-		(setf xacts (group-by-account xacts)))
+	  (setf xacts (group-by-account xacts)))
 
 	;; collapse_transactions causes entries with multiple transactions to
 	;; appear as entries with a subtotaled transaction for each commodity
 	;; used.
 	(if-let ((collapse (getf args :collapse)))
-		(setf xacts (collapse-entries xacts)))
+	  (setf xacts (collapse-entries xacts)))
     
 	;; changed_value_transactions adds virtual transactions to the list to
 	;; account for changes in market value of commodities, which otherwise
@@ -101,26 +101,30 @@
 					 (function sort))))
 
 	      (if-let ((sort (getf args :sort)))
-		      (setf xacts
-			    (sort-transactions
-			     xacts
-			     :key (etypecase sort
-				    (string (value-expr-function
-					     (parse-value-expr sort)))
-				    (function sort)))))))
+		(setf xacts
+		      (sort-transactions
+		       xacts
+		       :key (etypecase sort
+			      (string (value-expr-function
+				       (parse-value-expr sort)))
+			      (function sort)))))))
     
 	;; filter_transactions will only pass through transactions matching
 	;; the :only predicate.
 	(if-let ((only-expr (getf args :only)))
-		(setf xacts (choose-if-value-expr xacts only-expr)))
+	  (setf xacts (choose-if-value-expr xacts only-expr)))
 
 	;; `calculate-totals' computes the running total.  When this appears
 	;; will determine, for example, whether filtered transactions are
 	;; included or excluded from the running total.
-	(when (getf args :market)
-	  (add-to-plist args :amount "v")
-	  (add-to-plist args :total "V")
-	  (add-to-plist args :bridge-totals t))
+	(case (getf args :show)
+	  (:market
+	   (add-to-plist args :amount "v")
+	   (add-to-plist args :total "V")
+	   (add-to-plist args :bridge-totals t))
+	  (:basis
+	   (add-to-plist args :amount "b")
+	   (add-to-plist args :total "B")))
 
 	(let ((amount-setter (apply #'displayed-amount-setter args)))
 	  (unless (getf args :no-total)
@@ -132,7 +136,7 @@
 
 	;; Only pass through transactions matching the :display predicate.
 	(if-let ((display-expr (getf args :display)))
-		(setf xacts (choose-if-value-expr xacts display-expr)))
+	  (setf xacts (choose-if-value-expr xacts display-expr)))
 
 	(let (arg)
 	  (cond
