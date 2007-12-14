@@ -46,8 +46,7 @@
 
 (declaim (inline xact-cost set-xact-cost))
 (defun xact-cost (xact)
-  (or (get-xact-cost xact)
-      (xact-amount xact)))
+  (get-xact-cost xact))
 (defun set-xact-cost (xact value)
   (setf (get-xact-cost xact) value))
 (defsetf xact-cost set-xact-cost)

@@ -137,10 +137,13 @@
 		     ((member symbol '(|i| |price|) :test #'eq)
 		      (apply-this-or-last
 		       (lambda (xact)
-			 (divide (xact-cost xact) (xact-amount xact)))))
+			 (divide (or (xact-cost xact)
+				     (xact-amount xact)) (xact-amount xact)))))
 
 		     ((member symbol '(|b| |cost|) :test #'eq)
-		      (apply-this-or-last #'xact-cost))
+		      (apply-this-or-last
+		       (lambda (xact)
+			 (or (xact-cost xact) (xact-amount xact)))))
 
 		     ((member symbol '(|d| |date|) :test #'eq)
 		      (apply-this-or-last #'xact-date))
@@ -179,10 +182,14 @@
 		      ;; of a "cost balance"; but this can be maintained
 		      (apply-this-or-last
 		       (lambda (xact)
-			 (divide (xact-cost-total xact) (xact-total xact)))))
+			 (divide (or (xact-cost-total xact)
+				     (xact-total xact)) (xact-total xact)))))
 
 		     ((member symbol '(|B| |total_cost|) :test #'eq)
-		      (apply-this-or-last #'xact-cost-total))
+		      (apply-this-or-last
+		       (lambda (xact)
+			 (or (xact-cost-total xact)
+			     (xact-total xact)))))
 
 		     ((eq symbol '|line|)
 		      (lambda (xact &rest args)
