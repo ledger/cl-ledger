@@ -452,11 +452,10 @@ dropped."
     clear))
 
 (defun cl-ledger-set-entity (line function value)
-  (progn
-    (slime-eval
-     `(cl:setf (,function (ledger:find-current-entity
-			   ,(buffer-file-name (current-buffer)) ,line))
-	       ,value))))
+  (slime-eval
+   `(cl:setf (,function (ledger:find-current-entity
+			 ,(buffer-file-name (current-buffer)) ,line))
+	     ,value)))
 
 (defun cl-ledger-toggle-current (&optional style)
   (interactive)
@@ -467,6 +466,55 @@ dropped."
        (or style (if current-prefix-arg :pending)))
     (cl-ledger-toggle-current-transaction
      (or style (if current-prefix-arg :pending)))))
+
+;;;_* Item manipulation
+
+(defun cl-ledger-add-entry (entry-text)
+  (interactive
+   (list
+    (read-string "Entry: "
+		 (concat cl-ledger-year "/" cl-ledger-month "/"))))
+  (let* ((args (with-temp-buffer
+		 (insert entry-text)
+		 (eshell-parse-arguments (point-min) (point-max))))
+	 (date (car args))
+	 (insert-year t)
+	 (ledger-buf (current-buffer)))
+    (if (string-match "\\([0-9]+\\)/\\([0-9]+\\)/\\([0-9]+\\)" date)
+	(setq date
+	      (encode-time 0 0 0 (string-to-number (match-string 3 date))
+			   (string-to-number (match-string 2 date))
+			   (string-to-number (match-string 1 date)))))
+    (cl-ledger-find-slot date)
+    (save-excursion
+      (if (re-search-backward "^Y " nil t)
+	  (setq insert-year nil)))
+    (save-excursion
+      (insert
+       (with-temp-buffer
+	 (setf args (mapcar #'eval args))
+	 (let ((derive-args
+		(list :date (first args)
+		      :payee (second args))))
+	   (when (> (length args) 2)
+	     (push (nth 2 args) derive-args)
+	     (if (string-match "[0-9]" (nth 2 args))
+		 (push :amount derive-args)
+	       (push :account derive-args)))
+	   (when (> (length args) 3)
+	     (push (nth 3 args) derive-args)
+	     (if (string-match "[0-9]" (nth 3 args))
+		 (push :amount derive-args)
+	       (push :balance-account derive-args)))
+	   (when (> (length args) 4)
+	     (push (nth 4 args) derive-args)
+	     (push :balance-account derive-args))
+	   (slime-eval
+	    `(ledger:derive-entry ,(buffer-file-name ledger-buf)
+				  ,@derive-args))
+	   (if insert-year
+	       (buffer-substring 2 (point-max))
+	     (buffer-substring 7 (point-max))))) "\n"))))
 
 ;;;_* Account reconciling
 
@@ -729,8 +777,7 @@ Return the difference in the format of a time value."
   (dolist (entry
 	   (progn
 	     (slime-eval
-	      `(ledger:register-sexp
-		,(buffer-file-name (current-buffer))))))
+	      `(ledger:sexp-report ,(buffer-file-name (current-buffer))))))
     (apply callback (butlast entry (- (length entry) 4)))))
 
 ;; A sample function for $ users
