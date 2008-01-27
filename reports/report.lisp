@@ -14,7 +14,7 @@
       (find-all-transactions args)
     (apply printer xacts-or-account plist)))
 
-(defun print-transaction (xact-series &key reporter &allow-other-keys)
+(defun transaction-printer (xact-series &key reporter &allow-other-keys)
   (iterate ((xact xact-series))
     (funcall reporter xact)
     ;; Clear out the extended attribute data so it can be garbage collected
@@ -24,7 +24,7 @@
     (setf (xact-data xact) nil)))
 
 (defun transactions-report (args)
-  (basic-reporter #'print-transaction args))
+  (basic-reporter #'transaction-printer args))
 
 (defun print-account (account &key reporter &allow-other-keys)
   (funcall reporter account))
