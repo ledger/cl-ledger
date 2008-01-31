@@ -2,6 +2,12 @@
 
 (in-package :ledger)
 
+(defun maybe-subseq (str idx &optional len)
+  (if (< (if len (+ idx len) idx)
+	 (length str))
+      (subseq str idx len)
+      str))
+
 (defun abbreviate-string (name width &key (elision-style 'abbreviate)
 			  (account-p nil) (abbrev-length 3))
   (let ((len (length name)))
@@ -25,13 +31,13 @@
 			    (concatenate
 			     'string
 			     (or last-part
-				 (subseq left 0 abbrev-length))
+				 (maybe-subseq left 0 abbrev-length))
 			     ":" right)
 			    (let ((left-abbrev
 				   (or last-part
-				       (subseq left 0 abbrev-length)))
+				       (maybe-subseq left 0 abbrev-length)))
 				  (right-abbrev
-				   (subseq right 0 abbrev-length)))
+				   (maybe-subseq right 0 abbrev-length)))
 			      (setf last-part
 				    (concatenate 'string left-abbrev ":"
 						 right-abbrev)))))
@@ -40,8 +46,8 @@
 		 (abbreviate-string abbrev width :elision-style 'middle)
 		 abbrev)))
 	  (t
-	   (concatenate 'string (subseq name 0 (1- (/ width 2))) ".."
-			(subseq name (1+ (- len (/ width 2))))))))))
+	   (concatenate 'string (maybe-subseq name 0 (1- (/ width 2))) ".."
+			(maybe-subseq name (1+ (- len (/ width 2))))))))))
 
 (defun register-reporter (&optional (output-stream *standard-output*))
   (let (last-entry)
