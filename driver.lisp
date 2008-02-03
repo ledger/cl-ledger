@@ -10,12 +10,11 @@
 	(car exprs)
 	(with-output-to-string (out)
 	  (write-char #\( out)
-	  (let ((first t))
-	    (loop for expr in exprs do
-		 (if first
-		     (setf first nil)
-		     (write-char #\| out))
-		 (princ expr out)))
+	  (loop with first = t for expr in exprs do
+	       (if first
+		   (setf first nil)
+		   (write-char #\| out))
+	       (princ expr out))
 	  (write-char #\) out)))))
 
 (defun process-command-line (&rest args)
@@ -25,7 +24,7 @@
      (if (char= #\: (aref arg 0))
 	 (rplaca cell (make-symbol arg))
 	 (if-let ((number (ignore-errors (parse-integer arg))))
-	   (rplaca cell number))))
+		 (rplaca cell number))))
 
   (let (pathnames keywords)
     ;; Handle all of the option-like arguments
@@ -84,18 +83,18 @@
       (setf args (cdr args))
 
       ;; Extract the account and payee regexps
-      (loop while (and args (stringp (first args)))
-	 for arg = (first args) do
-	 (if (string= arg "--")
-	     (setf in-payee-regexps t)
-	     (if in-payee-regexps
-		 (if (char= #\- (aref arg 0))
-		     (push (subseq arg 1) not-payee-regexps)
-		     (push arg payee-regexps))
-		 (if (char= #\- (aref arg 0))
-		     (push (subseq arg 1) not-account-regexps)
-		     (push arg account-regexps))))
-	 (setf args (rest args)))
+      (loop while (and args (stringp (first args))) do
+	   (let ((arg (first args)))
+	     (if (string= arg "--")
+		 (setf in-payee-regexps t)
+		 (if in-payee-regexps
+		     (if (char= #\- (aref arg 0))
+			 (push (subseq arg 1) not-payee-regexps)
+			 (push arg payee-regexps))
+		     (if (char= #\- (aref arg 0))
+			 (push (subseq arg 1) not-account-regexps)
+			 (push arg account-regexps))))
+	     (setf args (rest args))))
 
       (setf account-regexps     (regexp-opt account-regexps)
 	    not-account-regexps (regexp-opt not-account-regexps)

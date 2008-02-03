@@ -315,26 +315,23 @@ The result is of type JOURNAL."
 	 (list (list-iterator (journal-contents journal))))
 	(entry-class (find-class 'entry)))
     (lambda ()
-      (loop
-	 while contents-iterators
-	 for item = (funcall (first contents-iterators))
-	 if (null item)
-	 do (setf contents-iterators
-		  (cdr contents-iterators))
-	 else if (eq (class-of item) entry-class)
-	 return item
-	 if (typep item 'journal)
-	 do (push (list-iterator (journal-contents item))
-		  contents-iterators)))))
+      (loop while contents-iterators do
+	   (let ((item (funcall (first contents-iterators))))
+	     (if (null item)
+		 (pop contents-iterators)
+		 (progn
+		   (if (eq (class-of item) entry-class)
+		       (return item))
+		   (if (typep item 'journal)
+		       (push (list-iterator (journal-contents item))
+			     contents-iterators)))))))))
 
 (defmethod entries-iterator ((entry entry))
   (list-iterator (list entry)))
 
 (defun entries-list (object)
-  (loop
-     with iterator = (entries-iterator object)
-     for entry = (funcall iterator)
-     while entry collect entry))
+  (loop with iterator = (entries-iterator object)
+     for entry = (funcall iterator) while entry collect entry))
 
 (defmacro map-entries (callable object)
   `(map-iterator ,callable (entries-iterator ,object)))

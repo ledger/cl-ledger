@@ -265,30 +265,28 @@
   (declare (type binder binder))
   (let ((journal (make-instance 'journal :binder binder))
 	(line-number 1))
-    (loop
-       for c = (peek-char nil in nil)
-       while c do
-       (let ((handler
-	      (cdr
-	       (assoc-if
-		#'(lambda (key)
-		    (cond
-		      ((characterp key)
-		       (char= c key))
-		      ((listp key)
-		       (member c key :test #'char=))
-		      ((functionp key)
-		       (funcall key c))
-		      (t
-		       (error "Unexpected element in `*directive-handlers*': ~S"
-			      key))))
-		*directive-handlers*))))
-	 (if handler
-	     (incf line-number (funcall handler in line-number journal))
-	     (progn
-	       (format t "Unhandled directive (line ~D): ~C~%" line-number c)
-	       (read-line in nil)
-	       (incf line-number)))))
+    (loop for c = (peek-char nil in nil) while c do
+	 (let ((handler
+		(cdr
+		 (assoc-if
+		  #'(lambda (key)
+		      (cond
+			((characterp key)
+			 (char= c key))
+			((listp key)
+			 (member c key :test #'char=))
+			((functionp key)
+			 (funcall key c))
+			(t
+			 (error "Unexpected element in `*directive-handlers*': ~S"
+				key))))
+		  *directive-handlers*))))
+	   (if handler
+	       (incf line-number (funcall handler in line-number journal))
+	       (progn
+		 (format t "Unhandled directive (line ~D): ~C~%" line-number c)
+		 (read-line in nil)
+		 (incf line-number)))))
     journal))
 
 (defun ledger-text-directive/include (argument)
