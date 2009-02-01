@@ -16,13 +16,10 @@ error on the file port-sbcl, just select the restart for ACCEPT):
     * (asdf-install:install :series)
     * (quit)
 
-Now you need to pull all of the projects relating to Ledger.  Here's what I do
-for Mercurial:
+Now you need to pull all of the projects relating to Ledger:
 
-    $ hg clone http://hg.newartisans.com/cl-ledger
-    $ hg clone http://hg.newartisans.com/cambl
-    $ hg clone http://hg.newartisans.com/periods
-    $ hg clone http://hg.newartisans.com/red-black
+    $ git submodule init
+    $ git submodule update
 
 The next step is to configure SBCL so it knows where to load ledger from.
 Create a file called ~/.sbclrc and add these contents:
@@ -31,13 +28,15 @@ Create a file called ~/.sbclrc and add these contents:
     
     (mapc 'require '(asdf asdf-install))
     
-    (dolist (project '("red-black/" "cambl/" "periods/" "cl-ledger/"))
-      (push (merge-pathnames project "/path/to/src/")
+    (push "/path/to/cl-ledger/" asdf:*central-registry*)
+
+    (dolist (project '("red-black/" "cambl/" "periods/"))
+      (push (merge-pathnames project "/path/to/cl-ledger/")
             asdf:*central-registry*))
 
-Make sure you change /path/to/src/ to be the directory under which you're
-keeping all of the Ledger projects.  Also, be sure this pathname ends with a
-slash!  In CL, directory names always end with/
+Make sure you change /path/to/cl-ledger/ to be the directory where CL-Ledger
+lives.  Also, be sure this pathname ends with a slash!  In CL, directory names
+always end with/
 
 Now you can run Ledger at the REPL like this:
 
@@ -53,12 +52,12 @@ for parsing standard Ledger text files (other parser packages soon to come).
 
 Once in the REPL, try out this command:
 
-    * (ledger:register-report "/path/to/src/cl-ledger/doc/sample.dat")
+    * (ledger:register-report "/path/to/cl-ledger/doc/sample.dat")
 
 You should see a register printed representing the contents of sample.dat.
 You can constrain this report using keyword modifiers:
 
-    * (ledger:register-report "/path/to/src/cl-ledger/doc/sample.dat"
+    * (ledger:register-report "/path/to/cl-ledger/doc/sample.dat"
                               :account "books")
 
 Ledger only reads the file past on the first run, and if it changes, so feel
@@ -66,12 +65,12 @@ free to repeat the same command several times even for large journal filse.
 
 The following reports are supported:
 
-    * (ledger:register-report "/path/to/src/cl-ledger/doc/sample.dat" [OPTIONS])
-    * (ledger:balance-report "/path/to/src/cl-ledger/doc/sample.dat" [OPTIONS])
-    * (ledger:print-report "/path/to/src/cl-ledger/doc/sample.dat" [OPTIONS])
-    * (ledger:equity-report "/path/to/src/cl-ledger/doc/sample.dat" [OPTIONS])
+    * (ledger:register-report "/path/to/cl-ledger/doc/sample.dat" [OPTIONS])
+    * (ledger:balance-report "/path/to/cl-ledger/doc/sample.dat" [OPTIONS])
+    * (ledger:print-report "/path/to/cl-ledger/doc/sample.dat" [OPTIONS])
+    * (ledger:equity-report "/path/to/cl-ledger/doc/sample.dat" [OPTIONS])
 
-    * (ledger:derive-entry "/path/to/src/cl-ledger/doc/sample.dat" [OPTIONS])
+    * (ledger:derive-entry "/path/to/cl-ledger/doc/sample.dat" [OPTIONS])
 
 As for OPTIONS, any of the following keyword pairs is allowed.  There are some
 extra options allowed for `derive-entry', for which please see below.
