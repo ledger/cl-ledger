@@ -1,6 +1,0 @@
-\.fasl?$
-\.fsl$
-\.x?fasl$
-\.x86f$
-\.elc$
-^baseline/
