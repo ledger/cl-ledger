@@ -76,10 +76,10 @@
   (let (earliest latest)
     (iterate ((xact (scan-transactions binder)))
       (if (or (null earliest)
-	      (local-time< (xact-date xact) earliest))
+	      (timestamp< (xact-date xact) earliest))
 	  (setf earliest (xact-date xact)))
       (if (or (null latest)
-	      (local-time> (xact-date xact) latest))
+	      (timestamp> (xact-date xact) latest))
 	  (setf latest (xact-date xact))))
     (time-range :begin earliest :end latest :end-inclusive-p t)))
 
