@@ -16,10 +16,10 @@
 	  ;; Remember the earliest and latest transactions in the set, so that
 	  ;; we can create a meaningful display name for the grouped entry.
 	  (if (or (null earliest-date)
-		  (local-time< (xact-date xact) earliest-date))
+		  (timestamp< (xact-date xact) earliest-date))
 	      (setf earliest-date (xact-date xact)))
 	  (if (or (null latest-date)
-		  (local-time> (xact-date xact) latest-date))
+		  (timestamp> (xact-date xact) latest-date))
 	      (setf latest-date (xact-date xact)))
 
 	  (account-set-value account

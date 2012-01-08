@@ -416,9 +416,9 @@
 	     (if (char= #\= (peek-char nil in))
 		 (progn
 		   (read-char in)
-		   (make-comparator function local-time>= value>=
+		   (make-comparator function timestamp>= value>=
 				    "'>=' operator not followed by argument"))
-		 (make-comparator function local-time> value>
+		 (make-comparator function timestamp> value>
 				  "'>' operator not followed by argument")))
 	    (t
 	     function))

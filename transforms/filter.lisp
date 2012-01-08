@@ -117,12 +117,12 @@
     (:begin
      (or string fixed-time)
      ,#'(lambda (value)
-	  (fixed-time-matcher value #'local-time>=)))
+	  (fixed-time-matcher value #'timestamp>=)))
 
     (:end
      (or string fixed-time)
      ,#'(lambda (value)
-	  (fixed-time-matcher value #'local-time<=)))
+	  (fixed-time-matcher value #'timestamp<=)))
 
     (:range
      (or string time-range) ,#'time-range-matcher)
