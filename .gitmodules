@@ -1,9 +1,6 @@
 [submodule "cambl"]
 	path = cambl
 	url = git://github.com/jwiegley/cambl.git
-[submodule "red-black"]
-	path = red-black
-	url = git://github.com/jwiegley/red-black.git
 [submodule "periods"]
 	path = periods
 	url = git://github.com/jwiegley/periods.git
