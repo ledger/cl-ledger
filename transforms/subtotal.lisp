@@ -6,25 +6,20 @@
 
 (defun group-by-account (xact-series)
   (with-temporary-journal (journal)
-    (let (earliest-date latest-date)
+
+    ;; Remember the earliest and latest transactions in the set,
+    ;; so that we can create a meaningful display name for the
+    ;; grouped entry.
+
+    (with-timestamp-range (earliest-date latest-date)
       (iterate ((xact xact-series))
-	(let* ((account (find-account journal
-				      (account-fullname (xact-account xact))
-				      :create-if-not-exists-p t))
-	       (balance (or (account-value account :subtotal) 0)))
-
-	  ;; Remember the earliest and latest transactions in the set, so that
-	  ;; we can create a meaningful display name for the grouped entry.
-	  (if (or (null earliest-date)
-		  (timestamp< (xact-date xact) earliest-date))
-	      (setf earliest-date (xact-date xact)))
-	  (if (or (null latest-date)
-		  (timestamp> (xact-date xact) latest-date))
-	      (setf latest-date (xact-date xact)))
-
-	  (account-set-value account
-			     :subtotal (add balance (xact-amount xact)))))
-
+        (let* ((account (find-account journal
+                                      (account-fullname (xact-account xact))
+                                      :create-if-not-exists-p t))
+               (balance (or (account-value account :subtotal) 0)))
+          (update-range (xact-date xact))
+          (account-set-value account
+                             :subtotal (add balance (xact-amount xact)))))
       (if latest-date
 	  (let ((totals-entry
 		 (make-instance 'entry

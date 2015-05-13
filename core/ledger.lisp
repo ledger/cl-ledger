@@ -73,14 +73,9 @@
       (values binder args))))
 
 (defun binder-time-range (&optional (binder *last-binder*))
-  (let (earliest latest)
+  (with-timestamp-range (earliest latest)
     (iterate ((xact (scan-transactions binder)))
-      (if (or (null earliest)
-	      (timestamp< (xact-date xact) earliest))
-	  (setf earliest (xact-date xact)))
-      (if (or (null latest)
-	      (timestamp> (xact-date xact) latest))
-	  (setf latest (xact-date xact))))
+      (update-range (xact-date xact)))
     (time-range :begin earliest :end latest :end-inclusive-p t)))
 
 (defun binder-statistics (&optional (binder *last-binder*))
