@@ -181,8 +181,8 @@ The result is of type JOURNAL."
 
 (declaim (inline parse-journal-date))
 (defun parse-journal-date (journal string)
-  (strptime string :format (or (journal-date-format journal)
-			       *input-time-format*)
+  (strptime string
+            :format (journal-date-format journal)
 	    :default-year (journal-default-year journal)))
 
 ;;;_ * Accounts
