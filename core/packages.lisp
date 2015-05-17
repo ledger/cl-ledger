@@ -3,7 +3,7 @@
 (in-package :common-lisp-user)
 
 (defpackage :cl-ledger
-  (:use :common-lisp :local-time :cambl :periods :series)
+  (:use :common-lisp :local-time :cambl :periods-series)
   (:nicknames :ledger)
   (:export binder
 	   binder-statistics

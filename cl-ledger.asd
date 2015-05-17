@@ -48,7 +48,7 @@ for diagnostic output.")
 (asdf:defsystem :cl-ledger
   :serial t
   :version #.*cl-ledger-version*
-  :depends-on (:local-time :periods :cambl :series :cl-ppcre)
+  :depends-on (:local-time :periods-series :cambl :cl-ppcre)
   :components
   ((:module "core"
 	    :components ((:file "packages")
