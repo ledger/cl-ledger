@@ -3,7 +3,7 @@
 (in-package :common-lisp-user)
 
 (defpackage :cl-ledger
-  (:use :common-lisp :local-time :cambl :periods-series)
+  (:use :common-lisp :local-time :cambl :periods :periods-series :series)
   (:nicknames :ledger)
   (:export binder
 	   binder-statistics
@@ -138,8 +138,6 @@
 	   register))
 
 (in-package :ledger)
-
-(series::install)
 
 (setf *suppress-series-warnings* t)
 
