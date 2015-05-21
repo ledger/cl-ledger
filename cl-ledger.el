@@ -8,7 +8,7 @@
 ;; Date: Tue 04-Dec-2007
 ;; Keywords: data
 ;; Author: John Wiegley (johnw AT newartisans DOT com)
-;; Maintainer: John Wiegley (johnw AT newartisans DOT com)
+;; Maintainer: Christophe Junke (junke.christophe@gmail.com)
 ;; Description: Helper code for using my "ledger" command-line tool
 ;; URL: http://www.newartisans.com/johnw/emacs.html
 ;; Compatibility: Emacs22

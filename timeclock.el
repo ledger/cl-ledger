@@ -3,6 +3,8 @@
 ;; Copyright (C) 1999, 2000, 2001, 2003, 2004 Free Software Foundation, Inc.
 
 ;; Author: John Wiegley <johnw@gnu.org>
+;; Maintainer: Christophe Junke (junke.christophe@gmail.com)
+
 ;; Created: 25 Mar 1999
 ;; Version: 2.6
 ;; Keywords: calendar data

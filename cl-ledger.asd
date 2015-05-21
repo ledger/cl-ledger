@@ -47,6 +47,10 @@ for diagnostic output.")
 
 (asdf:defsystem :cl-ledger
   :serial t
+  :description "Double-entry accounting system."
+  :author "Johh Wiegley <jwiegley@gmail.com>"
+  :maintainer "Christophe Junke <junke.christophe@gmail.com>"
+  :license "BSD-3"
   :version #.*cl-ledger-version*
   :depends-on (:local-time :periods-series :cambl :cl-ppcre)
   :components
