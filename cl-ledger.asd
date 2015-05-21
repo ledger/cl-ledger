@@ -29,29 +29,15 @@
 ;; (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 ;; OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-(in-package :cl-user)
+(cl:in-package :asdf-user)
 
-(defpackage :cl-ledger-asd
-  (:use :cl :asdf))
-
-(in-package :cl-ledger-asd)
-
-(defvar *cl-ledger-version* "4.0.0-pre-0"
-  "A string denoting the current version of CL-LEDGER.  Used
-for diagnostic output.")
-
-(export '*cl-ledger-version*)
-
-(pushnew :periods-use-series *features*)
-(pushnew :periods-use-parser *features*)
-
-(asdf:defsystem :cl-ledger
+(defsystem :cl-ledger
   :serial t
   :description "Double-entry accounting system."
   :author "Johh Wiegley <jwiegley@gmail.com>"
   :maintainer "Christophe Junke <junke.christophe@gmail.com>"
   :license "BSD-3"
-  :version #.*cl-ledger-version*
+  :version "4.0.0"
   :depends-on (:local-time :periods-series :cambl :cl-ppcre)
   :components
   ((:module "core"
