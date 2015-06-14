@@ -9,7 +9,7 @@
     (list
      (item-position-begin-line (entry-position entry))
      (append (multiple-value-list
-	      (floor (unix-to-timestamp (entry-date entry))
+	      (floor (timestamp-to-unix (entry-date entry))
 		     65536))
 	     (list 0))
      (entry-status entry)
