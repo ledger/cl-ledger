@@ -4,3 +4,6 @@
 [submodule "periods"]
 	path = periods
 	url = git://github.com/jwiegley/periods.git
+[submodule "ledger"]
+	path = ledger
+	url = git@github.com:ledger/ledger.git
