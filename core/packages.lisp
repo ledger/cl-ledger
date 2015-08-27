@@ -109,6 +109,7 @@
 	   *registered-parsers*
 	   *allow-embedded-lisp*
 	   *last-binder*
+           *input-time-format*
 
 	   entries-iterator
 	   entries-list
