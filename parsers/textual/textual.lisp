@@ -51,6 +51,12 @@
 	    (read-char in nil)
 	    1))
 
+    (#\F . ,#'(lambda (in line journal)
+                (declare (ignore line))
+                (prog1 1
+                  (read-char in)
+                  (peek-char t in)
+                  (setf (journal-date-format journal) (read-line in nil)))))
     (#\Y . ,#'(lambda (in line journal)
 		(declare (ignore line))
 		(read-char in)
