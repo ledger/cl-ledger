@@ -1,9 +1,10 @@
-This is a very brief README, since things are just beginning and still very
-much in flux.  First, this document assumes the use of SBCL for now.  Other
-implementations will be tested soon.
+# Ledger in Common Lisp
 
+This is a very brief README, since the project is abandoned.
 
-* Installation
+This document assumes the use of SBCL.
+
+## Installation
 
 The first thing to do is install the prerequisites.  You may do this quite
 easily using asdf-install (note that if Hunchentoot gives you compilation
@@ -48,7 +49,7 @@ This compiles and loads the Ledger core, and also the textual parser package,
 for parsing standard Ledger text files (other parser packages soon to come).
 
 
-* Basic commands
+## Basic commands
 
 Once in the REPL, try out this command:
 
@@ -142,7 +143,7 @@ corresponding CL-Ledger keywords:
                   --sort-entries ARG   :sort-entries ARG
      -t EXPR
 
-* Options to `derive-entry'
+### Options to `derive-entry'
 
 The reporting command `derive-entry' takes some special options.  Here is the
 docstring for derive-entry:
@@ -253,7 +254,7 @@ they mean:
         Assets:Bank:Checking                     $125.00
         Liabilities:MasterCard
 
-* Binder caching
+### Binder caching
 
 After the call to `read-binder', the variable `*last-binder*' contains the
 contents of what was read.  From that point forward, if no binder or string is
@@ -261,7 +262,7 @@ passed to the reporting function, they will assume you wish to report on the
 contents of `*last-binder*'.
 
 
-* Implementations status
+## Implementations status
 
 Here is how Ledger stands up against current Lisp implementations, in order of
 how frequently I use them:
@@ -278,7 +279,7 @@ how frequently I use them:
   GCL          2.6.7           <unable to build so far>
 
 
-* In closing
+## In closing
 
 That's it for now, expect more in this file as things progress!
 
