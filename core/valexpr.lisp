@@ -104,8 +104,8 @@
 		 (constantly
 		  (read-amount in :observe-properties-p
 			       *value-expr-observe-properties-p*
-			       :reduce-to-smallest-units-p
-			       *value-expr-reduce-to-smallest-units-p*
+			       ;; :reduce-to-smallest-units-p
+			       ;; *value-expr-reduce-to-smallest-units-p*
 			       :pool *value-expr-commodity-pool*))
 	       (let ((c (peek-char t in nil)))
 		 (if c
@@ -375,7 +375,7 @@
 	 (lambda (xact)
 	   (let ((second (funcall next-function xact)))
 	     (and (etypecase second
-		    (local-time
+		    (timestamp
 		     (,time-operator (funcall ,function xact) second))
 		    (value
 		     (,value-operator (funcall ,function xact) second)))
@@ -389,7 +389,7 @@
 	  (cond
 	    ((char= c #\=)
 	     (read-char in)
-	     (make-comparator function local-time= value=
+	     (make-comparator function timestamp= value=
 			      "'=' operator not followed by argument"))
 
 	    ((char= c #\!)
@@ -397,7 +397,7 @@
 	     (if (char= #\= (peek-char nil in))
 		 (progn
 		   (read-char in)
-		   (make-comparator function local-time/= value/=
+		   (make-comparator function timestamp/= value/=
 				    "'!=' operator not followed by argument"))
 		 (error "Syntax error")))
 
@@ -406,9 +406,9 @@
 	     (if (char= #\= (peek-char nil in))
 		 (progn
 		   (read-char in)
-		   (make-comparator function local-time<= value<=
+		   (make-comparator function timestamp<= value<=
 				    "'<=' operator not followed by argument"))
-		 (make-comparator function local-time< value<
+		 (make-comparator function timestamp< value<
 				  "'<' operator not followed by argument")))
 
 	    ((char= c #\>)
