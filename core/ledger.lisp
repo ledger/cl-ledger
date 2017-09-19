@@ -395,8 +395,9 @@ The result is of type JOURNAL."
 (defmacro do-transactions ((var object &optional (result nil)) &body body)
   (let ((iterator (gensym)))
     `(loop with ,iterator = (transactions-iterator ,object)
-	for ,var = (funcall ,iterator) while ,var do
-	  (progn ,@body ,result))))
+           for ,var = (funcall ,iterator) while ,var
+           do (progn ,@body)
+           finally (return ,result))))
 
 (declaim (inline scan-transactions))
 (defun scan-transactions (object &optional entry-transform)
