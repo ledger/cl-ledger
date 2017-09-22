@@ -120,9 +120,9 @@
 						     sb-ext:code-deletion-note))
 				     (fdefinition symbol))
 				 argument)
-			(error "Unrecognized directive \"~S~\" at line ~D"
+			(error "Unrecognized directive \"~S\" at line ~D"
 			       argument line)))
-		  (error "Unrecognized directive \"~S~\" at line ~D"
+		  (error "Unrecognized directive \"~S\" at line ~D"
 			 argument line))
 	      1)))
 
