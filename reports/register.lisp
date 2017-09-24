@@ -46,8 +46,8 @@
 		 (abbreviate-string abbrev width :elision-style 'middle)
 		 abbrev)))
 	  (t
-	   (concatenate 'string (maybe-subseq name 0 (1- (/ width 2))) ".."
-			(maybe-subseq name (1+ (- len (/ width 2))))))))))
+	   (concatenate 'string (maybe-subseq name 0 (1- (floor width 2))) ".."
+			(maybe-subseq name (1+ (- len (floor width 2))))))))))
 
 (defun register-reporter (&optional (output-stream *standard-output*))
   (let (last-entry)
