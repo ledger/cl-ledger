@@ -110,6 +110,7 @@
 	   *allow-embedded-lisp*
 	   *last-binder*
            *input-time-format*
+           *output-time-format*
 
 	   entries-iterator
 	   entries-list

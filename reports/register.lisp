@@ -55,9 +55,13 @@
       ;; First display the entry details, if it would not be repeated
       (if (or (null last-entry)
 	      (not (eq last-entry (xact-entry xact))))
-	  (progn
-	    (format output-stream "~10A ~20A " (strftime (xact-date xact))
-		    (abbreviate-string (entry-payee (xact-entry xact)) 20))
+          (let* ((xact-date (strftime (xact-date xact)))
+                 (payee-length (- 30 (length xact-date))))
+            (format output-stream "~A ~vA "
+                    xact-date
+                    payee-length
+                    (abbreviate-string (entry-payee (xact-entry xact))
+                                       payee-length))
 	    (setf last-entry (xact-entry xact)))
 	  (format output-stream "~32A" " "))
 
