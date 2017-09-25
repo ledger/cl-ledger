@@ -62,7 +62,7 @@ the initialization file of your Common Lisp implementation
         asdf:*central-registry*))
 #+END_SRC
 
-Make sure you change /path/to/cl-ledger/ to be the directory where
+Make sure you change ~/path/to/cl-ledger/~ to be the directory where
 *CL-Ledger* lives. Also, be sure this pathname ends with a slash! In
 CL, directory names always end with /.
 
@@ -92,8 +92,8 @@ You can constrain this report using keyword modifiers:
                         :account "books")
 #+END_SRC
 
-Ledger only reads the file on the first run, and if it changes, so
-feel free to repeat the same command several times even for large
+*CL-Ledger* only reads the file on the first run, and if it changes,
+so feel free to repeat the same command several times even for large
 journal files.
 
 The following reports are supported:
@@ -219,7 +219,7 @@ corresponding *CL-Ledger* keywords:
 | -t EXPR           | --sort-entries ARG | :sort-entries ARG |
 |-------------------+--------------------+-------------------|
 
-* Options to ~derive-entry~
+* Options to /derive-entry/
 
 The reporting command ~derive-entry~ takes some special options.
 
