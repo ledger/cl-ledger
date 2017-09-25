@@ -63,14 +63,15 @@
 			       :account matching-account
 			       :amount amount)))
 	  (let ((new-xact
-		 (make-transaction :entry   entry
-				   :account matching-account)))
+		 (make-transaction :entry entry
+				   :account matching-account
+                                   :amount amount)))
 	    (add-transaction entry new-xact)
 	    (setf (entry-payee entry)
 		  (entry-payee (xact-entry matching-xact)))
 	    (if matching-account
 		(setf (xact-amount new-xact)
-		      (xact-amount matching-xact))
+		      (or amount (xact-amount matching-xact)))
 		(setf entry (xact-entry matching-xact)))))
 
       (unless matching-balance-account
@@ -103,7 +104,7 @@
 	    (format out "~&~%")
 	    (print-entry entry :output-stream out))
 	  (print-entry entry :output-stream output-stream))
-      entry))) 
+      entry)))
 
 (defun derive-entry (&rest args)
   "The DERIVE-ENTRY report uses Ledger to intelligently create a new entry for
@@ -138,7 +139,7 @@ they mean:
     transaction in the newly derived entry.  If not specified, a calculated
     \"balance account\" is looked for in the matching entry; if this does not
     apply, the journal's default account is used; if this does not apply, the
-    account \"Asets:Unknown\" is used.
+    account \"Assets:Unknown\" is used.
 
   :AMOUNT VALUE-STRING
     The amount of the first transaction.  If it has no commodity, the
@@ -212,8 +213,7 @@ they mean:
         Assets:Bank:Checking                     $125.00
         Liabilities:MasterCard"
   (basic-reporter #'print-new-entry
-		  (append args (list :accounts-report t
-				     :inhibit-filter t))))
+                  (append args (list :inhibit-filter t))))
 
 (provide 'entry)
 
