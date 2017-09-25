@@ -1,0 +1,378 @@
+#+TITLE: CL-Ledger
+
+*CL-Ledger* is a Common Lisp port of the [[http://ledger-cli.org/][Ledger]] double-entry
+accounting system.
+
+* Installation
+
+The easiest way to install *CL-Ledger* is using [[https://www.quicklisp.org][Quicklisp]]:
+
+#+BEGIN_SRC: lisp
+(quicklisp:quickload "cl-ledger")
+#+END_SRC
+
+If you want to work with the latest source code and need to install it
+manually, you will need the following libraries:
+
+ - alexandria
+ - cl-containers
+ - cl-ppcre
+ - local-time
+ - series
+
+They can be installed easily using *Quicklisp*:
+
+#+BEGIN_SRC: lisp
+(quicklisp:quickload '("alexandria" "cl-containers" "cl-ppcre" "local-time" "series"))
+#+END_SRC
+
+Now you need to get the source code and pull all of the projects
+relating to *CL-Ledger*:
+
+#+BEGIN_SRC: shell
+git clone https://github.com/ledger/cl-ledger.git
+cd cl-ledger
+git submodule init
+git submodule update
+#+END_SRC
+
+The next step is to indicate your Common Lisp system where to load
+*CL-Ledger* from.
+
+If you are using *Quicklisp*, you can add links to the
+/local-projects/ directory:
+
+#+BEGIN_SRC: shell
+cd /path/to/quicklisp/
+cd local-projects
+ln -s /path/to/cl-ledger .
+ln -s /path/to/cl-ledger/cambl .
+ln -s /path/to/cl-ledger/periods .
+#+END_SRC
+
+If you don't use *Quicklisp*, you can add the following contents to
+the initialization file of your Common Lisp implementation
+(e.g. ~/.sbclrc for *SBCL*):
+
+#+BEGIN_SRC: lisp
+(push "/path/to/cl-ledger/" asdf:*central-registry*)
+
+(dolist (project '("cambl/" "periods/"))
+  (push (merge-pathnames project "/path/to/cl-ledger/")
+        asdf:*central-registry*))
+#+END_SRC
+
+Make sure you change /path/to/cl-ledger/ to be the directory where
+*CL-Ledger* lives. Also, be sure this pathname ends with a slash! In
+CL, directory names always end with /.
+
+Now you can run *CL-Ledger* at the REPL like this:
+
+#+BEGIN_SRC: lisp
+(asdf:load-system "cl-ledger")
+#+END_SRC
+
+This compiles and loads the *CL-Ledger* core, and also the textual
+parser package, for parsing standard Ledger text files.
+
+* Basic commands
+
+Once in the REPL, try out this command:
+
+#+BEGIN_SRC: lisp
+(ledger:register-report "/path/to/cl-ledger/doc/sample.dat")
+#+END_SRC
+
+You should see a register printed representing the contents of
+/sample.dat/.
+You can constrain this report using keyword modifiers:
+
+#+BEGIN_SRC: lisp
+(ledger:register-report "/path/to/cl-ledger/doc/sample.dat"
+                        :account "books")
+#+END_SRC
+
+Ledger only reads the file on the first run, and if it changes, so
+feel free to repeat the same command several times even for large
+journal files.
+
+The following reports are supported:
+
+#+BEGIN_SRC: lisp
+(ledger:register-report "/path/to/file" [OPTIONS])
+(ledger:balance-report "/path/to/file" [OPTIONS])
+(ledger:print-report "/path/to/file" [OPTIONS])
+(ledger:equity-report "/path/to/file" [OPTIONS])
+(ledger:sexp-report "/path/to/file" [OPTIONS])
+(ledger:derive-entry "/path/to/file" [OPTIONS])
+#+END_SRC
+
+As for /OPTIONS/, any of the following keyword pairs is allowed. There
+are some extra options allowed for ~derive-entry~, for which please
+see below.
+
+|-----------------------------+----------------------------------------------|
+| Keyword                     | Description                                  |
+|-----------------------------+----------------------------------------------|
+| :account "REGEXP"           |                                              |
+|-----------------------------+----------------------------------------------|
+| :not-account "REGEXP"       |                                              |
+|-----------------------------+----------------------------------------------|
+| :payee "REGEXP"             |                                              |
+|-----------------------------+----------------------------------------------|
+| :not-payee "REGEXP"         |                                              |
+|-----------------------------+----------------------------------------------|
+| :note "REGEXP"              |                                              |
+|-----------------------------+----------------------------------------------|
+| :not-note "REGEXP"          |                                              |
+|-----------------------------+----------------------------------------------|
+| :begin "YYYY/MM/DD"         |                                              |
+|-----------------------------+----------------------------------------------|
+| :end "YYYY/MM/DD"           |                                              |
+|-----------------------------+----------------------------------------------|
+| :range "RANGE EXPRESSION"   | a range expression, like "this month"        |
+|-----------------------------+----------------------------------------------|
+| :period "PERIOD EXPRESSION" | like "every month this year"                 |
+|-----------------------------+----------------------------------------------|
+| :expr "VALUE-EXPR"          | most Ledger 2.x value exprs allowed          |
+|-----------------------------+----------------------------------------------|
+| :limit "VALUE-EXPR"         | the same as 2.x's --limit or -l              |
+|                             | this is a convenience alias for :expr        |
+|-----------------------------+----------------------------------------------|
+| :only "VALUE-EXPR"          | the same as 2.x's --only                     |
+|-----------------------------+----------------------------------------------|
+| :display "VALUE-EXPR"       | the same as 2.x's -d or --display            |
+|-----------------------------+----------------------------------------------|
+| :status KEYWORD             | only report transactions whose status        |
+|                             | is :CLEARED, :PENDING or :UNCLEARED          |
+|-----------------------------+----------------------------------------------|
+| :sort "VALUE-EXPR"          | sort based on VALUE-EXPR calculation         |
+|-----------------------------+----------------------------------------------|
+| :no-total BOOL              | don't show totals                            |
+|-----------------------------+----------------------------------------------|
+| :collapse BOOL              | collapse multiline entries                   |
+|-----------------------------+----------------------------------------------|
+| :subtotal BOOL              | group all transactions by account            |
+|-----------------------------+----------------------------------------------|
+| :invert BOOL                | negate all transaction values                |
+|                             | (same as saying :amount "-a")                |
+|-----------------------------+----------------------------------------------|
+| :related BOOL               | show "other" transactions of each entry      |
+|-----------------------------+----------------------------------------------|
+| :lots BOOL                  | show all commodity lot information           |
+|-----------------------------+----------------------------------------------|
+| :lot-prices BOOL            | show commodity lot prices                    |
+|-----------------------------+----------------------------------------------|
+| :lot-dates BOOL             | show commodity lot dates                     |
+|-----------------------------+----------------------------------------------|
+| :lot-tags BOOL              | show commodity lot tags                      |
+|-----------------------------+----------------------------------------------|
+| :amount "VALUE-EXPR"        | use EXPR to display transaction amounts      |
+|-----------------------------+----------------------------------------------|
+| :total "VALUE-EXPR"         | use EXPR to display the running total        |
+|-----------------------------+----------------------------------------------|
+| :set-amount "VALUE-EXPR"    | instead of :amount, actually represent       |
+|                             | the amount using EXPR (this is rarely        |
+|                             | something you want to do)                    |
+|-----------------------------+----------------------------------------------|
+| :set-total "VALUE-EXPR"     | same for the running total                   |
+|-----------------------------+----------------------------------------------|
+| :bridge-totals BOOL         | if the running totals are not contiguous     |
+|                             | create revaluation entries to fill gaps      |
+|-----------------------------+----------------------------------------------|
+| :show OUTPUT-MODE           | show amounts and totals using the given mode |
+|-----------------------------+----------------------------------------------|
+| :show :market               | .. in terms of their market value            |
+|-----------------------------+----------------------------------------------|
+| :show :basis                | .. in terms of their basis cost              |
+|-----------------------------+----------------------------------------------|
+
+
+Here's a quick table for translating *Ledger* 2.6.1 options into their
+corresponding *CL-Ledger* keywords:
+
+|-------------------+--------------------+-------------------|
+| Short option      | Long option        | CL-Ledger keyword |
+|-------------------+--------------------+-------------------|
+| -b ARG            | --begin ARG        | :begin ARG        |
+|-------------------+--------------------+-------------------|
+| -e ARG            | --end ARG          | :end ARG          |
+|-------------------+--------------------+-------------------|
+| -p ARG            | --period ARG       | :period ARG       |
+|-------------------+--------------------+-------------------|
+| -l ARG            | --limit ARG        | :limit ARG        |
+|-------------------+--------------------+-------------------|
+|                   | --only ARG         | :only ARG         |
+|-------------------+--------------------+-------------------|
+| -d ARG            | --display ARG      | :display ARG      |
+|-------------------+--------------------+-------------------|
+| -n (for balances) |                    | :no-total t       |
+|-------------------+--------------------+-------------------|
+| -n                | --collapse         | :collapse t       |
+|-------------------+--------------------+-------------------|
+| -r                | --related          | :related t        |
+|-------------------+--------------------+-------------------|
+| -s                | --subtotal         | :subtotal t       |
+|-------------------+--------------------+-------------------|
+| -S EXPR           | --sort ARG         | :sort ARG         |
+|-------------------+--------------------+-------------------|
+| -t EXPR           | --sort-entries ARG | :sort-entries ARG |
+|-------------------+--------------------+-------------------|
+
+* Options to ~derive-entry~
+
+The reporting command ~derive-entry~ takes some special options.
+
+The /derive-entry/ report uses *CL-Ledger* to intelligently create a new
+entry for you. The possible keywords arguments are:
+
+ - ~:date~
+ - ~:payee~
+ - ~:account~
+ - ~:balance-account~
+ - ~:amount~
+ - ~:append~
+
+Except for ~:payee~, all of these keyword arguments are optional. Here
+is what they mean:
+
+|---------------------------+--------------------------------------------------|
+| Keyword                   | Description                                      |
+|---------------------------+--------------------------------------------------|
+| :payee "REGEXP"           | Find the most recent entry whose payee matches   |
+|                           | REGEXP, and base the new entry derivation on     |
+|                           | its details. If no matching entry can be found,  |
+|                           | the payee of the newly created entry will        |
+|                           | exactly match REGEXP.                            |
+|---------------------------+--------------------------------------------------|
+| :date "DATE-STRING"       | The date of the new entry will be DATE-STRING,   |
+|                           | otherwise it is today.                           |
+|---------------------------+--------------------------------------------------|
+| :account "REGEXP"         | Set the first account line in the new entry to   |
+|                           | be the most recently used account which matches  |
+|                           | REGEXP. If no such account can be found, an      |
+|                           | account named REGEXP is used. If no account is   |
+|                           | specified, the account "Expenses:Unknown" is     |
+|                           | used.                                            |
+|---------------------------+--------------------------------------------------|
+| :balance-account "REGEXP" | Like :ACCOUNT, except this refers to the         |
+|                           | account used for the second transaction in the   |
+|                           | newly derived entry. If not specified, a         |
+|                           | calculated "balance account" is looked for in    |
+|                           | the matching entry; if this does not apply, the  |
+|                           | journal's default account is used; if this does  |
+|                           | not apply, the account "Assets:Unknown" is used. |
+|---------------------------+--------------------------------------------------|
+| :amount "VALUE-STRING"    | The amount of the first transaction. If it has   |
+|                           | no commodity, the correlated commodity from the  |
+|                           | discovered entry is used.                        |
+|---------------------------+--------------------------------------------------|
+| :append BOOL              | If non-NIL, the new entry is written to the same |
+|                           | journal where the matching entry was found (for  |
+|                           | a binder that references many journals, this is  |
+|                           | whichever file the discovered entry was in).     |
+|---------------------------+--------------------------------------------------|
+
+Here are a few examples, using /sample.dat/ as a reference:
+
+#+BEGIN_SRC: lisp
+(ledger:derive-entry "doc/sample.dat" :payee "book")
+  =>
+  2007/12/04 Book Store
+      Expenses:Books                            $20.00
+      Liabilities:MasterCard
+
+(ledger:derive-entry :payee "book" :amount "$125")
+  =>
+  2007/12/04 Book Store
+      Expenses:Books                           $125.00
+      Liabilities:MasterCard
+
+(ledger:derive-entry :payee "Hello World")
+  =>
+  2007/12/04 Hello World
+      Expenses:Unknown
+      Assets:Unknown
+
+(ledger:derive-entry :date "2004/01/01" :payee "Hello World")
+  =>
+  2004/01/01 Hello World
+      Expenses:Unknown
+      Assets:Unknown
+
+(ledger:derive-entry :payee "book" :account "equ")
+  =>
+  2007/12/04 Book Store
+      Equity:Opening Balances                   $20.00
+      Liabilities:MasterCard
+
+(ledger:derive-entry :payee "book" :account "Who Knows")
+  =>
+  2007/12/04 Book Store
+      Who Knows                                 $20.00
+      Liabilities:MasterCard
+
+(ledger:derive-entry :payee "book" :balance-account "bank")
+  =>
+  2007/12/04 Book Store
+      Expenses:Books                            $20.00
+      Assets:Bank:Checking
+
+(ledger:derive-entry :payee "book" :account "liab"
+                     :balance-account "bank")
+  =>
+  2007/12/04 Book Store
+      Liabilities:MasterCard                   $-20.00
+      Assets:Bank:Checking
+
+(ledger:derive-entry :payee "book" :account "bank" :amount 50)
+  =>
+  2007/12/04 Book Store
+      Assets:Bank:Checking                      $50.00
+      Liabilities:MasterCard
+
+(ledger:derive-entry :payee "book" :account "bank" :amount "$125")
+  =>
+  2007/12/04 Book Store
+      Assets:Bank:Checking                     $125.00
+      Liabilities:MasterCard
+#+END_SRC
+
+* Binder caching
+
+After the call to ~read-binder~, the variable ~*last-binder*~ contains
+the contents of what was read. From that point forward, if no binder
+or string is passed to the reporting function, they will assume you
+wish to report on the contents of ~*last-binder*~.
+
+* Implementations status
+
+Here is how *CL-Ledger* stands up against current Lisp
+implementations:
+
+|----------------+---------------+--------------------------------|
+| Implementation |       Version | Status                         |
+|----------------+---------------+--------------------------------|
+| SBCL           |        1.3.21 | WORKS                          |
+| LispWorks      | 5.02 Personal | WORKS                          |
+| Allegro CL     |  10.0 Express | WORKS                          |
+| Clozure CL     |          1.11 | WORKS                          |
+| OpenMCL        |    2007-07-22 | Fails to compile LOCAL-TIME    |
+| ECL            |    2007-12-07 | WORKS                          |
+| ABCL           |         1.5.0 | Fails to compile CL-LEDGER     |
+| CLISP          |          2.49 | Fails to compile CL-CONTAINERS |
+| CMUCL          | 19d (2007-11) | Fails to compile PERIODS       |
+| GCL            |         2.6.7 | <unable to build so far>       |
+|----------------+---------------+--------------------------------|
+
+* Series
+
+For fans of the *Series* library, you can apply ~scan-transactions~ or
+~scan-entries~ to a binder/account/journal/entry in order to produce
+a /series/ of the corresponding type. Example:
+
+#+BEGIN_SRC: lisp
+(collect (ledger:scan-transactions
+          (ledger:read-journal "doc/sample.dat")))
+  => [a list of all transactions, in sequence, within sample.dat]
+#+END_SRC
