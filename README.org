@@ -325,7 +325,7 @@ Here are a few examples, using /sample.dat/ as a reference:
       Liabilities:MasterCard                   $-20.00
       Assets:Bank:Checking
 
-(ledger:derive-entry :payee "book" :account "bank" :amount 50)
+(ledger:derive-entry :payee "book" :account "bank" :amount "50")
   =>
   2007/12/04 Book Store
       Assets:Bank:Checking                      $50.00
