@@ -7,7 +7,7 @@ accounting system.
 
 The easiest way to install *CL-Ledger* is using [[https://www.quicklisp.org][Quicklisp]]:
 
-#+BEGIN_SRC: lisp
+#+BEGIN_SRC lisp
 (quicklisp:quickload "cl-ledger")
 #+END_SRC
 
@@ -22,14 +22,14 @@ manually, you will need the following libraries:
 
 They can be installed easily using *Quicklisp*:
 
-#+BEGIN_SRC: lisp
+#+BEGIN_SRC lisp
 (quicklisp:quickload '("alexandria" "cl-containers" "cl-ppcre" "local-time" "series"))
 #+END_SRC
 
 Now you need to get the source code and pull all of the projects
 relating to *CL-Ledger*:
 
-#+BEGIN_SRC: shell
+#+BEGIN_SRC shell
 git clone https://github.com/ledger/cl-ledger.git
 cd cl-ledger
 git submodule init
@@ -42,7 +42,7 @@ The next step is to indicate your Common Lisp system where to load
 If you are using *Quicklisp*, you can add links to the
 /local-projects/ directory:
 
-#+BEGIN_SRC: shell
+#+BEGIN_SRC shell
 cd /path/to/quicklisp/
 cd local-projects
 ln -s /path/to/cl-ledger .
@@ -54,7 +54,7 @@ If you don't use *Quicklisp*, you can add the following contents to
 the initialization file of your Common Lisp implementation
 (e.g. ~/.sbclrc for *SBCL*):
 
-#+BEGIN_SRC: lisp
+#+BEGIN_SRC lisp
 (push "/path/to/cl-ledger/" asdf:*central-registry*)
 
 (dolist (project '("cambl/" "periods/"))
@@ -68,7 +68,7 @@ CL, directory names always end with /.
 
 Now you can run *CL-Ledger* at the REPL like this:
 
-#+BEGIN_SRC: lisp
+#+BEGIN_SRC lisp
 (asdf:load-system "cl-ledger")
 #+END_SRC
 
@@ -79,7 +79,7 @@ parser package, for parsing standard Ledger text files.
 
 Once in the REPL, try out this command:
 
-#+BEGIN_SRC: lisp
+#+BEGIN_SRC lisp
 (ledger:register-report "/path/to/cl-ledger/doc/sample.dat")
 #+END_SRC
 
@@ -87,7 +87,7 @@ You should see a register printed representing the contents of
 /sample.dat/.
 You can constrain this report using keyword modifiers:
 
-#+BEGIN_SRC: lisp
+#+BEGIN_SRC lisp
 (ledger:register-report "/path/to/cl-ledger/doc/sample.dat"
                         :account "books")
 #+END_SRC
@@ -98,7 +98,7 @@ journal files.
 
 The following reports are supported:
 
-#+BEGIN_SRC: lisp
+#+BEGIN_SRC lisp
 (ledger:register-report "/path/to/file" [OPTIONS])
 (ledger:balance-report "/path/to/file" [OPTIONS])
 (ledger:print-report "/path/to/file" [OPTIONS])
@@ -275,7 +275,7 @@ is what they mean:
 
 Here are a few examples, using /sample.dat/ as a reference:
 
-#+BEGIN_SRC: lisp
+#+BEGIN_SRC lisp
 (ledger:derive-entry "doc/sample.dat" :payee "book")
   =>
   2007/12/04 Book Store
@@ -371,7 +371,7 @@ For fans of the *Series* library, you can apply ~scan-transactions~ or
 ~scan-entries~ to a binder/account/journal/entry in order to produce
 a /series/ of the corresponding type. Example:
 
-#+BEGIN_SRC: lisp
+#+BEGIN_SRC lisp
 (collect (ledger:scan-transactions
           (ledger:read-journal "doc/sample.dat")))
   => [a list of all transactions, in sequence, within sample.dat]
