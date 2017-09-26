@@ -26,6 +26,7 @@
 	   print-entry
 	   equity-report
 	   sexp-report
+           csv-report
 	   derive-entry
 	   find-account-tree
 	   find-sibling-accounts

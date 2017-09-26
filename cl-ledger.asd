@@ -69,7 +69,8 @@
 			 (:file "sexp")
 			 (:file "balance")
 			 (:file "print")
-			 (:file "entry"))
+			 (:file "entry")
+                         (:file "csv"))
 	    :serial t)
 
    (:module "parsers"

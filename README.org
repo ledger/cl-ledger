@@ -104,6 +104,7 @@ The following reports are supported:
 (ledger:print-report "/path/to/file" [OPTIONS])
 (ledger:equity-report "/path/to/file" [OPTIONS])
 (ledger:sexp-report "/path/to/file" [OPTIONS])
+(ledger:csv-report "/path/to/file" [OPTIONS])
 (ledger:derive-entry "/path/to/file" [OPTIONS])
 #+END_SRC
 
