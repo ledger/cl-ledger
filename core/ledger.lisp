@@ -250,12 +250,16 @@ The result is of type JOURNAL."
 					:fullname fullname)))
 	       (if child-account
 		   (if (cdr path-elements)
-		       (traverse-accounts child-account (cdr path-elements)
-					  fullname)
+		       (traverse-accounts child-account
+                                          (cdr path-elements)
+					  (concatenate 'string
+                                                       fullname ":"
+                                                       (cadr path-elements)))
 		       child-account)))))
-    (traverse-accounts (binder-root-account binder)
-		       (split-string-at-char account-path #\:)
-		       account-path)))
+    (let ((path-elements (split-string-at-char account-path #\:)))
+      (traverse-accounts (binder-root-account binder)
+                         path-elements
+                         (car path-elements)))))
 
 (defmethod find-account ((journal journal) (account-path string)
 			 &key (create-if-not-exists-p nil))
