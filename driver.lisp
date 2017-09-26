@@ -125,7 +125,9 @@
 
 	    ((or (string= "bal" command)
 		 (string= "balance" command))
-	     (apply #'ledger:balance-report args))))))
+	     (apply #'ledger:balance-report args))
+            ((string= "csv" command)
+             (apply #'ledger:csv-report args))))))
 
 (provide 'driver)
 
