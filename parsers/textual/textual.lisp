@@ -28,6 +28,10 @@
 			    "(?:~A(?:([^; ~C].*?)(?:(@@?)\\s*(.+?))?))?~A?$")
 	   *spacing-regexp* #\Tab *comment-regexp*)))
 
+(defvar *comment-line-scanner*
+  (cl-ppcre:create-scanner
+   (concatenate 'string "^" *comment-regexp*)))
+
 (defvar *directive-handlers*
   `(((#\; #\* #\% #\#)
      . ,#'(lambda (in line journal)
@@ -144,69 +148,71 @@
 
 (defun read-transaction (in line entry)
   (declare (type stream in))
-  (let* ((xact-line (string-right-trim '(#\Space #\Tab)
-				       (read-line in nil)))
-	 (groups (and xact-line
-		      (nth-value 1 (cl-ppcre:scan-to-strings
-				    *transaction-scanner* xact-line)))))
-    (when groups
-      (let ((status (aref groups 0))
-	    (open-bracket (aref groups 1))
-	    (account-name (aref groups 2))
-	    (close-bracket (aref groups 3))
-	    (amount-expr (aref groups 4))
-	    (cost-specifier (aref groups 5))
-	    (cost-expr (aref groups 6))
-	    (note (aref groups 7))
-	    amount cost)
+  (let ((xact-line (string-right-trim '(#\Space #\Tab)
+                                      (read-line in nil))))
+    (if (cl-ppcre:scan *comment-line-scanner* xact-line)
+        :comment-line
+        (let ((groups (and xact-line
+                           (nth-value 1 (cl-ppcre:scan-to-strings
+                                         *transaction-scanner* xact-line)))))
+          (when groups
+            (let ((status (aref groups 0))
+                  (open-bracket (aref groups 1))
+                  (account-name (aref groups 2))
+                  (close-bracket (aref groups 3))
+                  (amount-expr (aref groups 4))
+                  (cost-specifier (aref groups 5))
+                  (cost-expr (aref groups 6))
+                  (note (aref groups 7))
+                  amount cost)
 
-	(when amount-expr
-	  (with-input-from-string (in amount-expr)
-	    (setf amount (cambl:read-amount in))
-	    (when (peek-char t in nil)
-	      (file-position in 0)
-	      (setf amount
-		    (make-value-expr :string   amount-expr
-				     :function (read-value-expr in))))))
-	(when cost-expr
-	  (with-input-from-string (in cost-expr)
-	    (setf cost (cambl:read-amount* in))
-	    (when (peek-char t in nil)
-	      (file-position in 0)
-	      (setf cost
-		    (make-value-expr :string   cost-expr
-				     :function (read-value-expr in))))
-	    (unless cost
-	      (error "Failed to read cost expression: ~S" cost-expr))))
+              (when amount-expr
+                (with-input-from-string (in amount-expr)
+                  (setf amount (cambl:read-amount in))
+                  (when (peek-char t in nil)
+                    (file-position in 0)
+                    (setf amount
+                          (make-value-expr :string amount-expr
+                                           :function (read-value-expr in))))))
+              (when cost-expr
+                (with-input-from-string (in cost-expr)
+                  (setf cost (cambl:read-amount* in))
+                  (when (peek-char t in nil)
+                    (file-position in 0)
+                    (setf cost
+                          (make-value-expr :string cost-expr
+                                           :function (read-value-expr in))))
+                  (unless cost
+                    (error "Failed to read cost expression: ~S" cost-expr))))
 
-	(let ((virtualp (and open-bracket
-			     (if (string= "(" open-bracket)
-				 (string= ")" close-bracket)
-				 (string= "]" close-bracket)))))
-	  (make-transaction
-	   :entry entry
-	   ;; jww (2007-12-09): NYI
-	   ;;:actual-date
-	   ;;:effective-date
-	   :status (cond ((string= status "*") :cleared)
-			 ((string= status "!") :pending)
-			 (t :uncleared))
-	   :account (find-account (entry-journal entry)
-				  (string-right-trim '(#\Space #\Tab)
-						     account-name)
-				  :create-if-not-exists-p t)
-	   :amount amount
-	   :cost (if cost
-		     (if (string= "@" cost-specifier)
-			 (multiply cost amount)
-			 cost))
-	   :note note
-	   :position (make-item-position :begin-line line
-					 :end-line line)
-	   :virtualp virtualp
-	   :must-balance-p (if virtualp
-			       (string= open-bracket "[")
-			       t)))))))
+              (let ((virtualp (and open-bracket
+                                   (if (string= "(" open-bracket)
+                                       (string= ")" close-bracket)
+                                       (string= "]" close-bracket)))))
+                (make-transaction
+                 :entry entry
+                 ;; jww (2007-12-09): NYI
+                 ;;:actual-date
+                 ;;:effective-date
+                 :status (cond ((string= status "*") :cleared)
+                               ((string= status "!") :pending)
+                               (t :uncleared))
+                 :account (find-account (entry-journal entry)
+                                        (string-right-trim '(#\Space #\Tab)
+                                                           account-name)
+                                        :create-if-not-exists-p t)
+                 :amount amount
+                 :cost (if cost
+                           (if (string= "@" cost-specifier)
+                               (multiply cost amount)
+                               cost))
+                 :note note
+                 :position (make-item-position :begin-line line
+                                               :end-line line)
+                 :virtualp virtualp
+                 :must-balance-p (if virtualp
+                                     (string= open-bracket "[")
+                                     t)))))))))
 
 (defun read-plain-entry (in line journal)
   "Read in the header line for the entry, which has the syntax:
@@ -256,8 +262,10 @@
 		:position (make-item-position :begin-line line))))
 
 	  (loop for transaction = (read-transaction in (+ line lines) entry)
-	     while transaction do (add-transaction entry transaction)
-	     (incf lines))
+                while transaction do
+                  (unless (eq transaction :comment-line) ; ignore comment lines
+                    (add-transaction entry transaction))
+                  (incf lines))
 	  (incf lines)
 
 	  (setf (item-position-end-line (entry-position entry))
