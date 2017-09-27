@@ -138,7 +138,9 @@
 
 	   find-current-entity
 
-	   register))
+	   register
+
+           process-command-line))
 
 (in-package :ledger)
 

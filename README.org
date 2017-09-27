@@ -377,3 +377,12 @@ a /series/ of the corresponding type. Example:
           (ledger:read-journal "doc/sample.dat")))
   => [a list of all transactions, in sequence, within sample.dat]
 #+END_SRC
+
+* Command line
+
+You can use the [[https://github.com/roswell/roswell][Roswell]] script /cl-ledger.ros/ to use *CL-Ledger* from
+the command line:
+
+#+BEGIN_SRC shell
+cl-ledger.ros -f doc/sample.dat balance
+#+END_SRC

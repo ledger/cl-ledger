@@ -1,0 +1,21 @@
+#!/bin/sh
+#|-*- mode:lisp -*-|#
+#| A command line driver for CL-Ledger
+exec ros -Q -- $0 "$@"
+|#
+
+(progn ;;init forms
+  (ros:ensure-asdf)
+  #+quicklisp (ql:quickload '("cl-ledger") :silent t)
+  #-quicklisp (asdf:load-system "cl-ledger"))
+
+(defpackage :ros.script.cl-ledger
+  (:use :cl))
+
+(in-package :ros.script.cl-ledger)
+
+(defun main (&rest args)
+  (handler-case (apply #'ledger:process-command-line args)
+    (t (err) (format *error-output* "cl-ledger: ~a~%" err))))
+
+;;; vim: set ft=lisp lisp:

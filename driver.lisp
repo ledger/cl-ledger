@@ -17,6 +17,51 @@
 	       (princ expr out))
 	  (write-char #\) out)))))
 
+(defun driver-help ()
+  (write-string "
+Usage:
+  cl-ledger [options] [command] [arguments]
+
+Commands:
+  balance (bal)
+  csv
+  print (pr)
+  register (reg)
+
+Options:
+  -b DATE
+        Specify the start DATE of all calculations. Transactions before
+        that date will be ignored.
+
+  --display EXPR (-d)
+        Display lines that satisfy the expression EXPR.
+
+  -e DATE
+        Constrain the report so that transactions on or after DATE are
+        not considered.
+
+  --file FILE (-f)
+        Read journal data from FILE.
+
+  --limit EXPR (-l)
+        Limit postings in calculations.
+
+  -n
+        Print only the top level accounts.
+
+  -r
+        In a register report show the related account. This is the
+        other side of the transaction.
+
+  -s
+        Report register as a single subtotal.
+
+  -S EXPR
+        Sort the register report based on the value expression EXPR.
+
+"))
+
+
 (defun process-command-line (&rest args)
   ;; Convert the argument list to canonical Lisp form
   (loop for cell on args for arg = (car cell)
@@ -114,6 +159,10 @@
 
       (setf args (append pathnames keywords args))
 
+      (unless pathnames
+        (driver-help)
+        (error "error: no journal file specified."))
+
       ;; Execute the command
       (cond ((or (string= "reg" command)
 		 (string= "register" command))
@@ -126,8 +175,12 @@
 	    ((or (string= "bal" command)
 		 (string= "balance" command))
 	     (apply #'ledger:balance-report args))
+
             ((string= "csv" command)
-             (apply #'ledger:csv-report args))))))
+             (apply #'ledger:csv-report args))
+
+            (t
+             (driver-help))))))
 
 (provide 'driver)
 
