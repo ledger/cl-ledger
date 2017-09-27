@@ -143,6 +143,7 @@
 (in-package :ledger)
 
 (setf *suppress-series-warnings* t)
+(setf *output-time-format* "%Y/%m/%d")
 
 (provide 'packages)
 
