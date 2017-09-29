@@ -148,10 +148,13 @@
 
 (defun read-transaction (in line entry)
   (declare (type stream in))
-  (let ((xact-line (string-right-trim '(#\Space #\Tab)
-                                      (read-line in nil))))
-    (if (cl-ppcre:scan *comment-line-scanner* xact-line)
-        :comment-line
+  (let* ((xact-line (string-right-trim '(#\Space #\Tab)
+                                       (read-line in nil)))
+         (comment (and xact-line
+                       (nth-value 1 (cl-ppcre:scan-to-strings
+                                     *comment-line-scanner* xact-line)))))
+    (if comment
+        (aref comment 0)
         (let ((groups (and xact-line
                            (nth-value 1 (cl-ppcre:scan-to-strings
                                          *transaction-scanner* xact-line)))))
@@ -263,8 +266,12 @@
 
 	  (loop for transaction = (read-transaction in (+ line lines) entry)
                 while transaction do
-                  (unless (eq transaction :comment-line) ; ignore comment lines
-                    (add-transaction entry transaction))
+                  (if (stringp transaction)
+                      (setf (entry-note entry)
+                            (concatenate 'string
+                                         (entry-note entry)
+                                         transaction))
+                      (add-transaction entry transaction))
                   (incf lines))
 	  (incf lines)
 
