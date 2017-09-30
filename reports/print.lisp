@@ -80,9 +80,10 @@
 				   :normalizedp nil)))
 	    (add-to-contents journal entry)
 	    (dolist (xact entry-xacts)
-	      (let ((xact-copy (copy-transaction xact)))
-		(setf (xact-entry xact-copy) entry)
-		(add-transaction entry xact-copy)))
+              (unless (value-zerop (xact-amount xact))
+                (let ((xact-copy (copy-transaction xact)))
+                  (setf (xact-entry xact-copy) entry)
+                  (add-transaction entry xact-copy))))
 	    (add-transaction entry
 			     (make-transaction :entry entry
 					       :account equity-account))
