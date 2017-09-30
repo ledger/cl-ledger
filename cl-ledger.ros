@@ -16,6 +16,6 @@ exec ros -Q -- $0 "$@"
 
 (defun main (&rest args)
   (handler-case (apply #'ledger:process-command-line args)
-    (t (err) (format *error-output* "cl-ledger: ~a~%" err))))
+    (t (err) (format *error-output* "~a~%" err))))
 
 ;;; vim: set ft=lisp lisp:

@@ -25,6 +25,7 @@ Usage:
 Commands:
   balance (bal)
   csv
+  equity
   print (pr)
   register (reg)
 
@@ -164,20 +165,23 @@ Options:
         (error "error: no journal file specified."))
 
       ;; Execute the command
-      (cond ((or (string= "reg" command)
-		 (string= "register" command))
-	     (apply #'ledger:register-report args))
-
-	    ((or (string= "pr" command)
-		 (string= "print" command))
-	     (apply #'ledger:print-report args))
-
-	    ((or (string= "bal" command)
-		 (string= "balance" command))
-	     (apply #'ledger:balance-report args))
+      (cond ((or (string= "bal" command)
+                 (string= "balance" command))
+             (apply #'ledger:balance-report args))
 
             ((string= "csv" command)
              (apply #'ledger:csv-report args))
+
+            ((string= "equity" command)
+             (apply #'ledger:equity-report args))
+
+            ((or (string= "pr" command)
+                 (string= "print" command))
+             (apply #'ledger:print-report args))
+
+            ((or (string= "reg" command)
+                 (string= "register" command))
+             (apply #'ledger:register-report args))
 
             (t
              (driver-help))))))
