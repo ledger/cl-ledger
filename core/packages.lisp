@@ -30,6 +30,7 @@
 	   derive-entry
 	   find-account-tree
 	   find-sibling-accounts
+           find-unique-accounts
 	   find-unique-payees
 
 	   journal

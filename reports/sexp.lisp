@@ -68,6 +68,14 @@
 		  (map-fn 'string #'entry-payee (scan-entries binder))))
 	:test #'string=)))))
 
+(defun find-unique-accounts (&rest args)
+  (let* ((binder (apply #'binder args))
+         (accounts (collect (map-fn 'string
+                                    (lambda (xact)
+                                      (account-fullname (xact-account xact)))
+                                    (scan-transactions binder)))))
+    (remove-duplicates accounts :test #'string=)))
+
 (defun find-account-tree (&rest args)
   (let* ((binder (apply #'binder args))
 	 (root-account (binder-root-account binder)))
