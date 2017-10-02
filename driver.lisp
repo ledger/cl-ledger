@@ -23,9 +23,11 @@ Usage:
   cl-ledger [options] [command] [arguments]
 
 Commands:
+  accounts
   balance (bal)
   csv
   equity
+  payees
   print (pr)
   register (reg)
 
@@ -165,7 +167,10 @@ Options:
         (error "error: no journal file specified."))
 
       ;; Execute the command
-      (cond ((or (string= "bal" command)
+      (cond ((string= "accounts" command)
+             (apply #'ledger:account-names-report args))
+
+            ((or (string= "bal" command)
                  (string= "balance" command))
              (apply #'ledger:balance-report args))
 
@@ -174,6 +179,9 @@ Options:
 
             ((string= "equity" command)
              (apply #'ledger:equity-report args))
+
+            ((string= "payees" command)
+             (apply #'ledger:payees-report args))
 
             ((or (string= "pr" command)
                  (string= "print" command))

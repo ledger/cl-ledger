@@ -90,6 +90,18 @@
 	    entry))
 	(apply #'print-transactions (scan-transactions journal) plist)))))
 
+(defun payees-report (&rest args)
+  (let ((output-stream (or (cadr (member :output-stream args))
+                           *standard-output*))
+        (payees (apply #'find-unique-payees args)))
+    (format output-stream "~{~A~%~}" (sort payees #'string-lessp))))
+
+(defun account-names-report (&rest args)
+  (let ((output-stream (or (cadr (member :output-stream args))
+                           *standard-output*))
+        (accounts (apply #'find-unique-accounts args)))
+    (format output-stream "~{~A~%~}" (sort accounts #'string-lessp))))
+
 (provide 'print)
 
 ;; print.lisp ends here

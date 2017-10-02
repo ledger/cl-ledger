@@ -27,6 +27,8 @@
 	   equity-report
 	   sexp-report
            csv-report
+           payees-report
+           account-names-report
 	   derive-entry
 	   find-account-tree
 	   find-sibling-accounts
