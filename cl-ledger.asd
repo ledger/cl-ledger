@@ -31,6 +31,11 @@
 
 (cl:in-package :asdf-user)
 
+;; Redefine 'program-op' to actvate compression
+;; #+sbcl
+;; (defmethod asdf:perform ((o asdf:program-op) (c asdf:system))
+;;   (uiop:dump-image (asdf:output-file o c) :executable t :compression t))
+
 (defsystem :cl-ledger
   :serial t
   :description "Double-entry accounting system."
@@ -39,6 +44,9 @@
   :license "BSD-3"
   :version "4.0.0"
   :depends-on (:local-time :periods-series :cambl :cl-ppcre)
+  :build-operation program-op
+  :build-pathname "cl-ledger"
+  :entry-point "ledger::main"
   :components
   ((:module "core"
 	    :components ((:file "packages")

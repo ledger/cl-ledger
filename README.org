@@ -380,8 +380,16 @@ a /series/ of the corresponding type. Example:
 
 * Command line
 
-You can use the [[https://github.com/roswell/roswell][Roswell]] script /cl-ledger.ros/ to use *CL-Ledger* from
-the command line:
+You can build a standalone /cl-ledger/ binary using the /Makefile/:
+
+#+BEGIN_SRC shell
+make LISP=sbcl
+cl-ledger -f doc/sample.dat balance
+#+END_SRC
+
+
+You can also use the [[https://github.com/roswell/roswell][Roswell]] script /cl-ledger.ros/ to use *CL-Ledger*
+from the command line:
 
 #+BEGIN_SRC shell
 cl-ledger.ros -f doc/sample.dat balance

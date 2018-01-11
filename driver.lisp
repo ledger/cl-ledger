@@ -194,6 +194,22 @@ Options:
             (t
              (driver-help))))))
 
+(defun command-line-args ()
+  (or #+abcl ext:*command-line-argument-list*
+      #+allegro (sys:command-line-arguments)
+      #+ccl (ccl::command-line-arguments)
+      #+clisp (ext:argv)
+      #+cmu extensions:*command-line-words*
+      #+ecl (loop for i from 0 below (si:argc) collect (si:argv i))
+      #+gcl si:*command-args*
+      #+lispworks sys:*line-arguments-list*
+      #+sbcl sb-ext:*posix-argv*
+      nil))
+
+(defun main ()
+  (handler-case (apply #'process-command-line (rest (command-line-args)))
+    (t (err) (format *error-output* "~a~%" err))))
+
 (provide 'driver)
 
 ;; driver.lisp ends here
