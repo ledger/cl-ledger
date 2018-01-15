@@ -339,6 +339,23 @@ Here are a few examples, using /sample.dat/ as a reference:
       Liabilities:MasterCard
 #+END_SRC
 
+* Date format
+
+The date format used in your journal file can be specified either
+using the ~*input-time-format*~ variable (by default: "%Y/%m/%d%| %H:%M:%S"),
+or by writing a ~F~ command directive at the beginning of the journal:
+
+#+BEGIN_SRC
+F %Y-%m-%d
+
+2017-09-01 * Some payee
+  Some account  45,18 EUR
+  Some other account
+#+END_SRC
+
+The date format used in reports can be specified using the
+~*output-time-format*~ variable (by default: "%Y/%m/%d").
+
 * Binder caching
 
 After the call to ~read-binder~, the variable ~*last-binder*~ contains
