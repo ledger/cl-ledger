@@ -1,6 +1,6 @@
 ;;; -*- Mode: LISP; Syntax: COMMON-LISP; Package: CL-USER; Base: 10 -*-
 
-;; Copyright (c) 2003-2015, John Wiegley.  All rights reserved.
+;; Copyright (c) 2003-2018, John Wiegley.  All rights reserved.
 ;;
 ;; Redistribution and use in source and binary forms, with or without
 ;; modification, are permitted provided that the following conditions are
@@ -33,14 +33,14 @@
 
 ;; Redefine 'program-op' to actvate compression
 ;; #+sbcl
-;; (defmethod asdf:perform ((o asdf:program-op) (c asdf:system))
-;;   (uiop:dump-image (asdf:output-file o c) :executable t :compression t))
+;; (defmethod perform ((o program-op) (c system))
+;;   (uiop:dump-image (output-file o c) :executable t :compression t))
 
 (defsystem :cl-ledger
   :serial t
   :description "Double-entry accounting system."
-  :author "Johh Wiegley <jwiegley@gmail.com>"
-  :maintainer "Christophe Junke <junke.christophe@gmail.com>"
+  :author "John Wiegley <jwiegley@gmail.com>"
+  :maintainer "Guillaume LE VAILLANT <glv@posteo.net>"
   :license "BSD-3"
   :version "4.0.0"
   :depends-on (:local-time :periods-series :cambl :cl-ppcre)
