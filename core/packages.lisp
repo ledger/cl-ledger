@@ -10,13 +10,8 @@
 	   binder-commodity-pool
 	   binder-root-account
 	   binder-journals
-	   binder-transactions
 	   binder-data
-	   read-binder
-	   add-journal-file
-	   reset-binder
 
-	   filter-transactions
 	   calculate-totals
 	   abbreviate-string
 
@@ -38,7 +33,6 @@
 	   journal
 	   journal-binder
 	   journal-contents
-	   journal-entries
 	   journal-date-format
 	   journal-default-year
 	   journal-default-account
@@ -52,7 +46,6 @@
 	   account-children
 	   account-name
 	   account-fullname
-	   account-transactions
 	   account-data
 
 	   entry
@@ -140,8 +133,6 @@
 	   choose-if-value-expr
 
 	   find-current-entity
-
-	   register
 
            process-command-line))
 

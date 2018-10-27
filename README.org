@@ -358,7 +358,7 @@ The date format used in reports can be specified using the
 
 * Binder caching
 
-After the call to ~read-binder~, the variable ~*last-binder*~ contains
+After the call to ~binder~, the variable ~*last-binder*~ contains
 the contents of what was read. From that point forward, if no binder
 or string is passed to the reporting function, they will assume you
 wish to report on the contents of ~*last-binder*~.
