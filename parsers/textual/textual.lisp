@@ -32,6 +32,10 @@
   (cl-ppcre:create-scanner
    (concatenate 'string "^" *comment-regexp*)))
 
+(defvar *price-scanner*
+  (cl-ppcre:create-scanner
+   (format nil "^P (~A)\\s+(\\S+)\\s+(.+)$" *date-regexp*)))
+
 (defvar *directive-handlers*
   `(((#\; #\* #\% #\#)
      . ,#'(lambda (in line journal)
@@ -57,10 +61,11 @@
 
     (#\F . ,#'(lambda (in line journal)
                 (declare (ignore line))
-                (prog1 1
-                  (read-char in)
-                  (peek-char t in)
-                  (setf (journal-date-format journal) (read-line in nil)))))
+                (read-char in)
+                (peek-char t in)
+                (setf (journal-date-format journal) (read-line in nil))
+                1))
+
     (#\Y . ,#'(lambda (in line journal)
 		(declare (ignore line))
 		(read-char in)
@@ -98,6 +103,14 @@
 		  ;; jww (2007-12-05): export this
 		  (setf (commodity-no-market-price-p commodity) t)
 		  1)))
+
+    (#\P . ,#'(lambda (in line journal)
+                (multiple-value-bind (date commodity-name price)
+                    (read-price in line journal)
+                  (let ((commodity (find-commodity commodity-name
+                                                   :create-if-not-exists-p t)))
+                    (cambl::add-price commodity price date) ;; TODO: Export add-price?
+                    1))))
 
     (,#'digit-char-p
      . ,#'(lambda (in line journal)
@@ -280,6 +293,19 @@
 
 	  (normalize-entry entry)
 	  (values entry lines))))))
+
+(defun read-price (in line journal)
+  (declare (type stream in)
+           (type journal journal)
+           (ignore line))
+  (let* ((price-line (read-line in nil))
+         (groups (nth-value 1 (cl-ppcre:scan-to-strings *price-scanner*
+                                                        price-line)))
+         (date (parse-journal-date journal (aref groups 0)))
+         (commodity-name (aref groups 1))
+         (price (with-input-from-string (in (aref groups 2))
+                  (cambl:read-amount in))))
+    (values date commodity-name price)))
 
 (defun read-textual-journal (in binder)
   (declare (type stream in))
