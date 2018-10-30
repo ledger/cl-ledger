@@ -105,12 +105,12 @@
 		  1)))
 
     (#\P . ,#'(lambda (in line journal)
-                (multiple-value-bind (date commodity-name price)
+                (multiple-value-bind (date base-commodity price)
                     (read-price in line journal)
-                  (let ((commodity (find-commodity commodity-name
-                                                   :create-if-not-exists-p t)))
-                    (cambl::add-price commodity price date) ;; TODO: Export add-price?
-                    1))))
+                  (exchange-commodity base-commodity
+                                      :per-unit-cost price
+                                      :moment date)
+                  1)))
 
     (,#'digit-char-p
      . ,#'(lambda (in line journal)
@@ -302,10 +302,9 @@
          (groups (nth-value 1 (cl-ppcre:scan-to-strings *price-scanner*
                                                         price-line)))
          (date (parse-journal-date journal (aref groups 0)))
-         (commodity-name (aref groups 1))
-         (price (with-input-from-string (in (aref groups 2))
-                  (cambl:read-amount in))))
-    (values date commodity-name price)))
+         (base-commodity (amount* (concatenate 'string "1 " (aref groups 1))))
+         (price (amount (aref groups 2))))
+    (values date base-commodity price)))
 
 (defun read-textual-journal (in binder)
   (declare (type stream in))
