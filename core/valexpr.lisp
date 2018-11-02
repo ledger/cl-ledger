@@ -236,8 +236,8 @@
                         (etypecase item
                           (account
                            (market-value (account-value item :total)
-                                         moment))
-			  (transaction
+                                         (or moment (now))))
+                          (transaction
                            (market-value (xact-value item :running-total)
 				         (or moment (xact-date item)))))))
 
