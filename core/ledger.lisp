@@ -192,7 +192,7 @@ The result is of type JOURNAL."
   (let ((value-cell (assoc key (account-data account))))
     (values (cdr value-cell) value-cell)))
 
-(declaim (inline account-value))
+(declaim (inline account-set-value))
 (defun account-set-value (account key value)
   (let ((value-cell (assoc key (account-data account))))
     (if value-cell
