@@ -5,10 +5,10 @@
 (in-package :ledger)
 
 (declaim (inline value-expr-call))
-(defun value-expr-call (valexpr xact)
+(defun value-expr-call (valexpr item)
   (declare (type value-expr valexpr))
-  (declare (type transaction xact))
-  (funcall (the function (value-expr-function valexpr)) xact))
+  (declare (type (or account transaction) item))
+  (funcall (the function (value-expr-function valexpr)) item))
 
 (defvar *value-expr-observe-properties-p* nil)
 (defvar *value-expr-reduce-to-smallest-units-p* nil)
@@ -232,9 +232,14 @@
 				      (or moment (xact-date xact)))))
 
 		     ((member symbol '(|V| |total_market|) :test #'eq)
-		      (lambda (xact &optional moment)
-			(market-value (xact-value xact :running-total)
-				      (or moment (xact-date xact)))))
+		      (lambda (item &optional moment)
+                        (etypecase item
+                          (account
+                           (market-value (account-value item :total)
+                                         moment))
+			  (transaction
+                           (market-value (xact-value item :running-total)
+				         (or moment (xact-date item)))))))
 
 		     ((member symbol '(|g| |gain|) :test #'eq)
 		      )

@@ -172,6 +172,10 @@
 (defun calculate-account-totals (xact-series &key (amount nil) (total nil)
 				 (lots nil) (lot-prices nil) (lot-dates nil)
 				 (lot-tags nil))
+  (when (and amount (stringp amount))
+    (setf amount (parse-value-expr amount)))
+  (when (and total (stringp total))
+    (setf total (parse-value-expr total)))
   (let (root-account)
     (iterate ((xact xact-series))
       (unless root-account
