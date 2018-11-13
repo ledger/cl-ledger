@@ -161,7 +161,7 @@
 		      (apply-this-or-last #'xact-pending-p))
 
 		     ((member symbol '(|R| |real|) :test #'eq)
-		      )
+                      (apply-this-or-last (complement #'xact-virtualp)))
 
 		     ((member symbol '(|L| |actual|) :test #'eq)
 		      )
