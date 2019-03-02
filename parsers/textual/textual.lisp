@@ -8,7 +8,7 @@
 
 (in-package :ledger-textual)
 
-(defvar *date-regexp* "[0-9-./]+")
+(defvar *date-regexp* "[0-9-./]+(?:\\s+[0-9:]+)?")
 
 (defvar *spacing-regexp* (format nil "(?:  |~C| ~C)\\s*" #\Tab #\Tab))
 
