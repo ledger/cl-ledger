@@ -220,6 +220,48 @@ corresponding *CL-Ledger* keywords:
 | -t EXPR           | --sort-entries ARG | :sort-entries ARG |
 |-------------------+--------------------+-------------------|
 
+
+Here are a few examples, using /sample.dat/ as a reference:
+
+#+BEGIN_SRC lisp
+(ledger:balance-report "doc/sample.dat")
+  =>
+         $1,980.00
+           50 AAPL  Assets
+         $1,980.00    Bank:Checking
+           50 AAPL    Brokerage
+        $-2,500.00  Equity:Opening Balances
+            $40.00  Expenses:Books
+        $-1,000.00  Income:Salary
+           $-20.00  Liabilities:MasterCard
+  -----------------------------------------------------
+        $-1,500.00
+           50 AAPL
+
+(ledger:balance-report "doc/sample.dat" :account "Assets")
+  =>
+         $1,980.00
+           50 AAPL  Assets
+         $1,980.00    Bank:Checking
+           50 AAPL    Brokerage
+  -----------------------------------------------------
+         $1,980.00
+           50 AAPL
+
+(ledger:register-report "doc/sample.dat" :begin "2004/05/10" :end "2004/05/28")
+  =>
+  2004/05/14 Pay day              Assets:Bank:Checking      $1,000.00    $1,000.00
+                                  Income:Salary            $-1,000.00        $0.00
+  2004/05/27 Book Store           Expenses:Books               $20.00       $20.00
+                                  Liabilities:MasterCard      $-20.00        $0.00
+  2004/05/27 Credit card company  Liabilities:MasterCard       $20.00       $20.00
+                                  Assets:Bank:Checking        $-20.00        $0.00
+
+(ledger:register-report "doc/sample.dat" :limit "commodity=(1 AAPL)" :total "V")
+  =>
+  2004/05/01 Investment balance   Assets:Brokerage            50 AAPL    $1,500.00
+#+END_SRC
+
 * Options to /derive-entry/
 
 The reporting command ~derive-entry~ takes some special options.
