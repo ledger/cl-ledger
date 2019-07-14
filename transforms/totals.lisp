@@ -69,37 +69,36 @@
 
   (let ((running-total 0)
 	(running-cost-total 0)
-	(*value-expr-series-offset* 0)
-	*value-expr-last-xact*)
-    ;; Here the purpose of the "(scan (collect ..." is to force the computation
-    ;; of the result to happen right now, while the temporary bindings for
-    ;; *value-expr-series-offset* and *value-expr-last-xact* are active.
-    (scan (collect
-              (map-fn
-               'transaction
-               #'(lambda (xact)
-	           (incf *value-expr-series-offset*)
+	(value-expr-series-offset 0)
+	value-expr-last-xact)
+    (map-fn
+     'transaction
+     (lambda (xact)
+       (let ((*value-expr-series-offset* value-expr-series-offset)
+             (*value-expr-last-xact* value-expr-last-xact))
+         (incf *value-expr-series-offset*)
 
-	           (let ((amt (get-computed-amount xact set-amount)))
-	             (setf (xact-value xact :computed-amount) amt
-		           (xact-value xact :running-total)
-		           (setf running-total (add running-total amt))
-		           (xact-value xact :running-cost-total)
-		           (setf running-cost-total
-		                 (add running-cost-total
-                                      (or (xact-cost xact) amt)))))
+         (let ((amt (get-computed-amount xact set-amount)))
+           (setf (xact-value xact :computed-amount) amt
+                 (xact-value xact :running-total)
+                 (setf running-total (add running-total amt))
+                 (xact-value xact :running-cost-total)
+                 (setf running-cost-total
+                       (add running-cost-total
+                            (or (xact-cost xact) amt)))))
 
-	           (if set-total
-	               ;; This function might well refer to the :running-total
-	               ;; we just set.
-	               (setf (xact-value xact :running-total)
-		             (get-computed-total xact set-total)))
+         (if set-total
+             ;; This function might well refer to the :running-total
+             ;; we just set.
+             (setf (xact-value xact :running-total)
+                   (get-computed-total xact set-total)))
 
-	           (if displayed-amount-setter
-	               (funcall displayed-amount-setter xact))
+         (if displayed-amount-setter
+             (funcall displayed-amount-setter xact))
 
-	           (setf *value-expr-last-xact* xact))
-               xact-series)))))
+         (setf value-expr-series-offset *value-expr-series-offset*)
+         (setf value-expr-last-xact xact)))
+     xact-series)))
 
 (defun bridge-running-totals (xact-series &key (displayed-amount-setter nil)
 			      (todays-total nil)
