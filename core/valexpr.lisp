@@ -203,12 +203,17 @@
 			(declare (ignore args))
 			(cambl:amount-quantity (xact-amount xact))))
 
-		     ((member symbol '(|comm| |commodity|) :test #'eq)
-		      (lambda (xact &optional value)
-			(let ((one (amount 1)))
-			  (setf (amount-commodity one)
-				(amount-commodity (or value (xact-amount xact))))
-			  one)))
+                     ((member symbol '(|comm| |commodity|) :test #'eq)
+                      (lambda (xact &optional value)
+                        (let* ((value (or value (xact-amount xact)))
+                               (commodity (amount-commodity value))
+                               (name (commodity-name commodity t))
+                               (prefixed-p (cambl::commodity-symbol-prefixed-p
+                                            (cambl::commodity-symbol commodity)))
+                               (one (if prefixed-p
+                                        (format nil "~a1" name)
+                                        (format nil "1 ~a" name))))
+                          (amount one))))
 
 		     ((member symbol '(|setcomm| |set_commodity|) :test #'eq)
 		      )
