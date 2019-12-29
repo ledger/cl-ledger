@@ -6,6 +6,8 @@
 
 ;;;_ * General utility functions
 
+(defmacro negatef (place) `(setf ,place (- ,place)))
+
 (defmacro if-let (((var value)) &body body)
   `(let ((,var ,value))
      (if ,var

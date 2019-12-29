@@ -4,6 +4,7 @@
 
 (defpackage :ledger-textual
   (:use :common-lisp :ledger :local-time :periods :cambl :cl-ppcre)
+  (:import-from :ledger negatef)
   (:export *directive-handlers*))
 
 (in-package :ledger-textual)
@@ -193,6 +194,8 @@
               (when cost-expr
                 (with-input-from-string (in cost-expr)
                   (setf cost (cambl:read-amount* in))
+                  (when (minusp (cambl:amount-quantity amount))
+                    (negatef (cambl:amount-quantity cost)))
                   (when (peek-char t in nil)
                     (file-position in 0)
                     (setf cost
