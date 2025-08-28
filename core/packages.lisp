@@ -5,6 +5,7 @@
 (defpackage :cl-ledger
   (:use :common-lisp :local-time :cambl :periods :periods-series :series)
   (:nicknames :ledger)
+  (:shadowing-import-from :local-time day-of)
   (:export binder
 	   binder-statistics
 	   binder-commodity-pool

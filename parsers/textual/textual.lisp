@@ -5,6 +5,7 @@
 (defpackage :ledger-textual
   (:use :common-lisp :ledger :local-time :periods :cambl :cl-ppcre)
   (:import-from :ledger negatef)
+  (:shadowing-import-from :local-time day-of)
   (:export *directive-handlers*))
 
 (in-package :ledger-textual)
